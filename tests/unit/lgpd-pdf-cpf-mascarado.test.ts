@@ -64,6 +64,9 @@ function payload(): ExportPayload {
     channel_session_groups: [],
     group_messages_authored: [],
     appointment_notices: [],
+    webchat_handoffs: [],
+    webchat_visitor_sessions: [],
+    webchat_messages: [],
   };
 }
 
