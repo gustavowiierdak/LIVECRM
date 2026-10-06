@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleHelp, CircleX, Menu, Plus, Send, ShieldCheck, WalletCards } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useT } from "@/hooks/i18n/useT";
 import { randomId } from "@/lib/random-id";
 import {
@@ -218,6 +219,7 @@ export function PortalDeAtendimento({
   readonly setoresPermitidos?: readonly SetorId[];
 }) {
   const t = useT();
+  const tagDoIdioma = useTagDeIdioma();
   const [setorAtual, setSetorAtual] = useState<SetorId>(setoresPermitidos?.[0] ?? "suporte");
   const [codigo, setCodigo] = useState("");
   const [nome, setNome] = useState("");
@@ -537,7 +539,7 @@ export function PortalDeAtendimento({
                     >
                       <span className="text-xs font-medium text-text-muted">
                         {item.direction === "visitor" ? t("Você") : t("Equipe")} ·{" "}
-                        {new Date(item.created_at).toLocaleTimeString("pt-BR", {
+                        {new Date(item.created_at).toLocaleTimeString(tagDoIdioma, {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
