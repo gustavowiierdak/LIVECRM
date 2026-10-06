@@ -4464,6 +4464,7 @@ export type Database = {
           is_anonymized: boolean
           is_blocked: boolean
           is_merged_into: string | null
+          is_personal: boolean
           kind: string
           last_activity_at: string | null
           locale: string | null
@@ -4507,6 +4508,7 @@ export type Database = {
           is_anonymized?: boolean
           is_blocked?: boolean
           is_merged_into?: string | null
+          is_personal?: boolean
           kind?: string
           last_activity_at?: string | null
           locale?: string | null
@@ -4550,6 +4552,7 @@ export type Database = {
           is_anonymized?: boolean
           is_blocked?: boolean
           is_merged_into?: string | null
+          is_personal?: boolean
           kind?: string
           last_activity_at?: string | null
           locale?: string | null
@@ -8191,6 +8194,7 @@ export type Database = {
           legal_name: string
           locale: string
           media_retention_days: number
+          media_retention_enforced: boolean
           onboarded_at: string | null
           onboarding_state: Json
           privacy_policy_url: string | null
@@ -8218,6 +8222,7 @@ export type Database = {
           legal_name: string
           locale?: string
           media_retention_days?: number
+          media_retention_enforced?: boolean
           onboarded_at?: string | null
           onboarding_state?: Json
           privacy_policy_url?: string | null
@@ -8245,6 +8250,7 @@ export type Database = {
           legal_name?: string
           locale?: string
           media_retention_days?: number
+          media_retention_enforced?: boolean
           onboarded_at?: string | null
           onboarding_state?: Json
           privacy_policy_url?: string | null

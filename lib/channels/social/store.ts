@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { encryptWebhookSecret, decryptWebhookSecret } from "@/lib/webhooks/secrets";
 import { metadataInicialDoCanal } from "@/lib/ai/elegibilidade/pre-go-live";
+import { resolverSaudeDaConexaoRemovida } from "@/lib/channels/health";
+import { logger } from "@/lib/logger";
 import { inboxSupported, SOCIAL_PROVIDER } from "./catalog";
 import { listSocialAccounts, socialRequest, SocialError } from "./client";
 
@@ -212,4 +214,139 @@ export async function connectSocialInbox(
       .eq("id", channelId);
     throw error;
   }
+}
+/** 404 on a provider DELETE means a previous attempt already removed it; retries must converge. */
+async function deleteAtProvider(key: string, path: string) {
+  try {
+    await socialRequest(key, path, undefined, "DELETE");
+  } catch (error) {
+    if (!(error instanceof SocialError && error.upstreamStatus === 404)) throw error;
+  }
+}
+/**
+ * Apaga no provedor a assinatura cujo id o CRM nunca chegou a gravar (issue #2364).
+ *
+ * ─── Como a assinatura fica órfã ────────────────────────────────────────────
+ *
+ * `connectSocialInbox` só escreve `metadata.social_webhook_id` DEPOIS de criar
+ * a assinatura no Zernio. Se a gravação falhar (ou a conexão morrer no meio),
+ * o canal vira `FAILED` com a assinatura viva lá fora e nenhuma referência a
+ * ela aqui. Daí `disconnectSocialAccount` não apagava nada: arquivava a linha,
+ * rotacionava o token, e a assinatura seguia mandando evento para uma URL que
+ * agora resolve 404 — para sempre, sem erro do nosso lado.
+ *
+ * ─── Por que a reconciliação é pela URL ─────────────────────────────────────
+ *
+ * É o mesmo casamento que `connectSocialInbox` já faz contra duplicação: a
+ * assinatura certa é a que aponta para o `webhook_path_token` DESTA linha — o
+ * token que ainda está válido, porque o arquivamento só o rotaciona depois
+ * (daí esta função rodar ANTES do patch). Casa-se pelo SUFIXO do caminho e não
+ * pela origem completa: a instância pode ter mudado de domínio desde a conexão
+ * e a assinatura continua apontando para o token certo.
+ *
+ * Só roda quando o id NÃO existe — quem já tem `social_webhook_id` continua
+ * pelo caminho normal de baixo, que não muda.
+ *
+ * `webhooks/settings` fora do ar ou num formato que não dá para ler LANÇA, como
+ * o resto das chamadas de provedor desta função: a linha fica intacta e a
+ * desconexão pode ser tentada de novo. Silenciar aqui seria trocar a assinatura
+ * viva por uma assinatura viva sem ninguém saber.
+ */
+async function apagarAssinaturaSemId(
+  db: SupabaseClient,
+  org: string,
+  channelId: string,
+  key: string,
+) {
+  const { data, error } = await db
+    .from("channel_sessions")
+    .select("webhook_path_token")
+    .eq("organization_id", org)
+    .eq("id", channelId)
+    .maybeSingle();
+  if (error)
+    throw new SocialError("Não foi possível ler o canal para reconciliar o webhook.", 500);
+  const token = data?.webhook_path_token;
+  if (typeof token !== "string" || token.length === 0) return;
+  const caminho = `/api/v1/webhooks/channel/${token}`;
+  const lista = z
+    .object({ webhooks: z.array(z.object({ _id: z.string(), url: z.string() })) })
+    .parse(await socialRequest(key, "webhooks/settings"));
+  const achada = lista.webhooks.find((w) => w.url.endsWith(caminho));
+  if (!achada) return;
+  await deleteAtProvider(key, `webhooks/settings?webhookId=${encodeURIComponent(achada._id)}`);
+}
+/**
+ * Stops the inbox for one account and, with `removeAccount`, disconnects it from the provider.
+ * Provider calls run first: if one fails the channel stays intact and the action can be retried.
+ * Conversations are kept; the channel is archived, never deleted (issue #1314).
+ */
+export async function disconnectSocialAccount(
+  db: SupabaseClient,
+  org: string,
+  accountId: string,
+  removeAccount: boolean,
+) {
+  const integration = await readSocialIntegration(db, org);
+  if (!integration) throw new SocialError("Configure a integração primeiro.", 422);
+  const listed = (await listSocialAccounts(integration.key, integration.profileId)).some(
+    (a) => a._id === accountId,
+  );
+  const channel = (await socialChannels(db, org)).find((c) => c.accountId === accountId);
+  if (!listed && !channel) throw new SocialError("Conta não encontrada neste perfil.", 404);
+  const webhookId = channel?.metadata.social_webhook_id;
+  if (typeof webhookId === "string")
+    await deleteAtProvider(
+      integration.key,
+      `webhooks/settings?webhookId=${encodeURIComponent(webhookId)}`,
+    );
+  // SEM id gravado: a assinatura existe (ou pode existir) no provedor e só dá
+  // para achar pela URL — issue #2364. Roda antes do patch de arquivamento,
+  // quando o token desta linha ainda é o que o provedor tem na assinatura.
+  else if (channel) await apagarAssinaturaSemId(db, org, channel.id, integration.key);
+  // Only accounts listed under this profile: the key may reach other profiles' accounts.
+  if (removeAccount && listed)
+    await deleteAtProvider(integration.key, `accounts/${encodeURIComponent(accountId)}`);
+  if (!channel)
+    return {
+      channel_id: null,
+      account_removed: removeAccount && listed,
+      avisos_fechados: "sem_mudanca" as const,
+    };
+  const now = new Date().toISOString();
+  const { error } = await db
+    .from("channel_sessions")
+    .update({
+      archived_at: now,
+      status: "STOPPED",
+      last_status_change_at: now,
+      // A late delivery to the old URL must not resolve this channel again.
+      webhook_path_token: randomBytes(24).toString("hex"),
+    })
+    .eq("organization_id", org)
+    .eq("id", channel.id);
+  if (error) throw new SocialError("Não foi possível arquivar o canal. Tente novamente.", 500);
+  // Best-effort: the channel is already out; an open health alert must not block that.
+  // But the failure is not swallowed: it goes to the log and, via the route's audit
+  // spread, to the audit metadata — same contract as channel-sessions/[id].
+  let avisosFechados: "resolvido" | "sem_mudanca" | "falhou";
+  try {
+    avisosFechados = await resolverSaudeDaConexaoRemovida(db, {
+      id: channel.id,
+      organization_id: org,
+      status: "STOPPED",
+    });
+  } catch (err) {
+    avisosFechados = "falhou";
+    logger.warn("Falha ao fechar os avisos de saúde da conexão social removida", {
+      channel_session_id: channel.id,
+      organization_id: org,
+      erro: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return {
+    channel_id: channel.id,
+    account_removed: removeAccount && listed,
+    avisos_fechados: avisosFechados,
+  };
 }
