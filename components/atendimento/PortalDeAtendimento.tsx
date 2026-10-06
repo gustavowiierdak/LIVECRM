@@ -372,7 +372,7 @@ export function PortalDeAtendimento({
   };
 
   return (
-    <main style={css} className="min-h-screen bg-[#f7f5fb] p-0 text-text lg:p-6">
+    <main style={css} className="min-h-screen bg-bg p-0 text-text lg:p-6">
       <section className="mx-auto flex min-h-screen max-w-[1440px] flex-col overflow-hidden bg-surface shadow-xl lg:min-h-[calc(100vh-3rem)] lg:rounded-2xl">
         <header className="flex min-h-16 items-center justify-between gap-4 border-b border-border px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
@@ -423,7 +423,7 @@ export function PortalDeAtendimento({
 
           <section
             aria-labelledby="titulo-conversa"
-            className="flex min-h-[32rem] flex-col bg-[#fcfbff]"
+            className="flex min-h-[32rem] flex-col bg-surface-elevated"
           >
             <div className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-6">
               <span className="grid size-10 place-items-center rounded-xl bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
