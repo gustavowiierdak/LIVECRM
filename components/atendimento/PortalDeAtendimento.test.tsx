@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +11,10 @@ describe("PortalDeAtendimento", () => {
       vi.fn(async () => Response.json({ error: { message: "sem sessão" } }, { status: 401 })),
     ),
   );
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   it("troca o setor sem criar uma conversa ou habilitar um envio sem sessão", async () => {
     const user = userEvent.setup();
@@ -137,6 +140,33 @@ describe("PortalDeAtendimento", () => {
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/public/webchat/consume", expect.anything());
+  });
+
+  it("retira o aviso quando a leitura das mensagens se recupera", async () => {
+    let leituras = 0;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith("/session"))
+        return Response.json({ data: { sector: "financeiro" } });
+      if (String(input).endsWith("/messages")) {
+        leituras += 1;
+        if (leituras === 1) throw new TypeError("Failed to fetch");
+        return Response.json({ data: [] });
+      }
+      throw new Error(`Rota inesperada: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const intervalo = vi.spyOn(window, "setInterval");
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Não foi possível carregar as mensagens.",
+    );
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    act(() => atualizar());
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(leituras).toBe(2);
   });
 
   it("permite iniciar outro assunto sem misturar a conversa anterior", async () => {

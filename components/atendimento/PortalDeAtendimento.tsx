@@ -309,11 +309,10 @@ export function PortalDeAtendimento({
       if (!response.ok || !payload.data)
         throw new Error(payload.error?.message ?? t("Não foi possível carregar as mensagens."));
       setMensagens(payload.data);
-    } catch (cause) {
+      setErro(null);
+    } catch {
       if (geracao !== geracaoDaConversa.current) return;
-      setErro(
-        cause instanceof Error ? cause.message : t("Não foi possível carregar as mensagens."),
-      );
+      setErro(t("Não foi possível carregar as mensagens."));
     }
   }, [t, publicId]);
 
