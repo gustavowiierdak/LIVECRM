@@ -613,11 +613,6 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               />
             </div>
             <RetentionNotice conversationId={selectedConversation.id} />
-            <WebchatOperatorPanel
-              key={`webchat:${selectedConversation.id}`}
-              conversationId={selectedConversation.id}
-              supportReadonly={supportReadonly || selectedConversation.status === "closed"}
-            />
             {selectedConversation.contacts?.id && (
               <NumeroForaDoAr
                 key={`numero:${selectedConversation.id}`}
