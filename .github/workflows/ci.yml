@@ -592,6 +592,10 @@ jobs:
         # consultas/hora por IP — o executor próprio é um IP só.
         env:
           GH_TOKEN: ${{ github.token }}
+          # Até a primeira release deste fork, mede o update.sh da versão que
+          # está instalada na VPS. Depois a própria Release do fork prevalece.
+          CONFERENCIA_KIT_BOOTSTRAP_REPO: https://github.com/melgarafael/DeskcommCRM.git
+          CONFERENCIA_KIT_BOOTSTRAP_RELEASE: v1.73.0
         run: pnpm test:db
 
       # O `update.sh` do cliente roda sobre um banco COM DADOS, e nenhum gate
