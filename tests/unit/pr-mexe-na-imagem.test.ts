@@ -14,6 +14,16 @@ function responde(caminhos: string[]): string {
 }
 
 describe("pr-mexe-na-imagem", () => {
+  it("dados privados da VPS ficam fora do contexto Docker", () => {
+    const ignorados = readFileSync(".dockerignore", "utf-8").split("\n").map((linha) => linha.trim());
+    for (const caminho of [".runtime", "backups", ".deskcomm-*"]) {
+      expect(ignorados).toContain(caminho);
+    }
+    expect(responde([".runtime/supabase/volumes/db/data"])).toBe("nao");
+    expect(responde(["backups/db-20261006.sql.gz"])).toBe("nao");
+    expect(responde([".deskcomm-env-antes-do-update"])).toBe("nao");
+  });
+
   it.each([
     ["Dockerfile"],
     ["Dockerfile.worker"],
