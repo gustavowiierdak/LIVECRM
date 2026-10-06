@@ -1,6 +1,6 @@
 /**
  * O QUE O TITULAR E O ENCARREGADO LEEM SEGUE O PAÍS DA ORGANIZAÇÃO — e o
- * Brasil fica byte a byte igual (doc 88, Portugal no seletor).
+ * Brasil mantém o texto da lei e do PDF (doc 88, Portugal no seletor).
  *
  * Antes deste PR o e-mail ao titular e o alarme ao encarregado traziam a LGPD
  * escrita em duro. Com Portugal no seletor, o PDF citaria o RGPD e o e-mail que
@@ -13,7 +13,9 @@
  * @ c85293f05). Comparar com eles, e não com uma lista de trechos, é o que
  * prova "byte a byte": um trecho conferido deixa passar o resto do texto.
  *
- * Exceção deliberada: `pdf-textos-cpf-da-conversa-e-aviso.txt` foi REGRAVADO
+ * Exceção aditiva: os dois `data-*.json` agora incluem três coleções vazias do
+ * atendimento web. O restante do contrato brasileiro continua comparado aqui.
+ * `pdf-textos-cpf-da-conversa-e-aviso.txt` foi REGRAVADO
  * no PR #2355 (issue #2341), que troca no Brasil também o ponteiro "valor no
  * arquivo de dados" pelo CPF mascarado. Essa linha não é mais a de antes.
  */
@@ -281,10 +283,10 @@ describe("alarme ao encarregado", () => {
 });
 
 describe("data.json e PDF de acesso", () => {
-  it("Brasil: o data.json é o de antes, sem `lei_rotulo` nem `fuso`", async () => {
+  it("Brasil: o data.json mantém o contrato e inclui o atendimento web, sem `lei_rotulo` nem `fuso`", async () => {
     const { vazio, cheio } = await dataJson(null, "America/Sao_Paulo");
-    expect(comoGravado(vazio)).toBe(fixture("data-vazio.json"));
-    expect(comoGravado(cheio)).toBe(fixture("data-cheio.json"));
+    expect(comoGravado(vazio)).toBe(fixture("data-vazio.json").trimEnd());
+    expect(comoGravado(cheio)).toBe(fixture("data-cheio.json").trimEnd());
     for (const p of [vazio, cheio]) {
       expect(Object.keys(p)).not.toContain("lei_rotulo");
       expect(Object.keys(p)).not.toContain("fuso");
@@ -336,7 +338,7 @@ describe("data.json e PDF de acesso", () => {
     expect(cheio.lei_citada).toBe("RGPD art. 15.º (Regulamento (UE) 2016/679)");
     expect(cheio.documento_rotulo).toBe("NIF");
     const { cheio: semPais } = await dataJson("BR", "America/Sao_Paulo");
-    expect(comoGravado(semPais)).toBe(fixture("data-cheio.json"));
+    expect(comoGravado(semPais)).toBe(fixture("data-cheio.json").trimEnd());
   });
 
   it("o worker lê o país uma vez e passa o mesmo perfil ao coletor e ao e-mail", () => {
