@@ -86,6 +86,34 @@ export interface MessageRow {
   created_at: string;
 }
 
+/** Atendimento web do titular. Digests de código, sessão e CSRF nunca saem no export. */
+export interface WebchatHandoffRow {
+  id: string;
+  source_conversation_id: string;
+  sector: string;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface WebchatVisitorSessionRow {
+  id: string;
+  handoff_id: string;
+  sector: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+}
+
+export interface WebchatMessageRow {
+  id: string;
+  visitor_session_id: string;
+  direction: string;
+  body: string;
+  created_at: string;
+}
+
 export interface LeadRow {
   id: string;
   pipeline_id: string;
@@ -560,6 +588,9 @@ export interface ExportPayload {
   conversations: ConversationRow[];
   messages_count_total: number;
   messages_recent: MessageRow[];
+  webchat_handoffs: WebchatHandoffRow[];
+  webchat_visitor_sessions: WebchatVisitorSessionRow[];
+  webchat_messages: WebchatMessageRow[];
   leads: LeadRow[];
   /**
    * Módulo opcional de honorários (advocacia, ADR-0002). Vazio nas instalações
@@ -893,6 +924,35 @@ export function toolCallsParaOTitular(toolCalls: unknown): unknown[] {
       }),
     };
   });
+}
+
+type ConsultaWebchat = {
+  select: (columns: string) => ConsultaWebchat;
+  eq: (column: string, value: string) => ConsultaWebchat;
+  in: (column: string, values: string[]) => ConsultaWebchat;
+  order: (column: string, options: { ascending: boolean }) => ConsultaWebchat;
+  range: (from: number, to: number) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
+};
+type ClienteWebchat = { from: (table: string) => ConsultaWebchat };
+
+/** Paginação obrigatória: um limite silencioso deixaria o direito de acesso incompleto. */
+async function coletarLinhasWebchat<T>(
+  queryFactory: () => ConsultaWebchat,
+  table: string,
+  columns: string,
+  organizationId: string,
+  filter: (query: ConsultaWebchat) => ConsultaWebchat,
+): Promise<T[]> {
+  const rows: T[] = [];
+  const pageSize = 250;
+  for (let offset = 0; ; offset += pageSize) {
+    const query = filter(queryFactory().select(columns).eq("organization_id", organizationId));
+    const { data, error } = await query.order("created_at", { ascending: true }).range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Falha no export de ${table}: ${error.message}`);
+    rows.push(...((data ?? []) as T[]));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
 }
 
 export async function collectExportData(args: CollectArgs): Promise<ExportPayload> {
@@ -1461,6 +1521,42 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
       });
     } else if (data) {
       campaign_suppressions = data as unknown as CampaignSuppressionRow[];
+    }
+  }
+
+  // Webchat separado — as três tabelas nascem e são redigidas juntas (0571).
+  // A consulta começa pelo contato e filtra a organização em TODA tabela; a
+  // mensagem só entra se pertencer a uma das sessões desse mesmo contato.
+  const webchatClient = admin as unknown as ClienteWebchat;
+  let webchat_handoffs: WebchatHandoffRow[] = [];
+  let webchat_visitor_sessions: WebchatVisitorSessionRow[] = [];
+  const webchat_messages: WebchatMessageRow[] = [];
+  if (contactId) {
+    webchat_handoffs = await coletarLinhasWebchat<WebchatHandoffRow>(
+      () => webchatClient.from("webchat_handoffs"),
+      "webchat_handoffs",
+      "id, source_conversation_id, sector, created_at, expires_at, consumed_at, revoked_at",
+      organizationId,
+      (query) => query.eq("contact_id", contactId),
+    );
+    webchat_visitor_sessions = await coletarLinhasWebchat<WebchatVisitorSessionRow>(
+      () => webchatClient.from("webchat_visitor_sessions"),
+      "webchat_visitor_sessions",
+      "id, handoff_id, sector, created_at, expires_at, revoked_at",
+      organizationId,
+      (query) => query.eq("contact_id", contactId),
+    );
+    const ids = webchat_visitor_sessions.map((session) => session.id);
+    for (let start = 0; start < ids.length; start += 100) {
+      webchat_messages.push(
+        ...(await coletarLinhasWebchat<WebchatMessageRow>(
+          () => webchatClient.from("webchat_messages"),
+          "webchat_messages",
+          "id, visitor_session_id, direction, body, created_at",
+          organizationId,
+          (query) => query.in("visitor_session_id", ids.slice(start, start + 100)),
+        )),
+      );
     }
   }
 
@@ -2039,6 +2135,9 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
     conversations,
     messages_count_total,
     messages_recent,
+    webchat_handoffs,
+    webchat_visitor_sessions,
+    webchat_messages,
     leads,
     honorarios_contratos,
     honorarios_parcelas,
@@ -2096,6 +2195,9 @@ function emptyPayload(
     conversations: [],
     messages_count_total: 0,
     messages_recent: [],
+    webchat_handoffs: [],
+    webchat_visitor_sessions: [],
+    webchat_messages: [],
     leads: [],
     honorarios_contratos: [],
     honorarios_parcelas: [],

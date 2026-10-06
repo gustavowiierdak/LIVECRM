@@ -31,6 +31,7 @@ import { assertOrgOperante } from "@/lib/organizacao/operante";
 import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
+  canalConhecidoSemMensagem,
   getAdapter,
   resolveSessionRef,
   type ChannelSessionRef,
@@ -469,6 +470,13 @@ export async function sendMessageHandler(
     channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
   };
   const c = conv as unknown as Joined;
+
+  // Sessões com transporte próprio (ou sem texto) nunca entram no dispatcher
+  // genérico. O webchat responde pela rota da sessão visitante na Inbox.
+  if (canalConhecidoSemMensagem(c.channel_sessions?.provider)) {
+    throw new ApiError(422, "validation_failed", undefined, ctx.requestId,
+      traduzir("Use o atendimento próprio deste canal para responder.", ctx.idioma ?? "pt-BR"));
+  }
 
   if (c.contacts?.is_blocked) {
     throw new ApiError(

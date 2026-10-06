@@ -6,6 +6,13 @@ export const PUBLIC_PATHS: RegExp[] = [
   // Link público persistido: org e destino são resolvidos exclusivamente no servidor.
   /^\/api\/v1\/rastreio\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   /^\/$/,
+  // Portal público de atendimento: exibe a interface e a marca resolvida no
+  // servidor. Sessão, contato, mensagem e token nunca entram pela URL.
+  /^\/atendimento$/,
+  /^\/atendimento\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  // O portal não tem sessão Supabase: cada handler valida a sessão opaca
+  // HttpOnly, Origin e CSRF próprios. Âncora evita abrir rotas futuras.
+  /^\/api\/public\/webchat\/(consume|session|messages|start)$/,
   /^\/login(\/.*)?$/,
   /^\/signup$/,
   /^\/auth\/confirm$/,

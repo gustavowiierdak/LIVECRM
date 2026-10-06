@@ -339,6 +339,17 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "UPDATE, DELETE nem TRUNCATE para anon, authenticated ou PUBLIC. O " +
       "isolamento é medido num sentido só (org de teste → outra). Migration 0482.",
   },
+  ...[
+    "webchat_channel_configs",
+    "webchat_handoffs",
+    "webchat_visitor_sessions",
+    "webchat_messages",
+  ].map((tabela) => ({
+    tabela,
+    razao:
+      "tests/invariants/webchat-isolamento.test.ts — tentativa real de SELECT com SET ROLE anon e authenticated " +
+      "recebe permission denied; RLS ligada e ACL sem escrita. Somente as RPCs service_role alcançam o canal isolado.",
+  })),
 ];
 
 /**

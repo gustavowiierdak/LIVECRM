@@ -14,6 +14,7 @@ import { TemplatesParceiroClient } from "./TemplatesParceiroClient";
 import { TelefoniaClient } from "./TelefoniaClient";
 import { useT } from "@/hooks/i18n/useT";
 import { rotaDeTemplates } from "@/lib/channels/templates-fonte";
+import { WebchatSettingsForm } from "@/app/app/settings/atendimento/_webchat-form";
 
 /**
  * Conexões — TODOS os canais em um lugar só.
@@ -66,8 +67,10 @@ export function ConexoesShell({
         ? "parceiro"
         : abaParam === "telefonia"
           ? "telefonia"
-          : abaParam === "voz"
-            ? "voz"
+        : abaParam === "voz"
+          ? "voz"
+          : abaParam === "web"
+            ? "web"
             : abaParam === "graph" && graphParceiro
               ? "graph"
               : "numeros";
@@ -106,6 +109,7 @@ export function ConexoesShell({
         <TabsTrigger value="telefonia">{t("Telefone")}</TabsTrigger>
         <TabsTrigger value="sociais">{t("Redes sociais")}</TabsTrigger>
         <TabsTrigger value="voz">{t("Chamada de voz")}</TabsTrigger>
+        <TabsTrigger value="web">{t("Atendimento web")}</TabsTrigger>
         {graphParceiro && <TabsTrigger value="graph">{graphParceiro.label}</TabsTrigger>}
       </TabsList>
 
@@ -120,6 +124,10 @@ export function ConexoesShell({
 
       <TabsContent value="voz" className="mt-0">
         <CanalVozClient wacallsConfigured={wacallsConfigured} />
+      </TabsContent>
+
+      <TabsContent value="web" className="mt-0">
+        <WebchatSettingsForm />
       </TabsContent>
 
       {graphParceiro && (

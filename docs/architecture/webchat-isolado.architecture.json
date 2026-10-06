@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Atendimento web isolado por sessão",
+    "subtitle": "Link público por empresa, entrada autônoma na Inbox e histórico separado do WhatsApp",
+    "output": "webchat-isolado.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "humano", "label": "Pessoas" },
+    { "id": "app", "label": "Aplicativo" },
+    { "id": "db", "label": "Banco privado" }
+  ],
+  "mainPath": [
+    "config-ui",
+    "config-api",
+    "config",
+    "portal",
+    "start",
+    "conversation",
+    "operator",
+    "session",
+    "messages"
+  ],
+  "nodes": [
+    {
+      "id": "config-ui",
+      "lane": "humano",
+      "col": 0,
+      "type": "ui",
+      "label": "Conexões › Atendimento web: ligar e copiar link"
+    },
+    {
+      "id": "config-api",
+      "lane": "app",
+      "col": 1,
+      "type": "api",
+      "label": "GET/PATCH settings/webchat; manager, Zod, audit"
+    },
+    {
+      "id": "config",
+      "lane": "db",
+      "col": 2,
+      "type": "database",
+      "label": "webchat_channel_configs; desligado por padrão"
+    },
+    {
+      "id": "operator",
+      "lane": "humano",
+      "col": 3,
+      "type": "ui",
+      "label": "Inbox: conversa própria e resposta pela sessão web"
+    },
+    {
+      "id": "handoff",
+      "lane": "db",
+      "col": 4,
+      "type": "database",
+      "label": "Handoff com digest; consumo atômico e único"
+    },
+    {
+      "id": "portal",
+      "lane": "humano",
+      "col": 5,
+      "type": "ui",
+      "label": "/atendimento/[publicId]: nome, setor e primeira mensagem"
+    },
+    {
+      "id": "start",
+      "lane": "app",
+      "col": 6,
+      "type": "api",
+      "label": "POST webchat/start: Origin, Zod, limite e sessão segura"
+    },
+    {
+      "id": "conversation",
+      "lane": "db",
+      "col": 7,
+      "type": "database",
+      "label": "RPC atômica: contato + conversa web + primeira mensagem"
+    },
+    {
+      "id": "session",
+      "lane": "app",
+      "col": 6,
+      "type": "api",
+      "label": "Cookie opaco, CSRF, Origin e sessão retomável"
+    },
+    {
+      "id": "messages",
+      "lane": "db",
+      "col": 7,
+      "type": "database",
+      "label": "webchat_messages por sessão; sem timeline WhatsApp"
+    },
+    {
+      "id": "audit",
+      "lane": "db",
+      "col": 3,
+      "type": "database",
+      "label": "api_audit_log: configuração, emissão e resposta"
+    },
+    {
+      "id": "audit-ui",
+      "lane": "humano",
+      "col": 4,
+      "type": "ui",
+      "label": "/app/audit: revisão das ações do webchat"
+    },
+    {
+      "id": "lgpd-trigger",
+      "lane": "db",
+      "col": 8,
+      "type": "database",
+      "label": "Anonimização revoga acesso e redige mensagens web"
+    },
+    {
+      "id": "lgpd-export",
+      "lane": "app",
+      "col": 9,
+      "type": "api",
+      "label": "Export LGPD inclui webchat sem digests de sessão"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": "config-ui", "to": "config-api", "label": "Salvar escolha" },
+    { "id": "e2", "from": "config-api", "to": "config", "label": "Persistir por organização" },
+    { "id": "e3", "from": "config", "to": "operator", "label": "Opt-in libera emissão" },
+    { "id": "e4", "from": "operator", "to": "handoff", "label": "Código com setor" },
+    {
+      "id": "e5",
+      "from": "handoff",
+      "to": "portal",
+      "label": "Código entregue pelo canal autorizado"
+    },
+    { "id": "e6", "from": "portal", "to": "session", "label": "Consumo sem URL" },
+    { "id": "e7", "from": "session", "to": "handoff", "label": "Marca consumo e cria sessão" },
+    { "id": "e8", "from": "session", "to": "messages", "label": "Leitura/escrita só da sessão" },
+    { "id": "e9", "from": "messages", "to": "operator", "label": "Respostas na Inbox" },
+    { "id": "e10", "from": "operator", "to": "messages", "label": "Resposta do atendente" },
+    { "id": "e11", "from": "config-api", "to": "audit", "label": "Mudança auditada" },
+    { "id": "e12", "from": "operator", "to": "audit", "label": "Emissão e resposta auditadas" },
+    {
+      "id": "e13",
+      "from": "audit",
+      "to": "audit-ui",
+      "label": "Histórico filtrável pelo código da ação"
+    },
+    {
+      "id": "e15",
+      "from": "audit-ui",
+      "to": "config-ui",
+      "label": "Gerente ajusta a configuração após revisar"
+    },
+    { "id": "e14", "from": "messages", "to": "portal", "label": "Resposta isolada ao visitante" },
+    {
+      "id": "e16",
+      "from": "messages",
+      "to": "lgpd-trigger",
+      "label": "Redigir na virada do contato"
+    },
+    {
+      "id": "e17",
+      "from": "lgpd-trigger",
+      "to": "lgpd-export",
+      "label": "Direito de acesso antes da redação"
+    },
+    { "id": "e18", "from": "config", "to": "portal", "label": "Link público da organização" },
+    { "id": "e19", "from": "portal", "to": "start", "label": "Nome, setor e mensagem" },
+    { "id": "e20", "from": "start", "to": "conversation", "label": "Criação atômica e isolada" },
+    { "id": "e21", "from": "conversation", "to": "operator", "label": "Conversa web aparece na Fila" }
+  ]
+}

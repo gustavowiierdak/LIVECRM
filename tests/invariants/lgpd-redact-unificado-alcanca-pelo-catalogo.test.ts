@@ -262,6 +262,16 @@ const DECISOES: Record<string, Decisao> = {
     caminho: "gatilho",
     razao: "0494 (#1964): a LINHA e o estágio ficam (é o estado do negócio), mas next_action (texto) e qualification (jsonb) — texto livre que cita a pessoa — são zerados na virada de is_anonymized pelo gatilho fn_redigir_conversas_ao_anonimizar (a porta da 0391 que a app já usava em lib/lgpd/cascata.ts passo 7).",
   },
+  webchat_handoffs: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "0571: o código de passagem é revogado na virada de is_anonymized; hash e datas ficam apenas como prova operacional, sem token puro ou texto do contato.",
+  },
+  webchat_visitor_sessions: {
+    decidida: "redigir",
+    caminho: "gatilho",
+    razao: "0571: sessão e código são revogados e mensagens web redigidas pelo gatilho fn_webchat_redigir_contato; texto livre nunca sobrevive à anonimização do contato.",
+  },
   // ── manter: a linha e o conteúdo ficam, por decisão ───────────────────────
   before_send_traces: {
     decidida: "manter",

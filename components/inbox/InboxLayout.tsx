@@ -22,6 +22,7 @@ import { ChatThread } from "./ChatThread";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
 import { RetentionNotice } from "./RetentionNotice";
+import { WebchatOperatorPanel } from "./WebchatOperatorPanel";
 import { CRMSidePanel } from "./CRMSidePanel";
 import type { Message as ConversationMensagem } from "@/lib/types/messaging";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
@@ -551,7 +552,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               key={selectedConversation.id}
               conversation={selectedConversation}
               onAbrirConversa={handleSelect}
-              onBuscar={() =>
+              onBuscar={selectedConversation.channel === "webchat" ? undefined : () =>
                 buscaAberta
                   ? fecharBusca()
                   : setBusca({ conversaId: selectedConversation.id, termo: "" })
@@ -585,6 +586,15 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                 </Button>
               </div>
             )}
+            {selectedConversation.channel === "webchat" ? (
+              <WebchatOperatorPanel
+                key={`webchat:${selectedConversation.id}`}
+                conversationId={selectedConversation.id}
+                supportReadonly={supportReadonly || selectedConversation.status === "closed"}
+                primary
+              />
+            ) : (
+            <>
             <div className="min-h-0 flex-1 overflow-hidden">
               <ChatThread
                 conversationId={selectedConversation.id}
@@ -603,6 +613,11 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               />
             </div>
             <RetentionNotice conversationId={selectedConversation.id} />
+            <WebchatOperatorPanel
+              key={`webchat:${selectedConversation.id}`}
+              conversationId={selectedConversation.id}
+              supportReadonly={supportReadonly || selectedConversation.status === "closed"}
+            />
             {selectedConversation.contacts?.id && (
               <NumeroForaDoAr
                 key={`numero:${selectedConversation.id}`}
@@ -641,6 +656,8 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                 rascunhoVivo?.leitura.estado === "sugerido" ? rascunhoVivo.leitura.texto : ""
               }
             />
+            </>
+            )}
           </>
         ) : selectionNotFound ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
