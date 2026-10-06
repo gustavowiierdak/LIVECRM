@@ -10,7 +10,6 @@ import { SOCIAL_NETWORKS } from "./social/catalog";
  *   1. `SOCIAL_NETWORKS[].inbox` — em TypeScript, decide se uma rede pode ter
  *      atendimento no CRM. Hoje: Instagram e Facebook.
  *   2. `conversations_channel_check` — no banco, decide o que a coluna aceita.
- *      Hoje: `whatsapp`, `instagram`, `facebook`.
  *
  * `lib/channels/zernio/ingest.ts` grava a plataforma **crua** na coluna
  * (`.update({ channel: input.socialMessage.platform })`). Marcar `inbox: true`
@@ -23,24 +22,23 @@ import { SOCIAL_NETWORKS } from "./social/catalog";
  *
  * ## Por que DERIVAR em vez de escrever a lista
  *
- * Escrever `["whatsapp", "instagram", "facebook"]` aqui criaria uma TERCEIRA
- * lista para manter em sincronia — o defeito que este arquivo existe para
- * matar, uma camada acima. Derivando do catálogo, marcar `inbox: true` numa
- * rede nova muda ESTE símbolo, e o invariante
- * `vocabulario-banco-x-typescript` reprova até que a migration correspondente
- * acrescente o valor ao CHECK.
+ * Escrever as redes sociais aqui criaria uma TERCEIRA lista para manter em
+ * sincronia — o defeito que este arquivo existe para matar, uma camada acima.
+ * Derivando do catálogo, marcar `inbox: true` numa rede nova muda ESTE símbolo,
+ * e o invariante de banco reprova até que a migration correspondente acrescente
+ * o valor ao CHECK.
  *
  * Ou seja: a divergência deixa de ser possível em silêncio. Ou as duas listas
  * andam juntas, ou o CI reprova.
  *
- * ## `whatsapp` é o membro que não vem do catálogo
+ * ## Canais próprios não vêm do catálogo social
  *
- * Ele precede as redes sociais e não tem entrada em `SOCIAL_NETWORKS` — o canal
- * dele é o WAHA/Meta, não o intermediário social. Fica explícito aqui, e é a
- * única parte escrita à mão.
+ * WhatsApp usa WAHA/Meta; webchat usa a sessão HTTP própria. Nenhum deles passa
+ * pelo intermediário social, por isso ambos ficam explícitos aqui.
  */
 export const CANAIS_DE_CONVERSA = [
   "whatsapp",
+  "webchat",
   ...SOCIAL_NETWORKS.filter((rede) => rede.inbox).map((rede) => rede.id),
 ] as const satisfies readonly string[];
 

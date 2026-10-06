@@ -75,6 +75,10 @@ describe("o vocabulário do canal é derivado, não copiado", () => {
     expect(CANAIS_DE_CONVERSA).toContain("whatsapp");
   });
 
+  it("`webchat` está lá — é o outro canal próprio, sem catálogo social", () => {
+    expect(CANAIS_DE_CONVERSA).toContain("webchat");
+  });
+
   it("a lista é DERIVADA do catálogo, não escrita à mão", () => {
     // Uma lista literal aqui seria a TERCEIRA a manter em sincronia, que é o
     // defeito que este módulo existe para matar — uma camada acima.
@@ -112,6 +116,7 @@ describe("a ingestão recusa rede que o banco não conhece", () => {
 describe("a função de guarda", () => {
   it("aceita o que o banco aceita e recusa o resto", () => {
     expect(ehCanalDeConversa("whatsapp")).toBe(true);
+    expect(ehCanalDeConversa("webchat")).toBe(true);
     expect(ehCanalDeConversa("instagram")).toBe(true);
     // Uma rede que existe no catálogo mas NÃO tem inbox.
     expect(ehCanalDeConversa("linkedin")).toBe(false);

@@ -59,9 +59,8 @@ type ConfigTable = {
 
 function tabela() {
   // A tipagem do banco é gerada; ela só recebe esta tabela após regeneração do schema.
-  return (createAdminClient() as unknown as { from: (table: string) => ConfigTable }).from(
-    "webchat_channel_configs",
-  );
+  const client = createAdminClient() as unknown as { from: (table: string) => ConfigTable };
+  return client.from("webchat_channel_configs");
 }
 
 /** Configuração pela tela do gerente; a linha não existe até o primeiro salvamento. */
