@@ -23,27 +23,36 @@ describe("PortalDeAtendimento", () => {
 
     expect(financeiro).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Financeiro" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Enviar mensagem" })).toBeDisabled();
-    expect(
-      screen.getByText(
-        /O envio permanece bloqueado até você iniciar o atendimento/,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Mensagem" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Enviar mensagem" })).not.toBeInTheDocument();
   });
 
   it("mostra somente os setores liberados no link público", () => {
-    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1"
-      publicId="05440000-7777-4000-8000-000000000001" setoresPermitidos={["financeiro"]} />);
+    render(
+      <PortalDeAtendimento
+        marca="Marca teste"
+        logoUrl={null}
+        accent="#550CA1"
+        publicId="05440000-7777-4000-8000-000000000001"
+        setoresPermitidos={["financeiro"]}
+      />,
+    );
 
-    expect(screen.getByRole("button", { name: /Financeiro/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Financeiro/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cancelamento/ })).not.toBeInTheDocument();
   });
 
   it("cliente abre o link e envia a primeira mensagem sem código", async () => {
-    const message = { id: "initial-1", direction: "visitor", body: "Minha internet caiu",
-      created_at: "2026-10-06T00:00:00Z" };
+    const message = {
+      id: "initial-1",
+      direction: "visitor",
+      body: "Minha internet caiu",
+      created_at: "2026-10-06T00:00:00Z",
+    };
     const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
       if (String(input).endsWith("/session"))
         return Response.json({ error: { message: "sem sessão" } }, { status: 401 });
@@ -54,17 +63,26 @@ describe("PortalDeAtendimento", () => {
     vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
     const publicId = "05440000-7777-4000-8000-000000000001";
-    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1"
-      publicId={publicId} />);
+    render(
+      <PortalDeAtendimento
+        marca="Marca teste"
+        logoUrl={null}
+        accent="#550CA1"
+        publicId={publicId}
+      />,
+    );
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
     await user.type(screen.getByRole("textbox", { name: "Como podemos ajudar?" }), message.body);
     await user.click(screen.getByRole("button", { name: "Iniciar atendimento" }));
     expect(await screen.findByText(message.body)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith("/api/public/webchat/start", expect.objectContaining({
-      method: "POST",
-      body: expect.stringContaining(`"public_id":"${publicId}"`),
-    }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/public/webchat/start",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining(`"public_id":"${publicId}"`),
+      }),
+    );
     expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeEnabled();
   });
 
@@ -113,15 +131,90 @@ describe("PortalDeAtendimento", () => {
 
     render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
 
-    expect(
-      await screen.findByText(
-        "Atendimento seguro iniciado. A equipe recebe apenas esta conversa web.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Conectado ao atendimento")).toBeInTheDocument();
     expect(screen.getByText("Conectado ao atendimento")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Financeiro" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Suporte técnico/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/public/webchat/consume", expect.anything());
+  });
+
+  it("permite iniciar outro assunto sem misturar a conversa anterior", async () => {
+    const publicId = "05440000-7777-4000-8000-000000000001";
+    let novoIniciado = false;
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/session")) return Response.json({ data: { sector: "suporte" } });
+      if (String(input).endsWith("/messages"))
+        return Response.json({
+          data: novoIniciado
+            ? [
+                {
+                  id: "new",
+                  direction: "visitor",
+                  body: "Preciso da segunda via",
+                  created_at: "2026-10-06T12:05:00Z",
+                },
+              ]
+            : [
+                {
+                  id: "old",
+                  direction: "visitor",
+                  body: "Conversa antiga",
+                  created_at: "2026-10-06T12:00:00Z",
+                },
+              ],
+        });
+      if (String(input).endsWith("/start")) {
+        novoIniciado = true;
+        return Response.json(
+          {
+            data: {
+              sector: "financeiro",
+              message: {
+                id: "new",
+                direction: "visitor",
+                body: "Preciso da segunda via",
+                created_at: "2026-10-06T12:05:00Z",
+              },
+            },
+          },
+          { status: 201 },
+        );
+      }
+      throw new Error(`Rota inesperada: ${String(input)} ${init?.method ?? "GET"}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(
+      <PortalDeAtendimento
+        marca="Marca teste"
+        logoUrl={null}
+        accent="#550CA1"
+        publicId={publicId}
+      />,
+    );
+
+    expect(await screen.findByText("Conversa antiga")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Vamos iniciar seu atendimento" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Novo atendimento" }));
+    expect(screen.queryByText("Conversa antiga")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Financeiro/ }));
+    await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
+    await user.type(
+      screen.getByRole("textbox", { name: "Como podemos ajudar?" }),
+      "Preciso da segunda via",
+    );
+    await user.click(screen.getByRole("button", { name: "Iniciar atendimento" }));
+
+    expect(await screen.findByText("Preciso da segunda via")).toBeInTheDocument();
+    expect(screen.queryByText("Conversa antiga")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/public/webchat/start",
+      expect.objectContaining({
+        body: expect.stringContaining('"sector":"financeiro"'),
+      }),
+    );
   });
 });

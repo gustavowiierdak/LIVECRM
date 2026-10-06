@@ -1,16 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  CircleHelp,
-  CircleX,
-  Menu,
-  MessagesSquare,
-  PanelLeftOpen,
-  Send,
-  ShieldCheck,
-  WalletCards,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CircleHelp, CircleX, Menu, Plus, Send, ShieldCheck, WalletCards } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
@@ -68,67 +59,109 @@ function descricaoDoSetor(id: SetorId, t: (texto: string) => string): string {
   return t("Internet, Wi-Fi e equipamentos.");
 }
 
-function painelDeSetores({
+function PainelDeSetores({
   setores,
   setorAtual,
   onEscolher,
-  bloqueado,
+  ativo,
+  ocupado,
+  podeIniciarNovo,
+  onNovo,
   t,
 }: {
   readonly setores: readonly Setor[];
   readonly setorAtual: SetorId;
   readonly onEscolher: (setor: SetorId) => void;
-  readonly bloqueado: boolean;
+  readonly ativo: boolean;
+  readonly ocupado: boolean;
+  readonly podeIniciarNovo: boolean;
+  readonly onNovo: () => void;
   readonly t: (texto: string) => string;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <div>
-        <p className="text-sm font-semibold text-text">{t("Como podemos ajudar?")}</p>
-        <p className="mt-1 text-xs leading-5 text-text-muted">
-          {t("Escolha o assunto para iniciar o atendimento correto.")}
+        <p className="text-base font-semibold tracking-tight text-text">
+          {t("Como podemos ajudar?")}
+        </p>
+        <p className="mt-1.5 text-sm leading-6 text-text-muted">
+          {ativo
+            ? podeIniciarNovo
+              ? t(
+                  "Você está conversando com este setor. Para escolher outro assunto, inicie um novo atendimento.",
+                )
+              : t("Este é o assunto definido para sua conversa atual.")
+            : t("Escolha o assunto para iniciar o atendimento correto.")}
         </p>
       </div>
-      <div className="space-y-2" role="list" aria-label={t("Setores de atendimento")}>
-        {setores.map(({ id, Icone }) => {
-          const selecionado = id === setorAtual;
-          return (
-            <div key={id} role="listitem">
-              <button
-                type="button"
-                aria-pressed={selecionado}
-                disabled={bloqueado}
-                onClick={() => onEscolher(id)}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors",
-                  "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden",
-                  selecionado
-                    ? "border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]"
-                    : "border-border bg-surface hover:border-text-subtle hover:bg-surface-elevated",
+      {ativo && podeIniciarNovo ? (
+        <Button
+          type="button"
+          onClick={onNovo}
+          disabled={ocupado}
+          className="w-full gap-2 bg-[var(--atendimento-accent)] text-white hover:opacity-90"
+        >
+          <Plus size={18} aria-hidden />
+          {t("Novo atendimento")}
+        </Button>
+      ) : null}
+      <div className="space-y-2.5" role="list" aria-label={t("Setores de atendimento")}>
+        {(ativo ? setores.filter((item) => item.id === setorAtual) : setores).map(
+          ({ id, Icone }) => {
+            const selecionado = id === setorAtual;
+            return (
+              <div key={id} role="listitem">
+                {ativo ? (
+                  <div className="flex w-full items-start gap-3 rounded-2xl border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)] p-4">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--atendimento-accent)] text-white">
+                      <Icone size={19} aria-hidden />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-text">
+                        {tituloDoSetor(id, t)}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-text-muted">
+                        {descricaoDoSetor(id, t)}
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-pressed={selecionado}
+                    onClick={() => onEscolher(id)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden",
+                      selecionado
+                        ? "border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]"
+                        : "border-border bg-surface hover:border-[var(--atendimento-accent)] hover:bg-surface-elevated",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "grid size-10 shrink-0 place-items-center rounded-xl",
+                        selecionado
+                          ? "bg-[var(--atendimento-accent)] text-white"
+                          : "bg-surface-elevated text-text-muted",
+                      )}
+                    >
+                      <Icone size={19} aria-hidden />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-text">
+                        {tituloDoSetor(id, t)}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-text-muted">
+                        {descricaoDoSetor(id, t)}
+                      </span>
+                    </span>
+                  </button>
                 )}
-              >
-                <span
-                  className={cn(
-                    "mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg",
-                    selecionado
-                      ? "bg-[var(--atendimento-accent)] text-white"
-                      : "bg-surface-elevated text-text-muted",
-                  )}
-                >
-                  <Icone size={18} aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold text-text">
-                    {tituloDoSetor(id, t)}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-text-muted">
-                    {descricaoDoSetor(id, t)}
-                  </span>
-                </span>
-              </button>
-            </div>
-          );
-        })}
+              </div>
+            );
+          },
+        )}
       </div>
     </div>
   );
@@ -137,26 +170,25 @@ function painelDeSetores({
 function PainelDeStatus({ setor, ativo }: { readonly setor: Setor; readonly ativo: boolean }) {
   const t = useT();
   return (
-    <aside className="flex h-full flex-col border-l border-border bg-surface p-5">
-      <p className="text-sm font-semibold text-text">{t("Seu atendimento")}</p>
-      <div className="mt-5 rounded-xl border border-border bg-surface-elevated p-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-text">
-          <span className="size-2 rounded-full bg-text-subtle" aria-hidden />
+    <aside className="flex h-full flex-col border-l border-border bg-surface px-6 py-7">
+      <p className="text-base font-semibold tracking-tight text-text">{t("Seu atendimento")}</p>
+      <div className="mt-6 rounded-2xl border border-border bg-surface-elevated p-5">
+        <div className="flex items-center gap-3 text-sm font-semibold text-text">
+          <span
+            className={cn("size-2.5 rounded-full", ativo ? "bg-emerald-400" : "bg-text-subtle")}
+            aria-hidden
+          />
           {ativo ? t("Conectado ao atendimento") : t("Aguardando identificação")}
         </div>
-        <p className="mt-2 text-xs leading-5 text-text-muted">
+        <p className="mt-3 text-sm leading-6 text-text-muted">
           {ativo
-            ? t(
-                "Sua sessão foi validada. Esta área mostra somente as mensagens do atendimento web.",
-              )
-            : t(
-                "Para proteger seus dados, a conversa só é criada depois que esta página receber uma sessão segura.",
-              )}
+            ? t("Esta conversa acontece somente nesta página de atendimento.")
+            : t("Escolha um assunto e envie sua primeira mensagem para começar.")}
         </p>
       </div>
       <div className="mt-6 border-t border-border pt-5">
         <p className="text-xs font-semibold tracking-[0.12em] text-text-subtle uppercase">
-          {t("Assunto escolhido")}
+          {ativo ? t("Assunto atual") : t("Assunto escolhido")}
         </p>
         <p className="mt-2 text-sm font-medium text-text">{tituloDoSetor(setor.id, t)}</p>
         <p className="mt-1 text-xs leading-5 text-text-muted">{descricaoDoSetor(setor.id, t)}</p>
@@ -166,9 +198,7 @@ function PainelDeStatus({ setor, ativo }: { readonly setor: Setor; readonly ativ
           className="mt-0.5 size-4 shrink-0 text-[var(--atendimento-accent)]"
           aria-hidden
         />
-        {t(
-          "Não mostramos atendentes, protocolos nem conversas anteriores antes de validar a sessão.",
-        )}
+        {t("Suas mensagens ficam separadas das conversas de WhatsApp.")}
       </div>
     </aside>
   );
@@ -197,6 +227,8 @@ export function PortalDeAtendimento({
   const [erro, setErro] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState("");
   const [mensagens, setMensagens] = useState<MensagemWebchat[]>([]);
+  const geracaoDaConversa = useRef(0);
+  const fimDaConversa = useRef<HTMLDivElement>(null);
   const setores = setoresPermitidos
     ? SETORES.filter((item) => setoresPermitidos.includes(item.id))
     : SETORES;
@@ -206,7 +238,26 @@ export function PortalDeAtendimento({
     "--atendimento-accent-soft": `${accent}16`,
   } as React.CSSProperties;
 
-  const painel = painelDeSetores({ setores, setorAtual, onEscolher: setSetorAtual, bloqueado: ativo, t });
+  const novoAtendimento = () => {
+    geracaoDaConversa.current += 1;
+    setAtivo(false);
+    setMensagens([]);
+    setRascunho("");
+    setPrimeiraMensagem("");
+    setErro(null);
+  };
+  const painel = (
+    <PainelDeSetores
+      setores={setores}
+      setorAtual={setorAtual}
+      onEscolher={setSetorAtual}
+      ativo={ativo}
+      ocupado={ocupado}
+      podeIniciarNovo={Boolean(publicId)}
+      onNovo={novoAtendimento}
+      t={t}
+    />
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -238,6 +289,7 @@ export function PortalDeAtendimento({
   }, [t, publicId]);
 
   const carregarMensagens = useCallback(async () => {
+    const geracao = geracaoDaConversa.current;
     try {
       const response = await fetch("/api/public/webchat/messages", {
         credentials: "same-origin",
@@ -247,6 +299,7 @@ export function PortalDeAtendimento({
         data?: MensagemWebchat[];
         error?: { message?: string };
       };
+      if (geracao !== geracaoDaConversa.current) return;
       if (response.status === 401) {
         setAtivo(false);
         setMensagens([]);
@@ -255,6 +308,7 @@ export function PortalDeAtendimento({
         throw new Error(payload.error?.message ?? t("Não foi possível carregar as mensagens."));
       setMensagens(payload.data);
     } catch (cause) {
+      if (geracao !== geracaoDaConversa.current) return;
       setErro(
         cause instanceof Error ? cause.message : t("Não foi possível carregar as mensagens."),
       );
@@ -270,6 +324,10 @@ export function PortalDeAtendimento({
       window.clearInterval(interval);
     };
   }, [ativo, carregarMensagens]);
+
+  useEffect(() => {
+    if (ativo) fimDaConversa.current?.scrollIntoView?.({ block: "end" });
+  }, [ativo, mensagens]);
 
   const ativar = async () => {
     setOcupado(true);
@@ -300,6 +358,7 @@ export function PortalDeAtendimento({
     if (!publicId) return;
     setOcupado(true);
     setErro(null);
+    const geracao = geracaoDaConversa.current;
     try {
       const response = await fetch("/api/public/webchat/start", {
         method: "POST",
@@ -319,12 +378,15 @@ export function PortalDeAtendimento({
       };
       if (!response.ok || !payload.data?.message)
         throw new Error(payload.error?.message ?? t("Não foi possível iniciar o atendimento."));
+      if (geracao !== geracaoDaConversa.current) return;
       setSetorAtual(payload.data.sector);
       setMensagens([payload.data.message]);
       setPrimeiraMensagem("");
       setAtivo(true);
     } catch (cause) {
-      setErro(cause instanceof Error ? cause.message : t("Não foi possível iniciar o atendimento."));
+      setErro(
+        cause instanceof Error ? cause.message : t("Não foi possível iniciar o atendimento."),
+      );
     } finally {
       setOcupado(false);
     }
@@ -333,14 +395,17 @@ export function PortalDeAtendimento({
   const enviar = async () => {
     const body = rascunho.trim();
     if (!body) return;
+    const geracao = geracaoDaConversa.current;
     const csrf = document.cookie
       .split("; ")
       .find((item) => item.startsWith("webchat_csrf="))
       ?.split("=")[1];
     if (!csrf) {
-      setErro(publicId
-        ? t("Sua sessão expirou. Inicie um novo atendimento.")
-        : t("Sua sessão expirou. Valide o código novamente."));
+      setErro(
+        publicId
+          ? t("Sua sessão expirou. Inicie um novo atendimento.")
+          : t("Sua sessão expirou. Valide o código novamente."),
+      );
       return;
     }
     setOcupado(true);
@@ -348,14 +413,18 @@ export function PortalDeAtendimento({
     try {
       const response = await fetch("/api/public/webchat/messages", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-webchat-csrf": decodeURIComponent(csrf),
-          ...(publicId ? { "x-webchat-public-id": publicId } : {}) },
+        headers: {
+          "content-type": "application/json",
+          "x-webchat-csrf": decodeURIComponent(csrf),
+          ...(publicId ? { "x-webchat-public-id": publicId } : {}),
+        },
         body: JSON.stringify({ body, idempotency_key: randomId() }),
       });
       const payload = (await response.json()) as {
         data?: MensagemWebchat;
         error?: { message?: string };
       };
+      if (geracao !== geracaoDaConversa.current) return;
       if (response.status === 401) {
         setAtivo(false);
         setMensagens([]);
@@ -365,6 +434,7 @@ export function PortalDeAtendimento({
       setMensagens((anteriores) => [...anteriores, payload.data as MensagemWebchat]);
       setRascunho("");
     } catch (cause) {
+      if (geracao !== geracaoDaConversa.current) return;
       setErro(cause instanceof Error ? cause.message : t("Não foi possível enviar a mensagem."));
     } finally {
       setOcupado(false);
@@ -372,9 +442,9 @@ export function PortalDeAtendimento({
   };
 
   return (
-    <main style={css} className="min-h-screen bg-bg p-0 text-text lg:p-6">
-      <section className="mx-auto flex min-h-screen max-w-[1440px] flex-col overflow-hidden bg-surface shadow-xl lg:min-h-[calc(100vh-3rem)] lg:rounded-2xl">
-        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-border px-4 sm:px-6">
+    <main style={css} className="min-h-screen bg-bg text-text">
+      <section className="mx-auto flex min-h-screen max-w-[1600px] flex-col overflow-hidden bg-surface">
+        <header className="flex min-h-20 items-center justify-between gap-4 border-b border-border px-5 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             {logoUrl ? (
               // A URL vem da marca resolvida no servidor; next/image exigiria allowlist em build.
@@ -382,7 +452,7 @@ export function PortalDeAtendimento({
               <img
                 src={logoUrl}
                 alt={marca}
-                className="h-9 w-28 object-contain object-left sm:w-36"
+                className="h-11 w-28 object-contain object-left sm:w-36"
               />
             ) : (
               <span
@@ -409,7 +479,9 @@ export function PortalDeAtendimento({
                 <SheetHeader className="pr-8 text-left">
                   <SheetTitle>{t("Escolha o assunto")}</SheetTitle>
                   <SheetDescription>
-                    {t("O setor é escolhido antes de uma conversa ser criada.")}
+                    {ativo
+                      ? t("Para mudar de assunto, inicie um novo atendimento.")
+                      : t("O setor é escolhido antes de uma conversa ser criada.")}
                   </SheetDescription>
                 </SheetHeader>
                 <div className="mt-6">{painel}</div>
@@ -418,157 +490,197 @@ export function PortalDeAtendimento({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(15rem,1fr)_minmax(0,3fr)_minmax(16rem,1fr)]">
-          <aside className="hidden border-r border-border bg-surface p-5 lg:block">{painel}</aside>
+        <div className="grid min-h-0 flex-1 lg:h-[calc(100dvh-5rem)] lg:grid-cols-[minmax(16rem,0.95fr)_minmax(0,3fr)_minmax(17rem,0.95fr)]">
+          <aside className="hidden border-r border-border bg-surface px-6 py-8 lg:block">
+            {painel}
+          </aside>
 
           <section
             aria-labelledby="titulo-conversa"
-            className="flex min-h-[32rem] flex-col bg-surface-elevated"
+            className="flex min-h-[calc(100dvh-5rem)] min-w-0 flex-col bg-surface-elevated lg:h-[calc(100dvh-5rem)] lg:min-h-0"
           >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-4 sm:px-6">
-              <span className="grid size-10 place-items-center rounded-xl bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
+            <div className="flex items-center gap-4 border-b border-border px-5 py-5 sm:px-8">
+              <span className="grid size-11 place-items-center rounded-full bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
                 <setor.Icone size={20} aria-hidden />
               </span>
               <div>
-                <h1 id="titulo-conversa" className="text-sm font-semibold text-text">
+                <h1 id="titulo-conversa" className="text-base font-semibold text-text">
                   {tituloDoSetor(setor.id, t)}
                 </h1>
-                <p className="mt-0.5 text-xs text-text-muted">
-                  {t("Conversa protegida e direcionada ao setor escolhido")}
+                <p className="mt-0.5 text-sm text-text-muted">
+                  {ativo ? t("Atendimento em andamento") : descricaoDoSetor(setor.id, t)}
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-              <span className="grid size-14 place-items-center rounded-2xl bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
-                <MessagesSquare size={26} aria-hidden />
-              </span>
-              <h2 className="mt-5 text-xl font-semibold tracking-tight text-text">
-                {t("Vamos iniciar seu atendimento")}
-              </h2>
-              {ativo ? (
-                <div className="mt-5 w-full max-w-md space-y-3 text-left" aria-live="polite">
-                  <p className="text-center text-sm leading-6 text-text-muted">
-                    {t("Atendimento seguro iniciado. A equipe recebe apenas esta conversa web.")}
+            {ativo ? (
+              <div
+                className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-7 sm:px-8"
+                role="log"
+                aria-label={t("Mensagens do atendimento")}
+                aria-live="polite"
+              >
+                {mensagens.length === 0 ? (
+                  <p className="my-auto text-center text-sm text-text-muted">
+                    {t("Aguardando mensagens deste atendimento.")}
                   </p>
-                  {mensagens.map((item) => (
-                    <p
+                ) : (
+                  mensagens.map((item) => (
+                    <div
                       key={item.id}
-                      className="rounded-xl bg-[var(--atendimento-accent-soft)] px-3 py-2 text-sm text-text"
+                      className={cn(
+                        "flex max-w-[85%] flex-col gap-1.5 sm:max-w-[72%]",
+                        item.direction === "visitor"
+                          ? "items-end self-end"
+                          : "items-start self-start",
+                      )}
                     >
-                      {item.body}
-                    </p>
-                  ))}
+                      <span className="text-xs font-medium text-text-muted">
+                        {item.direction === "visitor" ? t("Você") : t("Equipe")} ·{" "}
+                        {new Date(item.created_at).toLocaleTimeString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <p
+                        className={cn(
+                          "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
+                          item.direction === "visitor"
+                            ? "rounded-br-md border border-border bg-surface"
+                            : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
+                        )}
+                      >
+                        {item.body}
+                      </p>
+                    </div>
+                  ))
+                )}
+                <div ref={fimDaConversa} aria-hidden />
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center px-5 py-10 sm:px-8">
+                <div className="w-full max-w-lg">
+                  <h2 className="text-2xl font-semibold tracking-tight text-text">
+                    {t("Vamos iniciar seu atendimento")}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-text-muted">
+                    {descricaoDoSetor(setor.id, t)}
+                  </p>
+                  {publicId ? (
+                    <div className="mt-7 space-y-4 text-left">
+                      <label
+                        htmlFor="nome-atendimento"
+                        className="block text-sm font-medium text-text"
+                      >
+                        {t("Seu nome")}
+                      </label>
+                      <input
+                        id="nome-atendimento"
+                        value={nome}
+                        onChange={(event) => setNome(event.target.value)}
+                        autoComplete="name"
+                        maxLength={80}
+                        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
+                      />
+                      <label
+                        htmlFor="primeira-mensagem"
+                        className="block text-sm font-medium text-text"
+                      >
+                        {t("Como podemos ajudar?")}
+                      </label>
+                      <textarea
+                        id="primeira-mensagem"
+                        value={primeiraMensagem}
+                        onChange={(event) => setPrimeiraMensagem(event.target.value)}
+                        maxLength={4000}
+                        rows={3}
+                        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => void iniciar()}
+                        disabled={ocupado || nome.trim().length < 2 || !primeiraMensagem.trim()}
+                      >
+                        {t("Iniciar atendimento")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-7 text-left">
+                      <label htmlFor="codigo-atendimento" className="text-sm font-medium text-text">
+                        {t("Código de acesso")}
+                      </label>
+                      <p className="mt-1 text-xs leading-5 text-text-muted">
+                        {t(
+                          "Digite o código temporário recebido no atendimento. Ele não vai na URL nem fica salvo neste aparelho.",
+                        )}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          id="codigo-atendimento"
+                          value={codigo}
+                          onChange={(event) => setCodigo(event.target.value)}
+                          autoComplete="one-time-code"
+                          className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
+                        />
+                        <Button type="button" onClick={ativar} disabled={ocupado || !codigo.trim()}>
+                          {t("Validar")}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : publicId ? (
-                <div className="mt-5 w-full max-w-md space-y-3 text-left">
-                  <label htmlFor="nome-atendimento" className="block text-sm font-medium text-text">
-                    {t("Seu nome")}
-                  </label>
-                  <input
-                    id="nome-atendimento"
-                    value={nome}
-                    onChange={(event) => setNome(event.target.value)}
-                    autoComplete="name"
-                    maxLength={80}
-                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
-                  />
-                  <label htmlFor="primeira-mensagem" className="block text-sm font-medium text-text">
-                    {t("Como podemos ajudar?")}
-                  </label>
+              </div>
+            )}
+
+            {erro ? (
+              <p
+                className="border-t border-border bg-surface px-5 py-3 text-sm text-destructive sm:px-8"
+                role="alert"
+              >
+                {erro}
+              </p>
+            ) : null}
+
+            {ativo ? (
+              <div className="border-t border-border bg-surface p-4 sm:p-5">
+                <label htmlFor="mensagem-atendimento" className="sr-only">
+                  {t("Mensagem")}
+                </label>
+                <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface-elevated p-2.5 focus-within:border-[var(--atendimento-accent)]">
                   <textarea
-                    id="primeira-mensagem"
-                    value={primeiraMensagem}
-                    onChange={(event) => setPrimeiraMensagem(event.target.value)}
-                    maxLength={4000}
-                    rows={3}
-                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
+                    id="mensagem-atendimento"
+                    disabled={!ativo || ocupado}
+                    value={rascunho}
+                    onChange={(event) => setRascunho(event.target.value)}
+                    rows={1}
+                    placeholder={
+                      ativo
+                        ? t("Escreva sua mensagem")
+                        : t("Inicie o atendimento acima para habilitar as mensagens.")
+                    }
+                    className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-text outline-hidden placeholder:text-text-subtle disabled:cursor-not-allowed disabled:opacity-100"
                   />
-                  <Button type="button" onClick={() => void iniciar()}
-                    disabled={ocupado || nome.trim().length < 2 || !primeiraMensagem.trim()}>
-                    {t("Iniciar atendimento")}
+                  <Button
+                    size="icon"
+                    disabled={!ativo || ocupado || !rascunho.trim()}
+                    onClick={enviar}
+                    aria-label={t("Enviar mensagem")}
+                    aria-describedby="aviso-envio"
+                  >
+                    <Send aria-hidden />
                   </Button>
                 </div>
-              ) : (
-                <div className="mt-5 w-full max-w-md text-left">
-                  <label htmlFor="codigo-atendimento" className="text-sm font-medium text-text">
-                    {t("Código de acesso")}
-                  </label>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    {t(
-                      "Digite o código temporário recebido no atendimento. Ele não vai na URL nem fica salvo neste aparelho.",
-                    )}
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      id="codigo-atendimento"
-                      value={codigo}
-                      onChange={(event) => setCodigo(event.target.value)}
-                      autoComplete="one-time-code"
-                      className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
-                    />
-                    <Button type="button" onClick={ativar} disabled={ocupado || !codigo.trim()}>
-                      {t("Validar")}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {erro ? (
-                <p className="mt-3 text-sm text-destructive" role="alert">
-                  {erro}
+                <p id="aviso-envio" className="mt-2 text-xs text-text-muted">
+                  {t("Mensagens deste atendimento não se misturam ao histórico de WhatsApp.")}
                 </p>
-              ) : null}
-            </div>
-
-            <div className="border-t border-border bg-surface p-3 sm:p-4">
-              <label htmlFor="mensagem-atendimento" className="sr-only">
-                {t("Mensagem")}
-              </label>
-              <div className="flex items-end gap-2 rounded-xl border border-border bg-surface-elevated p-2">
-                <textarea
-                  id="mensagem-atendimento"
-                  disabled={!ativo || ocupado}
-                  value={rascunho}
-                  onChange={(event) => setRascunho(event.target.value)}
-                  rows={2}
-                  placeholder={
-                    ativo
-                      ? t("Escreva sua mensagem")
-                      : t("Inicie o atendimento acima para habilitar as mensagens.")
-                  }
-                  className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-text outline-hidden placeholder:text-text-subtle disabled:cursor-not-allowed disabled:opacity-100"
-                />
-                <Button
-                  size="icon"
-                  disabled={!ativo || ocupado || !rascunho.trim()}
-                  onClick={enviar}
-                  aria-label={t("Enviar mensagem")}
-                  aria-describedby="aviso-envio"
-                >
-                  <Send aria-hidden />
-                </Button>
               </div>
-              <p id="aviso-envio" className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-                <PanelLeftOpen size={14} aria-hidden />
-                {ativo
-                  ? t("Mensagens deste atendimento não se misturam ao histórico de WhatsApp.")
-                  : t(
-                      "O envio permanece bloqueado até você iniciar o atendimento.",
-                    )}
-              </p>
-            </div>
+            ) : null}
           </section>
 
           <div className="hidden lg:block">
             <PainelDeStatus setor={setor} ativo={ativo} />
           </div>
         </div>
-
-        <footer className="border-t border-border px-4 py-3 text-center text-xs text-text-muted sm:px-6">
-          {t(
-            "Se preferir, você pode voltar ao WhatsApp a qualquer momento. O cancelamento permanece um caminho direto, sem barreiras extras.",
-          )}
-        </footer>
       </section>
     </main>
   );
