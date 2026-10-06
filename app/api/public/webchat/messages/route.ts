@@ -10,6 +10,7 @@ import {
   digestWebchat,
   mensagemWebchatSchema,
   originDaRequisicao,
+  origemDeLeituraWebchat,
 } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat } from "@/lib/webchat/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const { session } = await sessao();
   if (!session)
     return fail("unauthenticated", "Sessão de atendimento ausente.", 401, { requestId });
-  const origin = originDaRequisicao(request) ?? new URL(request.url).origin;
+  const origin = origemDeLeituraWebchat(request);
   const admin = createAdminClient() as unknown as ClienteRpc;
   const sessionDigest = digestWebchat(session);
   if (!(await pertenceAoLink(admin, request, sessionDigest, origin)))

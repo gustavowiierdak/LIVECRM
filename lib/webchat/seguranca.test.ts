@@ -6,6 +6,7 @@ import {
   novaCredencialOpaca,
   opcoesCookieWebchat,
   originDaRequisicao,
+  origemDeLeituraWebchat,
 } from "./seguranca";
 
 describe("segurança do webchat", () => {
@@ -35,6 +36,18 @@ describe("segurança do webchat", () => {
         new Request("https://portal.local", { headers: { origin: "https://usuario@portal.local" } }),
       ),
     ).toBeNull();
+  });
+
+  it("usa o Referer do GET público quando o proxy expõe URL interna", () => {
+    expect(origemDeLeituraWebchat(new Request("http://app:3000/api/public/webchat/session", {
+      headers: { referer: "https://portal.local/atendimento/link" },
+    }))).toBe("https://portal.local");
+    expect(origemDeLeituraWebchat(new Request("http://app:3000/api/public/webchat/session", {
+      headers: { origin: "https://portal.local", referer: "https://outra.local/" },
+    }))).toBe("https://portal.local");
+    expect(origemDeLeituraWebchat(new Request("http://app:3000/api/public/webchat/session", {
+      headers: { referer: "javascript:alert(1)" },
+    }))).toBe("http://app:3000");
   });
 
   it("exige chave UUID para a mensagem idempotente", () => {

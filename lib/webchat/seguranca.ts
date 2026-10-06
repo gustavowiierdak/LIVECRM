@@ -43,6 +43,23 @@ export function originDaRequisicao(request: Request): string | null {
   }
 }
 
+/** GET do browser não envia Origin; atrás do proxy request.url pode ser HTTP interno. */
+export function origemDeLeituraWebchat(request: Request): string {
+  const origin = originDaRequisicao(request);
+  if (origin) return origin;
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password)
+        return url.origin;
+    } catch {
+      // Sem Referer válido, a allowlist do banco ainda valida a origem da URL.
+    }
+  }
+  return new URL(request.url).origin;
+}
+
 export function opcoesCookieWebchat(expiresAt: string, httpOnly: boolean) {
   const expires = new Date(expiresAt);
   return {

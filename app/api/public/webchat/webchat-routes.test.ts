@@ -16,6 +16,7 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn().mockResolvedValue(undefined) }));
 
 import { POST as consumir } from "./consume/route";
 import { GET as lerMensagens, POST as enviarMensagem } from "./messages/route";
+import { GET as lerSessao } from "./session/route";
 import { POST as iniciar } from "./start/route";
 
 const token = "t".repeat(32);
@@ -152,5 +153,25 @@ describe("rotas públicas de webchat", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("retoma sessão e lê mensagens atrás de proxy mesmo sem Origin no GET", async () => {
+    const publicId = "05440000-7777-4000-8000-000000000001";
+    mocks.rpc.mockImplementation(async (name: string) => ({
+      data: name === "fn_webchat_sessao_visitante"
+        ? { ok: true, sector: "suporte", expires_at: "2030-01-01T00:00:00Z", public_id: publicId }
+        : [],
+      error: null,
+    }));
+    const headers = { referer: `https://portal.local/atendimento/${publicId}`,
+      "x-webchat-public-id": publicId };
+    expect((await lerSessao(new NextRequest("http://app:3000/api/public/webchat/session", {
+      headers,
+    }))).status).toBe(200);
+    expect((await lerMensagens(new NextRequest("http://app:3000/api/public/webchat/messages", {
+      headers,
+    }))).status).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith("fn_webchat_sessao_visitante",
+      expect.objectContaining({ p_origin: "https://portal.local" }));
   });
 });

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { type NextRequest } from "next/server";
 
 import { fail, ok } from "@/lib/api/wrappers";
-import { WEBCHAT_SESSION_COOKIE, digestWebchat, originDaRequisicao } from "@/lib/webchat/seguranca";
+import { WEBCHAT_SESSION_COOKIE, digestWebchat, origemDeLeituraWebchat } from "@/lib/webchat/seguranca";
 import type { SessaoVisitanteWebchat } from "@/lib/webchat/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -17,7 +17,7 @@ type ClienteRpc = {
 export async function GET(request: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const raw = (await cookies()).get(WEBCHAT_SESSION_COOKIE)?.value;
-  const origin = originDaRequisicao(request) ?? new URL(request.url).origin;
+  const origin = origemDeLeituraWebchat(request);
   if (!raw) return fail("unauthenticated", "Sessão de atendimento ausente.", 401, { requestId });
   const admin = createAdminClient() as unknown as ClienteRpc;
   const { data, error } = await admin.rpc("fn_webchat_sessao_visitante", {

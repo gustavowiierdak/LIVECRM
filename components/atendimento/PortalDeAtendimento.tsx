@@ -69,11 +69,13 @@ function descricaoDoSetor(id: SetorId, t: (texto: string) => string): string {
 }
 
 function painelDeSetores({
+  setores,
   setorAtual,
   onEscolher,
   bloqueado,
   t,
 }: {
+  readonly setores: readonly Setor[];
   readonly setorAtual: SetorId;
   readonly onEscolher: (setor: SetorId) => void;
   readonly bloqueado: boolean;
@@ -88,7 +90,7 @@ function painelDeSetores({
         </p>
       </div>
       <div className="space-y-2" role="list" aria-label={t("Setores de atendimento")}>
-        {SETORES.map(({ id, Icone }) => {
+        {setores.map(({ id, Icone }) => {
           const selecionado = id === setorAtual;
           return (
             <div key={id} role="listitem">
@@ -177,14 +179,16 @@ export function PortalDeAtendimento({
   logoUrl,
   accent,
   publicId,
+  setoresPermitidos,
 }: {
   readonly marca: string;
   readonly logoUrl: string | null;
   readonly accent: string;
   readonly publicId?: string;
+  readonly setoresPermitidos?: readonly SetorId[];
 }) {
   const t = useT();
-  const [setorAtual, setSetorAtual] = useState<SetorId>("suporte");
+  const [setorAtual, setSetorAtual] = useState<SetorId>(setoresPermitidos?.[0] ?? "suporte");
   const [codigo, setCodigo] = useState("");
   const [nome, setNome] = useState("");
   const [primeiraMensagem, setPrimeiraMensagem] = useState("");
@@ -193,13 +197,16 @@ export function PortalDeAtendimento({
   const [erro, setErro] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState("");
   const [mensagens, setMensagens] = useState<MensagemWebchat[]>([]);
+  const setores = setoresPermitidos
+    ? SETORES.filter((item) => setoresPermitidos.includes(item.id))
+    : SETORES;
   const setor = SETORES.find((item) => item.id === setorAtual) ?? SETORES[0];
   const css = {
     "--atendimento-accent": accent,
     "--atendimento-accent-soft": `${accent}16`,
   } as React.CSSProperties;
 
-  const painel = painelDeSetores({ setorAtual, onEscolher: setSetorAtual, bloqueado: ativo, t });
+  const painel = painelDeSetores({ setores, setorAtual, onEscolher: setSetorAtual, bloqueado: ativo, t });
 
   useEffect(() => {
     let mounted = true;

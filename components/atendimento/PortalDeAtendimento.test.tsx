@@ -32,6 +32,15 @@ describe("PortalDeAtendimento", () => {
     ).toBeInTheDocument();
   });
 
+  it("mostra somente os setores liberados no link público", () => {
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1"
+      publicId="05440000-7777-4000-8000-000000000001" setoresPermitidos={["financeiro"]} />);
+
+    expect(screen.getByRole("button", { name: /Financeiro/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cancelamento/ })).not.toBeInTheDocument();
+  });
+
   it("cliente abre o link e envia a primeira mensagem sem código", async () => {
     const message = { id: "initial-1", direction: "visitor", body: "Minha internet caiu",
       created_at: "2026-10-06T00:00:00Z" };
