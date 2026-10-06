@@ -93,9 +93,9 @@ test.describe("atendimento web público até a Inbox", () => {
       await cliente.getByRole("button", { name: "Iniciar atendimento" }).click();
       await expect(cliente.getByText(primeiraMensagem)).toBeVisible({ timeout: 30_000 });
 
-      await page.goto("/app/ai/inbox");
-      await page.getByRole("searchbox", { name: "Buscar conversas" }).fill(nomeCliente);
-      const conversa = page.getByTestId("inbox-item").filter({ hasText: nomeCliente });
+      await page.goto("/app/inbox?filter=all");
+      await page.getByLabel("Buscar conversas", { exact: true }).fill(nomeCliente);
+      const conversa = page.locator('button[data-conversation-id]').filter({ hasText: nomeCliente });
       await expect(conversa).toBeVisible({ timeout: 60_000 });
       await conversa.click();
       const painel = page.getByRole("region", { name: "Atendimento web" });
