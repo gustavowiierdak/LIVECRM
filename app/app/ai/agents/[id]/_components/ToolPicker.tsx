@@ -285,6 +285,9 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
       onChange(value.filter((x) => x !== name));
       return;
     }
+    // O modo avançado obedece ao mesmo contrato do pacote: capacidades que o
+    // servidor declarou não marcáveis podem ser desligadas, nunca ligadas.
+    if (!porNome.get(name)?.marcavel) return;
     aplicar(
       [...catalogo.map((c) => c.name), ...orfas].filter(
         (n) => value.includes(n) || n === name,
@@ -434,7 +437,7 @@ export function ToolPicker({ value: valorSalvo, onChange, disabled, ocultar }: P
                   key={capacidade.name}
                   capacidade={capacidade}
                   marcada={marcada}
-                  bloqueada={!marcada && cheio}
+                  bloqueada={!marcada && (cheio || !capacidade.marcavel)}
                   onToggle={() => alternarCapacidade(capacidade.name)}
                   disabled={disabled}
                   mostrarNomeTecnico
