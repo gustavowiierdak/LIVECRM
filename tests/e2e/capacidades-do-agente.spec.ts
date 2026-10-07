@@ -284,13 +284,17 @@ test.describe("Configurar o que o agente pode fazer", () => {
     await page.getByTestId("lista-avancada").waitFor({ state: "visible" });
     await expect.poll(() => estaMarcada(page, LEITURA), { timeout: 5_000 }).toBe(true);
 
-    // …e a que fala com o cliente de verdade, não — e desde a #528 nem poderia:
-    // ela deixou de ser oferecível, por clique ou por pacote.
+    // …mas o envio genérico de WhatsApp não — desde a #528 ele deixou de ser
+    // oferecível ao agente por clique ou por pacote. O envio financeiro Bemobi
+    // é outra capacidade crítica, com escolha individual abaixo.
     expect(await estaMarcada(page, ENVIO)).toBe(false);
 
-    // Sem crítica oferecível não há bloco de crítica. Ele existia porque o envio
-    // ERA a crítica do pacote — que o pacote oferecia para o motor descartar.
-    await expect(page.getByTestId("criticas-atender")).toHaveCount(0);
+    // Enviar pagamento é crítico e pede escolha individual. O pacote pode
+    // habilitar a consulta Bemobi, mas não autoriza PIX/boleto automaticamente.
+    const criticas = page.getByTestId("criticas-atender");
+    await expect(criticas).toBeVisible();
+    await expect(criticas.getByTestId("capacidade-crm_send_bemobi_payment")).toBeVisible();
+    expect(await estaMarcada(page, "crm_send_bemobi_payment")).toBe(false);
 
     // Mas a capacidade continua NA TELA, com o motivo escrito e o checkbox
     // travado: sumir com ela esconderia do dono um caminho que ele já viu na
