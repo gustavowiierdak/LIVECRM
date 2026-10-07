@@ -1,5 +1,3 @@
-import "server-only";
-
 import { lookup } from "node:dns/promises";
 import type { IncomingMessage } from "node:http";
 import * as https from "node:https";

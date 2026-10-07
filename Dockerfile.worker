@@ -17,12 +17,6 @@ COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
 RUN pnpm install --frozen-lockfile
 
-# O worker roda fora do bundler do Next. `server-only` é um marcador de build,
-# não uma dependência resolvível pelo Node; use o módulo vazio compilado pelo
-# próprio Next para que os clients server-side também possam ser chamados aqui.
-RUN mkdir -p node_modules/server-only && \
-    cp node_modules/next/dist/compiled/server-only/empty.js node_modules/server-only/index.js
-
 COPY . .
 
 # A versão por ÚLTIMO. Declarada antes do `pnpm install`, como estava, a
