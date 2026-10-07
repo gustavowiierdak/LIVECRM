@@ -27,7 +27,7 @@ beforeAll(async () => {
   );
 });
 afterAll(() => pool.end());
-function deps(prompts: string[]) {
+function deps(prompts: string[], opts?: { semEnvioNaPrimeiraChamada?: boolean }) {
   const knobs = turnKnobsFromEnv(
     loadEnv({
       NODE_ENV: "test",
@@ -85,8 +85,9 @@ function deps(prompts: string[]) {
       } else {
         const has = (n: string) =>
           options.tools?.some((t) => t.type === "function" && t.name === n);
-        const name =
-          has("save_lead_note") && !saw("save_lead_note")
+        const name = opts?.semEnvioNaPrimeiraChamada && has("update_lead_state")
+          ? !saw("update_lead_state") ? "update_lead_state" : null
+          : has("save_lead_note") && !saw("save_lead_note")
             ? "save_lead_note"
             : has("search_knowledge") && !saw("search_knowledge")
               ? "search_knowledge"
@@ -102,6 +103,8 @@ function deps(prompts: string[]) {
                 input: JSON.stringify(
                   name === "save_lead_note"
                     ? { headline: "Não persistir", body: "Memória privada do cenário" }
+                    : name === "update_lead_state"
+                      ? { stage: "contacted", reason: "Cliente iniciou conversa" }
                     : name === "search_knowledge"
                       ? { query: "horário" }
                       : { body: "O atendimento começa às nove horas." },
@@ -204,6 +207,27 @@ it("sandbox percorre flush, compaction, RAG, loop e fechamento com zero mutaçã
       ])
     ).rows,
   ).toEqual([{ job_id: null }]);
+});
+it("sandbox exige send_message ao fechar um turno que só atualizou o estágio", async () => {
+  const f = await replyFixture(pool);
+  const agent = (await loadAgentVersionConfig(pool, f.org, f.agent, f.version))!;
+  const prompts: string[] = [];
+  const result = newPreviewResult();
+  await runAgentPreview(deps(prompts, { semEnvioNaPrimeiraChamada: true }), pool, {
+    kind: "sandbox",
+    organizationId: f.org,
+    runId: randomUUID(),
+    agent,
+    contactId: null,
+    channelId: f.channel,
+    context: scenarioContext([
+      { direction: "inbound", body: "Olá, preciso de ajuda.", sent_at: "2026-09-07T14:00:00Z" },
+    ]),
+    result,
+  });
+  expect(result.proposals.some((p) => p.tool === "update_lead_state")).toBe(true);
+  expect(result.candidates.map((c) => c.body)).toContain("O atendimento começa às nove horas.");
+  expect(prompts.some((p) => p.includes("Fechamento obrigatório"))).toBe(true);
 });
 it("assistência sob demanda instala fronteira original antes de ler checkpoint", async () => {
   const f = await replyFixture(pool);

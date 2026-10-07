@@ -5,11 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebchatOperatorPanel } from "./WebchatOperatorPanel";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
+const createNote = vi.hoisted(() => vi.fn(async () => ({ data: {} })));
+
+vi.mock("@/hooks/inbox/useConversationNotes", () => ({
+  useConversationNotes: () => [],
+}));
+vi.mock("@/hooks/inbox/useCreateNote", () => ({
+  useCreateNote: () => ({ mutateAsync: createNote, isPending: false }),
+}));
+vi.mock("@/components/inbox/composer/EmojiButton", () => ({
+  EmojiButton: ({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) => (
+    <button type="button" aria-label="Emoji" disabled={disabled} onClick={() => onPick("🙂")}>
+      Emoji
+    </button>
+  ),
+}));
 
 describe("WebchatOperatorPanel", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    createNote.mockClear();
+    fetchMock.mockClear();
     fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("webchat-sessions")) return Response.json({ data: [] });
@@ -74,8 +91,11 @@ describe("WebchatOperatorPanel", () => {
 
     render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
     const input = await screen.findByLabelText("Responder pelo atendimento web");
+    await user.click(screen.getByRole("button", { name: "Emoji" }));
+    expect(input).toHaveValue("🙂");
+    await user.clear(input);
     await user.type(input, "Resposta isolada");
-    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await user.keyboard("{Enter}");
 
     await waitFor(() => expect(screen.getByText("Resposta isolada")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
@@ -96,15 +116,65 @@ describe("WebchatOperatorPanel", () => {
     );
   });
 
+  it("salva nota interna sem enviar texto ao visitante", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("webchat-sessions")) {
+        return Response.json({
+          data: [
+            { id: SESSION_ID, sector: "suporte", expires_at: "2026-10-07T00:00:00Z", active: true },
+          ],
+        });
+      }
+      return Response.json({ data: [] });
+    });
+
+    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" primary />);
+    await screen.findByLabelText("Responder pelo atendimento web");
+    await user.click(screen.getByRole("button", { name: "Nota interna" }));
+    const input = screen.getByLabelText("Responder pelo atendimento web");
+    await user.type(input, "Contexto só para a equipe");
+    await user.click(screen.getByRole("button", { name: "Salvar nota" }));
+
+    await waitFor(() =>
+      expect(createNote).toHaveBeenCalledWith({
+        conversation_id: "11111111-1111-4111-8111-111111111111",
+        body: "Contexto só para a equipe",
+      }),
+    );
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url).endsWith("/webchat/messages") && init?.method === "POST",
+      ),
+    ).toHaveLength(0);
+  });
+
   it("mantém o histórico visível após a sessão expirar, sem permitir resposta", async () => {
     fetchMock.mockImplementation(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes("webchat-sessions")) return Response.json({
-        data: [{ id: SESSION_ID, sector: "suporte", expires_at: "2026-10-05T00:00:00Z", active: false }],
-      });
-      if (url.includes("webchat/messages?")) return Response.json({
-        data: [{ id: "message-old", direction: "visitor", body: "Mensagem anterior", created_at: "2026-10-05T00:00:00Z" }],
-      });
+      if (url.includes("webchat-sessions"))
+        return Response.json({
+          data: [
+            {
+              id: SESSION_ID,
+              sector: "suporte",
+              expires_at: "2026-10-05T00:00:00Z",
+              active: false,
+            },
+          ],
+        });
+      if (url.includes("webchat/messages?"))
+        return Response.json({
+          data: [
+            {
+              id: "message-old",
+              direction: "visitor",
+              body: "Mensagem anterior",
+              created_at: "2026-10-05T00:00:00Z",
+            },
+          ],
+        });
       return Response.json({ data: [] });
     });
 

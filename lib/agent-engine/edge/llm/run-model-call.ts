@@ -226,6 +226,8 @@ export interface RunModelCallInput {
   system?: string;
   messages: ModelMessage[];
   tools?: ToolSet;
+  /** Força uma chamada de ferramenta no fechamento de um turno sem resposta. */
+  toolChoice?: 'required';
   /**
    * Override do modelo default da org — é como classificador/compaction usam um
    * modelo pequeno pela MESMA camada. Sujeito a enabled_models quando a lista
@@ -761,6 +763,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       messages: input.messages,
       abortSignal: input.abortSignal,
       tools: guardServiceTools(prefix.tools),
+      ...(input.toolChoice ? { toolChoice: input.toolChoice } : {}),
       stopWhen:
         input.maxSteps === undefined
           ? undefined

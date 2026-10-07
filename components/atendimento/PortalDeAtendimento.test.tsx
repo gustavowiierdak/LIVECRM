@@ -70,6 +70,7 @@ describe("PortalDeAtendimento", () => {
   });
 
   it("cliente abre o link e envia a primeira mensagem sem código", async () => {
+    let iniciado = false;
     const message = {
       id: "initial-1",
       direction: "visitor",
@@ -78,9 +79,13 @@ describe("PortalDeAtendimento", () => {
     };
     const fetchMock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
       if (String(input).endsWith("/session"))
-        return Response.json({ error: { message: "sem sessão" } }, { status: 401 });
-      if (String(input).endsWith("/start"))
+        return iniciado
+          ? Response.json({ data: { sector: "suporte", active: true } })
+          : Response.json({ error: { message: "sem sessão" } }, { status: 401 });
+      if (String(input).endsWith("/start")) {
+        iniciado = true;
         return Response.json({ data: { sector: "suporte", message } }, { status: 201 });
+      }
       return Response.json({ data: [message] });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -110,11 +115,15 @@ describe("PortalDeAtendimento", () => {
   });
 
   it("busca respostas da equipe somente depois de consumir o código", async () => {
+    let consumido = false;
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith("/session")) {
-        return Response.json({ error: { message: "sem sessão" } }, { status: 401 });
+        return consumido
+          ? Response.json({ data: { sector: "suporte", active: true } })
+          : Response.json({ error: { message: "sem sessão" } }, { status: 401 });
       }
       if (String(input).endsWith("/consume")) {
+        consumido = true;
         return Response.json({ data: { sector: "suporte" } });
       }
       return Response.json({
@@ -187,6 +196,62 @@ describe("PortalDeAtendimento", () => {
     act(() => atualizar());
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(leituras).toBe(2);
+  });
+
+  it("mostra o encerramento enviado pela equipe, preserva o histórico e bloqueia novas mensagens", async () => {
+    let encerrado = false;
+    const historico = [
+      {
+        id: "visitor-1",
+        direction: "visitor",
+        body: "Minha internet caiu",
+        created_at: "2026-10-07T23:50:00Z",
+      },
+    ];
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith("/session"))
+        return Response.json({ data: { sector: "suporte", active: !encerrado } });
+      if (String(input).endsWith("/messages"))
+        return Response.json({
+          data: encerrado
+            ? [
+                ...historico,
+                {
+                  id: "system-1",
+                  direction: "system",
+                  body: "Atendimento encerrado pela equipe.",
+                  created_at: "2026-10-07T23:58:00Z",
+                },
+              ]
+            : historico,
+        });
+      throw new Error(`Rota inesperada: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const intervalo = vi.spyOn(window, "setInterval");
+
+    render(
+      <PortalDeAtendimento
+        marca="Marca teste"
+        logoUrl={null}
+        accent="#550CA1"
+        publicId="05440000-7777-4000-8000-000000000001"
+      />,
+    );
+
+    expect(await screen.findByText("Minha internet caiu")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Mensagem" })).toBeEnabled();
+    encerrado = true;
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    act(() => atualizar());
+
+    expect(await screen.findByText("Atendimento encerrado pela equipe.")).toBeInTheDocument();
+    expect(screen.getAllByText("Atendimento encerrado").length).toBeGreaterThan(0);
+    expect(screen.getByText("Minha internet caiu")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Mensagem" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Novo atendimento" })).toBeEnabled();
   });
 
   it("permite iniciar outro assunto sem misturar a conversa anterior", async () => {

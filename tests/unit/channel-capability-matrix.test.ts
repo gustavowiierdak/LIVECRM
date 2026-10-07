@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHANNEL_CAPABILITIES,
+  capabilitiesForConversation,
   capabilitiesOf,
   transportaMensagem,
   type ChannelProvider,
@@ -76,6 +77,17 @@ describe("matriz capability × provider é exaustiva", () => {
     // imagem) também não serve para mandar recado.
     expect(transportaMensagem("telegram")).toBe(false);
     expect(transportaMensagem(null)).toBe(false);
+  });
+
+  it("o portal web tem regras de conversa sem virar adapter de mensagem", () => {
+    expect(() => capabilitiesOf("webchat")).toThrow(/unknown_channel_provider/);
+    expect(transportaMensagem("webchat")).toBe(false);
+    expect(capabilitiesForConversation("webchat")).toMatchObject({
+      freeformOutsideWindow: true,
+      requiresTemplates: false,
+      banRisk: false,
+      costPerMessage: false,
+    });
   });
 
   it("as duas famílias de restrição são mutuamente exclusivas por provider", () => {

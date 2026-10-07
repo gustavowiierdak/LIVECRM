@@ -208,6 +208,7 @@ export const AUDIT_ACTIONS = [
   "ai_agent.version_updated",
   "ai_agent.tested",
   "ai_agent.reconciled",
+  "ai_agent.provider_team_provisioned",
   "ai_reply.generated",
   "ai_reply.approved",
   "ai_reply.rejected",
@@ -500,6 +501,12 @@ export const AUDIT_ACTIONS = [
   // a tela de Meta Ads para de funcionar para todo mundo da organização, e a
   // trilha precisa dizer quem fez isso e quando.
   "ad_insights_connection.deleted",
+  // Integração de ERP/provedor da organização (0583). O token do IXC dá
+  // acesso a cadastro, contratos e financeiro; troca, teste e remoção têm
+  // perguntas operacionais diferentes e por isso ficam em ações separadas.
+  "erp_integration.updated",
+  "erp_integration.tested",
+  "erp_integration.deleted",
   // A marca da ORGANIZAÇÃO (nome + cor) trocada em `organizations.settings.branding`
   // — mutação de TENANT, e por isso COM `organization_id` e com `resource_id` =
   // o uuid da org. É outra ação, e não `org.updated`, porque a pergunta que a

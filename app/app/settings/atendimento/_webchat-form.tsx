@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,10 @@ const DEFAULT_CONFIG: ConfiguracaoWebchat = {
   handoff_ttl_seconds: 900,
 };
 
+const subscribeSiteOrigin = () => () => undefined;
+const getSiteOrigin = () => window.location.origin;
+const getServerSiteOrigin = () => "";
+
 export function WebchatSettingsForm() {
   const t = useT();
   const [config, setConfig] = useState<ConfiguracaoWebchat>(DEFAULT_CONFIG);
@@ -33,10 +37,12 @@ export function WebchatSettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [siteOrigin, setSiteOrigin] = useState("");
+  const siteOrigin = useSyncExternalStore(
+    subscribeSiteOrigin,
+    getSiteOrigin,
+    getServerSiteOrigin,
+  );
   const [savedEnabled, setSavedEnabled] = useState(false);
-
-  useEffect(() => setSiteOrigin(window.location.origin), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -71,6 +77,15 @@ export function WebchatSettingsForm() {
         ? current.allowed_sectors.filter((sector) => sector !== id)
         : [...current.allowed_sectors, id],
     }));
+  }
+
+  function adicionarOrigemAtual() {
+    if (!siteOrigin) return;
+    const origins = originsText
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    setOriginsText([...new Set([...origins, siteOrigin])].join("\n"));
   }
 
   async function salvar(event: FormEvent<HTMLFormElement>) {
@@ -169,9 +184,23 @@ export function WebchatSettingsForm() {
             />
             <p className="text-xs text-muted-foreground">
               {t(
-                "Uma origem HTTPS exata por linha, sem caminho nem barra final. Inclua o endereço em que o cliente abrirá /atendimento.",
+                "Uma origem exata por linha, sem caminho nem barra final. Use HTTPS; em uma instalação local, HTTP é aceito para localhost ou IP privado.",
               )}
             </p>
+            {siteOrigin && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={adicionarOrigemAtual}
+                >
+                  {t("Usar o endereço atual")}
+                </Button>
+                <code className="text-xs text-muted-foreground">{siteOrigin}</code>
+              </div>
+            )}
           </div>
           {linkPronto && !origemPermitida && (
             <p role="alert" className="text-sm text-destructive">
@@ -203,24 +232,6 @@ export function WebchatSettingsForm() {
               </div>
             </div>
           )}
-          <div className="space-y-1">
-            <Label htmlFor="webchat-ttl">{t("Validade do código, em minutos")}</Label>
-            <Input
-              id="webchat-ttl"
-              type="number"
-              min={1}
-              max={60}
-              value={config.handoff_ttl_seconds / 60}
-              disabled={disabled}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  handoff_ttl_seconds: Number(event.target.value) * 60,
-                }))
-              }
-              className="max-w-32"
-            />
-          </div>
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

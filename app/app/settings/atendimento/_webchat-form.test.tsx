@@ -46,7 +46,7 @@ describe("configuração visual do atendimento web", () => {
     expect(screen.queryByLabelText("Link para clientes")).not.toBeInTheDocument();
   });
 
-  it("mostra o canal desligado e salva setor, origem e validade pela tela", async () => {
+  it("mostra o canal desligado e salva setor e origem sem expor a validade interna", async () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       if (!init?.method)
         return Response.json({
@@ -71,12 +71,8 @@ describe("configuração visual do atendimento web", () => {
       screen.getByRole("checkbox", { name: "Permitir atendimento web nesta empresa" }),
     );
     await user.click(screen.getByRole("checkbox", { name: "Financeiro" }));
-    await user.type(
-      screen.getByLabelText("Endereços permitidos"),
-      "https://crm.liveinternet.com.br",
-    );
-    await user.clear(screen.getByLabelText("Validade do código, em minutos"));
-    await user.type(screen.getByLabelText("Validade do código, em minutos"), "20");
+    await user.click(screen.getByRole("button", { name: "Usar o endereço atual" }));
+    expect(screen.queryByLabelText("Validade do código, em minutos")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Salvar atendimento web" }));
 
     await waitFor(() =>
@@ -87,8 +83,8 @@ describe("configuração visual do atendimento web", () => {
           body: JSON.stringify({
             enabled: true,
             allowed_sectors: ["financeiro"],
-            allowed_origins: ["https://crm.liveinternet.com.br"],
-            handoff_ttl_seconds: 1200,
+            allowed_origins: [window.location.origin],
+            handoff_ttl_seconds: 900,
           }),
         }),
       ),

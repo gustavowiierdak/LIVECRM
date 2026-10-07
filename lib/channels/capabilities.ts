@@ -224,3 +224,27 @@ export function capabilitiesOf(provider: ChannelProvider): ChannelCapabilities {
   if (!caps) throw new Error(`unknown_channel_provider: ${provider}`);
   return caps;
 }
+
+/** Portal HTTP: conversa livre, sem regras de janela ou transporte externo. */
+const WEBCHAT_CAPABILITIES: ChannelCapabilities = {
+  freeformOutsideWindow: true,
+  requiresTemplates: false,
+  canManageTemplates: false,
+  banRisk: false,
+  minIntervalMs: null,
+  voiceNote: "server-convert",
+  groups: "none",
+  costPerMessage: false,
+  alteraMensagemEnviada: false,
+};
+
+/** Capabilities de uma conversa, inclusive a sessão HTTP interna. */
+export function capabilitiesForConversation(provider: ChannelProvider): ChannelCapabilities {
+  if (provider === "webchat") return WEBCHAT_CAPABILITIES;
+  return capabilitiesOf(provider);
+}
+
+/** Se o turno pode precisar de template para responder neste canal. */
+export function requiresTemplatesForTurn(provider: ChannelProvider): boolean {
+  return capabilitiesForConversation(provider).requiresTemplates;
+}

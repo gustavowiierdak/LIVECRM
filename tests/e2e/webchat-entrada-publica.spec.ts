@@ -123,6 +123,26 @@ test.describe("atendimento web público até a Inbox", () => {
       await expect(cliente.getByText(respostaOperador)).toBeVisible({ timeout: 20_000 });
       await cliente.screenshot({ path: `${evidencia}/04-resposta-cliente.jpg`, fullPage: true });
 
+      await page.getByRole("button", { name: "Fechar", exact: true }).click();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: "Fechar", exact: true })
+        .click();
+      await expect(cliente.getByText("Atendimento encerrado pela equipe.")).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(
+        cliente.getByText("Atendimento encerrado", { exact: true }).first(),
+      ).toBeVisible();
+      await expect(cliente.getByRole("textbox", { name: "Mensagem" })).toHaveCount(0);
+      await expect(cliente.getByRole("button", { name: "Novo atendimento" })).toBeEnabled();
+      await expect(cliente.getByText(primeiraMensagem)).toBeVisible();
+      await expect(cliente.getByText(respostaOperador)).toBeVisible();
+      await cliente.screenshot({
+        path: `${evidencia}/05-atendimento-encerrado.jpg`,
+        fullPage: true,
+      });
+
       await cliente.setViewportSize({ width: 390, height: 844 });
       await cliente.getByRole("button", { name: "Escolher assunto" }).click();
       await expect(cliente.getByRole("dialog")).toHaveAttribute("data-theme", "light");

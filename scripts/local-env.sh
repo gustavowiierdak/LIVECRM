@@ -6,6 +6,12 @@ cd "$ROOT_DIR"
 
 ENV_FILE="${LOCAL_ENV_FILE:-.env.local}"
 
+# macOS ships `shasum`, while Ubuntu provides `sha512sum`.  Keep the GNU name
+# below so the generated WAHA configuration is identical on both platforms.
+if ! command -v sha512sum >/dev/null 2>&1; then
+  sha512sum() { shasum -a 512; }
+fi
+
 json_value() {
   local key="$1"
   node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => {
@@ -35,6 +41,21 @@ ensure_vapid_keys() {
   printf 'Chaves VAPID geradas automaticamente em %s\n' "$ENV_FILE"
 }
 
+ensure_owner_credentials() {
+  local owner_email owner_password
+  owner_email="$(env_value OWNER_EMAIL)"
+  owner_password="$(env_value OWNER_PASSWORD)"
+  if [[ -n "$owner_email" && -n "$owner_password" ]]; then
+    return
+  fi
+  [[ -n "$owner_email" ]] || owner_email="admin@admin.com"
+  [[ -n "$owner_password" ]] || owner_password="$(openssl rand -base64 18)"
+  printf '\n# Administrador local; usado por scripts/bootstrap-owner.ts.\nOWNER_EMAIL=%s\nOWNER_PASSWORD=%s\nOWNER_ORG_NAME="Deskcomm Local"\nAPP_LOCALE=pt-BR\n' \
+    "$owner_email" "$owner_password" >> "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  printf 'Credenciais do administrador local geradas em %s\n' "$ENV_FILE"
+}
+
 has_local_env() {
   [[ "$(env_value DESKCOMM_ENV_MODE)" == "local" ]] || return 1
   local key
@@ -47,6 +68,11 @@ has_local_env() {
 }
 
 local_ip() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    for interface in en0 en1; do
+      ipconfig getifaddr "$interface" 2>/dev/null && return
+    done
+  fi
   hostname -I 2>/dev/null | awk '{print $1}' || true
 }
 
@@ -54,6 +80,10 @@ choose_port() {
   local port="${APP_PORT:-3000}"
   if command -v ss >/dev/null 2>&1; then
     while ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${port}$"; do
+      port=$((port + 1))
+    done
+  elif command -v lsof >/dev/null 2>&1; then
+    while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
       port=$((port + 1))
     done
   fi
@@ -82,7 +112,7 @@ generate() {
     local backup
     backup="${ENV_FILE}.cloud-backup"
     if [[ ! -e "$backup" ]]; then
-      cp --preserve=mode "$ENV_FILE" "$backup"
+      cp -p "$ENV_FILE" "$backup"
       chmod 600 "$backup"
       printf 'Backup do ambiente anterior: %s\n' "$backup"
     fi
@@ -143,6 +173,7 @@ case "${1:-ensure}" in
   ensure)
     if ! has_local_env; then generate; fi
     ensure_vapid_keys
+    ensure_owner_credentials
     ;;
   generate|force)
     generate

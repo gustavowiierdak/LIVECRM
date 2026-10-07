@@ -49,24 +49,41 @@ describe("rotas públicas de webchat", () => {
 
   it("inicia sem código só para o link configurado e devolve sessão, não IDs internos", async () => {
     const publicId = "05440000-7777-4000-8000-000000000001";
-    const body = { public_id: publicId, name: "Cliente Novo", sector: "suporte",
-      body: "Minha internet caiu", idempotency_key: key };
+    const body = {
+      public_id: publicId,
+      name: "Cliente Novo",
+      sector: "suporte",
+      body: "Minha internet caiu",
+      idempotency_key: key,
+    };
     expect((await iniciar(request("/api/public/webchat/start", {}, body))).status).toBe(403);
     expect(mocks.rpc).not.toHaveBeenCalled();
-    mocks.rpc.mockResolvedValue({ data: {
-      ok: true, sector: "suporte", expires_at: "2026-10-07T00:00:00Z",
-      organization_id: "05440000-0000-4000-8000-00000000000a",
-      conversation_id: "05440000-4444-4000-8000-00000000000a",
-      message: { id: "message-1", direction: "visitor", body: body.body,
-        created_at: "2026-10-06T00:00:00Z" },
-    }, error: null });
-    const response = await iniciar(request("/api/public/webchat/start",
-      { origin: "https://portal.local" }, body));
+    mocks.rpc.mockResolvedValue({
+      data: {
+        ok: true,
+        sector: "suporte",
+        expires_at: "2026-10-07T00:00:00Z",
+        organization_id: "05440000-0000-4000-8000-00000000000a",
+        conversation_id: "05440000-4444-4000-8000-00000000000a",
+        message: {
+          id: "message-1",
+          direction: "visitor",
+          body: body.body,
+          created_at: "2026-10-06T00:00:00Z",
+        },
+      },
+      error: null,
+    });
+    const response = await iniciar(
+      request("/api/public/webchat/start", { origin: "https://portal.local" }, body),
+    );
     expect(response.status).toBe(201);
     expect(response.headers.get("set-cookie")).toContain("webchat_visitante=");
     expect(await response.json()).toMatchObject({ data: { message: { body: body.body } } });
-    expect(mocks.rpc).toHaveBeenCalledWith("fn_iniciar_webchat_publico",
-      expect.objectContaining({ p_public_id: publicId, p_origin: "https://portal.local" }));
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "fn_iniciar_webchat_publico",
+      expect.objectContaining({ p_public_id: publicId, p_origin: "https://portal.local" }),
+    );
   });
 
   it("não cria cookie de sessão quando o banco nega token expirado, revogado ou repetido", async () => {
@@ -143,6 +160,26 @@ describe("rotas públicas de webchat", () => {
     );
   });
 
+  it("informa que a conversa foi encerrada sem transformar o fechamento em sessão expirada", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { ok: false, reason: "conversation_closed" },
+      error: null,
+    });
+
+    const response = await enviarMensagem(
+      request(
+        "/api/public/webchat/messages",
+        { origin: "https://portal.local", "x-webchat-csrf": "csrf-seguro" },
+        { body: "ainda está aí?", idempotency_key: key },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: "conflict", message: "Este atendimento foi encerrado." },
+    });
+  });
+
   it("responde sessão expirada quando a leitura não encontra sessão ativa", async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null });
 
@@ -158,20 +195,67 @@ describe("rotas públicas de webchat", () => {
   it("retoma sessão e lê mensagens atrás de proxy mesmo sem Origin no GET", async () => {
     const publicId = "05440000-7777-4000-8000-000000000001";
     mocks.rpc.mockImplementation(async (name: string) => ({
-      data: name === "fn_webchat_sessao_visitante"
-        ? { ok: true, sector: "suporte", expires_at: "2030-01-01T00:00:00Z", public_id: publicId }
-        : [],
+      data:
+        name === "fn_webchat_sessao_visitante"
+          ? {
+              ok: true,
+              sector: "suporte",
+              expires_at: "2030-01-01T00:00:00Z",
+              public_id: publicId,
+              active: true,
+            }
+          : [],
       error: null,
     }));
-    const headers = { referer: `https://portal.local/atendimento/${publicId}`,
-      "x-webchat-public-id": publicId };
-    expect((await lerSessao(new NextRequest("http://app:3000/api/public/webchat/session", {
-      headers,
-    }))).status).toBe(200);
-    expect((await lerMensagens(new NextRequest("http://app:3000/api/public/webchat/messages", {
-      headers,
-    }))).status).toBe(200);
-    expect(mocks.rpc).toHaveBeenCalledWith("fn_webchat_sessao_visitante",
-      expect.objectContaining({ p_origin: "https://portal.local" }));
+    const headers = {
+      referer: `https://portal.local/atendimento/${publicId}`,
+      "x-webchat-public-id": publicId,
+    };
+    expect(
+      (
+        await lerSessao(
+          new NextRequest("http://app:3000/api/public/webchat/session", {
+            headers,
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await lerMensagens(
+          new NextRequest("http://app:3000/api/public/webchat/messages", {
+            headers,
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "fn_webchat_sessao_visitante",
+      expect.objectContaining({ p_origin: "https://portal.local" }),
+    );
+  });
+
+  it("mantém a sessão encerrada legível e devolve o estado para a página pública", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        ok: true,
+        sector: "suporte",
+        expires_at: "2030-01-01T00:00:00Z",
+        active: false,
+        closed_at: "2026-10-07T23:58:00Z",
+      },
+      error: null,
+    });
+
+    const response = await lerSessao(
+      new NextRequest("https://portal.local/api/public/webchat/session", {
+        headers: { origin: "https://portal.local" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { active: false, closed_at: "2026-10-07T23:58:00Z" },
+    });
   });
 });

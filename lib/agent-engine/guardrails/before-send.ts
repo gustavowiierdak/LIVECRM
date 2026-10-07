@@ -72,7 +72,7 @@ import { detectarVazamentoInterno, renderVetoDeVazamento } from './vazamento-int
 import { detectarAfirmacaoClinica, renderVetoDeAfirmacaoClinica } from './afirmacao-clinica';
 // Módulo PURO de propósito (`capabilities`, não `index`): o seam não arrasta o
 // adapter — e com ele o cliente HTTP do canal — para dentro do worker.
-import { capabilitiesOf, DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
+import { capabilitiesForConversation, DEFAULT_CHANNEL_PROVIDER } from '@/lib/channels/capabilities';
 import { isWindowOpen } from './messaging-window';
 import type { ChannelProvider } from '@/lib/channels/capabilities';
 import { aplicarAjustesDeEstilo, lerAjustesDeEstiloDaOrg } from './ajustes-de-estilo-da-org';
@@ -788,7 +788,7 @@ export const disclosureGate: Gate = {
 export const pacingGate: Gate = {
   name: 'pacing',
   evaluate: (ctx) => {
-    const { banRisk } = capabilitiesOf(ctx.provider);
+    const { banRisk } = capabilitiesForConversation(ctx.provider);
     const decision = decidePacing({
       now: ctx.now,
       knobs: ctx.pacing.knobs,
@@ -830,7 +830,7 @@ export const pacingGate: Gate = {
 export const messagingWindowGate: Gate = {
   name: 'messaging_window',
   evaluate: (ctx) => {
-    const caps = capabilitiesOf(ctx.provider);
+    const caps = capabilitiesForConversation(ctx.provider);
     // Canal que fala livre a qualquer hora não tem janela. `skipped`, nunca `pass`
     // silencioso: a diferença entre "não regrediu" e "consigo PROVAR que não
     // regrediu" é esta linha no trace (invariante 4 da doutrina).

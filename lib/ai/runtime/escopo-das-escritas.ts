@@ -64,6 +64,7 @@ export const ESCOPO_DAS_ESCRITAS: Readonly<Record<string, Readonly<Record<string
   crm_assign_conversation: { conversation_id: "conversa", to_user_id: "configuracao" },
   crm_manage_tags: { target_id: "alvo_de_tag" },
   crm_send_whatsapp_message: { conversation_id: "conversa" },
+  crm_send_bemobi_payment: { conversation_id: "conversa", invoice_id: "configuracao" },
   crm_request_human_handoff: { conversation_id: "conversa", target_user_id: "configuracao" },
   crm_resume_ai_attendance: { conversation_id: "conversa" },
 

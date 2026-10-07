@@ -29,12 +29,17 @@ async function sessao() {
   };
 }
 
-async function pertenceAoLink(admin: ClienteRpc, request: NextRequest,
-  sessionDigest: string, origin: string): Promise<boolean> {
+async function pertenceAoLink(
+  admin: ClienteRpc,
+  request: NextRequest,
+  sessionDigest: string,
+  origin: string,
+): Promise<boolean> {
   const publicId = request.headers.get("x-webchat-public-id");
   if (!publicId) return true; // Portal de handoff não tem ID público.
   const { data, error } = await admin.rpc("fn_webchat_sessao_visitante", {
-    p_session_digest: sessionDigest, p_origin: origin,
+    p_session_digest: sessionDigest,
+    p_origin: origin,
   });
   const found = data as { ok?: boolean; public_id?: string } | null;
   return !error && found?.ok === true && found.public_id === publicId;
@@ -88,9 +93,15 @@ export async function POST(request: NextRequest): Promise<Response> {
     p_body: parsed.data.body,
     p_idempotency_key: parsed.data.idempotency_key,
   });
-  const resultado = data as { ok?: boolean; message?: MensagemWebchat } | null;
+  const resultado = data as {
+    ok?: boolean;
+    reason?: "conversation_closed";
+    message?: MensagemWebchat;
+  } | null;
   if (error)
     return fail("internal_error", "Não foi possível enviar a mensagem.", 500, { requestId });
+  if (resultado?.reason === "conversation_closed")
+    return fail("conflict", "Este atendimento foi encerrado.", 409, { requestId });
   if (!resultado?.ok || !resultado.message)
     return fail("unauthenticated", "Sessão expirada.", 401, { requestId });
   return ok(resultado.message, { requestId, status: 201 });

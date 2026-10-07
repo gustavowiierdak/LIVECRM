@@ -78,11 +78,17 @@ export async function POST(
     p_idempotency_key: parsed.data.idempotency_key,
     p_sent_by_user_id: authz.user.id,
   });
-  const resultado = data as { ok?: boolean; message?: MensagemWebchat } | null;
+  const resultado = data as {
+    ok?: boolean;
+    reason?: "conversation_closed";
+    message?: MensagemWebchat;
+  } | null;
   if (error)
     return fail("internal_error", "Não foi possível responder pelo atendimento web.", 500, {
       requestId,
     });
+  if (resultado?.reason === "conversation_closed")
+    return fail("conflict", "Este atendimento foi encerrado.", 409, { requestId });
   if (!resultado?.ok || !resultado.message)
     return fail("not_found", "Sessão de visitante não encontrada ou expirada.", 404, { requestId });
   void audit({

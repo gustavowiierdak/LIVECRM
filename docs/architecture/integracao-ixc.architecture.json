@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Integração segura com IXC",
+    "subtitle": "Configuração por empresa, segredo server-side e teste mínimo da API",
+    "output": "integracao-ixc.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "humano", "label": "Administrador" },
+    { "id": "app", "label": "Aplicativo" },
+    { "id": "db", "label": "Banco privado" },
+    { "id": "externo", "label": "IXC" }
+  ],
+  "mainPath": ["settings", "action", "vault", "client", "ixc", "status"],
+  "nodes": [
+    { "id": "settings", "lane": "humano", "label": "Dados e acesso › IXC: URL, token e grupos" },
+    { "id": "action", "lane": "app", "label": "Server Action: admin, MFA, tenant e auditoria" },
+    { "id": "vault", "lane": "db", "label": "erp_integrations: segredo cifrado e deny-all" },
+    { "id": "client", "lane": "app", "label": "Cliente IXC: HTTPS, DNS fixado, limite e sem redirect" },
+    { "id": "ixc", "lane": "externo", "label": "POST /webservice/v1/cliente com rp=1" },
+    { "id": "status", "lane": "humano", "label": "Último teste visível e ação de tentar novamente" },
+    { "id": "audit", "lane": "db", "label": "api_audit_log sem URL sensível nem token" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "settings", "to": "action", "label": "Salvar ou testar" },
+    { "id": "e2", "from": "action", "to": "vault", "label": "Cifrar e persistir por organização" },
+    { "id": "e3", "from": "vault", "to": "client", "label": "Decifrar somente no servidor" },
+    { "id": "e4", "from": "client", "to": "ixc", "label": "Consulta mínima autenticada" },
+    { "id": "e5", "from": "ixc", "to": "client", "label": "Formato e total de clientes" },
+    { "id": "e6", "from": "client", "to": "action", "label": "Sucesso ou falha segura" },
+    { "id": "e7", "from": "action", "to": "status", "label": "Gravar e mostrar diagnóstico" },
+    { "id": "e8", "from": "status", "to": "settings", "label": "Administrador corrige e repete" },
+    { "id": "e9", "from": "action", "to": "audit", "label": "Mudança e teste auditados" },
+    { "id": "e10", "from": "audit", "to": "status", "label": "Rastro operacional revisável" }
+  ]
+}

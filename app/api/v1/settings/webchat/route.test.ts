@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   audit: vi.fn(),
@@ -36,6 +36,8 @@ function request(body: unknown) {
 }
 
 describe("configuração do canal web por organização", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupportWrite.mockResolvedValue(undefined);
@@ -67,6 +69,39 @@ describe("configuração do canal web por organização", () => {
     expect(
       (await PATCH(request({ ...valid, allowed_origins: ["https://example.com/caminho"] }))).status,
     ).toBe(422);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("aceita HTTP no IP privado do ambiente local e recusa HTTP público", async () => {
+    vi.stubEnv("DESKCOMM_ENV_MODE", "local");
+    mocks.maybeSingle.mockResolvedValue({
+      data: { public_id: "05440000-7777-4000-8000-000000000001" }, error: null,
+    });
+
+    const local = await PATCH(request({
+      ...valid,
+      allowed_origins: ["http://192.168.3.229:3001"],
+    }));
+    expect(local.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ allowed_origins: ["http://192.168.3.229:3001"] }),
+      { onConflict: "organization_id" },
+    );
+
+    mocks.upsert.mockClear();
+    const publico = await PATCH(request({
+      ...valid,
+      allowed_origins: ["http://example.com:3001"],
+    }));
+    expect(publico.status).toBe(422);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+
+    vi.stubEnv("DESKCOMM_ENV_MODE", "production");
+    const privadoForaDoLocal = await PATCH(request({
+      ...valid,
+      allowed_origins: ["http://192.168.3.229:3001"],
+    }));
+    expect(privadoForaDoLocal.status).toBe(422);
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 

@@ -299,6 +299,18 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
       "chave de localStorage do modo de depuração das citações da IA — irmã de `deskcomm-theme` em lib/theme.tsx. Não é texto de interface: renomear só faz quem já tinha o modo ligado perdê-lo, e o par leitura/escrita teria de mudar junto",
     marcas: ["deskcomm.show_ai_citations"],
   },
+  "app/api/v1/settings/webchat/route.ts": {
+    categoria: "INFRA",
+    motivo:
+      "o nome da variável técnica gerada pelo instalador local distingue testes na rede privada de uma instalação pública; não é texto exibido ao cliente nem a marca da empresa",
+    marcas: ["process.env.deskcomm_env_mode"],
+  },
+  "app/api/v1/settings/webchat/route.test.ts": {
+    categoria: "DEV",
+    motivo:
+      "a fixture cobre os dois valores da variável técnica do instalador local para impedir que HTTP público seja aceito por engano; nenhuma string chega à interface",
+    marcas: ["deskcomm_env_mode", "deskcomm_env_mode"],
+  },
 
   // ─── DIVIDA — vazamento real. Cada linha declara a fase que a apaga. ───
   "lib/email/templates/ai-budget-alarm.tsx": {
@@ -810,6 +822,11 @@ type CategoriaDeHost =
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
 const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
+  "api.7az.com.br": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint oficial da Bemobi/7AZ usado para consultar faturas e meios de pagamento com a chave da própria organização; aparece também na tela para identificar o destino, não é domínio do revendedor",
+  },
   "datamanager.googleapis.com": {
     categoria: "FORNECEDOR",
     motivo: "endpoint oficial da Google Data Manager API: recebe conversões e consulta o processamento na conta autorizada pela própria organização. O destino pertence ao fornecedor e não à instalação do CRM.",

@@ -34,6 +34,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      erp_integrations: {
+        Row: {
+          id: string
+          organization_id: string
+          provider: string
+          base_url: string
+          credential_encrypted: string
+          enabled: boolean
+          resources: Json
+          last_tested_at: string | null
+          last_test_ok: boolean | null
+          last_test_error: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          provider: string
+          base_url: string
+          credential_encrypted: string
+          enabled?: boolean
+          resources?: Json
+          last_tested_at?: string | null
+          last_test_ok?: boolean | null
+          last_test_error?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          provider?: string
+          base_url?: string
+          credential_encrypted?: string
+          enabled?: boolean
+          resources?: Json
+          last_tested_at?: string | null
+          last_test_ok?: boolean | null
+          last_test_error?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "erp_integrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_integrations: {
         Row: { organization_id: string; profile_id: string; credential_encrypted: string; created_at: string; updated_at: string }
         Insert: { organization_id: string; profile_id: string; credential_encrypted: string; created_at?: string; updated_at?: string }
@@ -11442,4 +11498,3 @@ export const Constants = {
     },
   },
 } as const
-

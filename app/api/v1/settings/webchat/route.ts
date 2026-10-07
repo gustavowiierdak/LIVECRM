@@ -10,14 +10,34 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { setorWebchatSchema } from "@/lib/webchat/seguranca";
 import type { ConfiguracaoWebchat } from "@/lib/webchat/types";
 
+function ehIpv4Privado(hostname: string): boolean {
+  const octetos = hostname.split(".").map(Number);
+  if (
+    octetos.length !== 4 ||
+    octetos.some((value) => !Number.isInteger(value) || value < 0 || value > 255)
+  ) {
+    return false;
+  }
+  const [primeiro, segundo] = octetos;
+  return (
+    primeiro === 10 ||
+    (primeiro === 172 && segundo !== undefined && segundo >= 16 && segundo <= 31) ||
+    (primeiro === 192 && segundo === 168)
+  );
+}
+
+function httpPermitidoParaTesteLocal(url: URL): boolean {
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
+  return process.env.DESKCOMM_ENV_MODE === "local" && ehIpv4Privado(url.hostname);
+}
+
 const origemSchema = z.url().refine((value) => {
   const url = new URL(value);
   return (
     url.origin === value &&
-    (url.protocol === "https:" ||
-      (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))
+    (url.protocol === "https:" || (url.protocol === "http:" && httpPermitidoParaTesteLocal(url)))
   );
-}, "Informe uma origem HTTPS exata, sem caminho ou barra final.");
+}, "Informe uma origem exata, sem caminho ou barra final. Use HTTPS ou, no ambiente local, HTTP com localhost ou IP privado.");
 
 const configSchema = z
   .object({

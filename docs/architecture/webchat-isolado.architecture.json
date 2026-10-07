@@ -20,6 +20,7 @@
     "start",
     "conversation",
     "operator",
+    "closure",
     "session",
     "messages"
   ],
@@ -93,6 +94,13 @@
       "col": 7,
       "type": "database",
       "label": "webchat_messages por sessão; sem timeline WhatsApp"
+    },
+    {
+      "id": "closure",
+      "lane": "db",
+      "col": 8,
+      "type": "database",
+      "label": "Fechamento atômico: sessão inativa + aviso de sistema"
     },
     {
       "id": "audit",
@@ -169,6 +177,25 @@
     { "id": "e18", "from": "config", "to": "portal", "label": "Link público da organização" },
     { "id": "e19", "from": "portal", "to": "start", "label": "Nome, setor e mensagem" },
     { "id": "e20", "from": "start", "to": "conversation", "label": "Criação atômica e isolada" },
-    { "id": "e21", "from": "conversation", "to": "operator", "label": "Conversa web aparece na Fila" }
+    {
+      "id": "e21",
+      "from": "conversation",
+      "to": "operator",
+      "label": "Conversa web aparece na Fila"
+    },
+    { "id": "e22", "from": "operator", "to": "closure", "label": "Fechar atendimento" },
+    {
+      "id": "e23",
+      "from": "closure",
+      "to": "messages",
+      "label": "Grava aviso no mesmo fechamento"
+    },
+    { "id": "e24", "from": "closure", "to": "session", "label": "Leitura passa a active=false" },
+    {
+      "id": "e25",
+      "from": "session",
+      "to": "portal",
+      "label": "Bloqueia envio e oferece novo atendimento"
+    }
   ]
 }

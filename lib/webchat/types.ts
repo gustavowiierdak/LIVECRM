@@ -1,6 +1,6 @@
 export type MensagemWebchat = Readonly<{
   id: string;
-  direction: "visitor" | "operator";
+  direction: "visitor" | "operator" | "system";
   body: string;
   created_at: string;
 }>;
@@ -9,6 +9,8 @@ export type SessaoVisitanteWebchat = Readonly<{
   public_id?: string;
   sector: "suporte" | "financeiro" | "cancelamento";
   expires_at: string;
+  active: boolean;
+  closed_at?: string | null;
 }>;
 
 /** Metadados da sessão que a inbox autenticada pode consultar, sem expor segredos. */

@@ -246,6 +246,14 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "orçamento, criativo e performance de quem anuncia.",
   },
   {
+    tabela: "erp_integrations",
+    razao:
+      "tests/invariants/credencial-de-anuncios-e-server-side.test.ts — o mesmo " +
+      "deny-all com privilégio NENHUM para anon/authenticated, RLS ligada e " +
+      "service_role como único leitor. Guarda o token do IXC, que alcança " +
+      "cadastro, contratos e financeiro da organização.",
+  },
+  {
     tabela: "map_provider_credentials",
     razao:
       "tests/invariants/credencial-de-mapas-e-server-side.test.ts — privilégio " +

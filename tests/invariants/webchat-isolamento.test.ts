@@ -108,7 +108,7 @@ describe("webchat isolado no baseline", () => {
         and not has_function_privilege('anon', p.oid, 'EXECUTE')
         and not has_function_privilege('authenticated', p.oid, 'EXECUTE');
     `);
-    expect(result).toBe("10");
+    expect(result).toBe("11");
   });
 
   it("emite somente para a própria conversa e consome o código uma vez na origem autorizada", () => {
@@ -180,31 +180,87 @@ describe("webchat isolado no baseline", () => {
   });
 
   it("um cliente inicia pelo link e a primeira mensagem já aparece em conversa web na Inbox", () => {
-    const publicId = sql(`select public_id from public.webchat_channel_configs where organization_id = '${ORG_A}';`);
-    const antes = sql(`select count(*) from public.contacts where organization_id = '${ORG_A}' and source = 'webchat';`);
-    expect(sql(`select public.fn_iniciar_webchat_publico('${publicId}', 'https://outro.example',
+    const publicId = sql(
+      `select public_id from public.webchat_channel_configs where organization_id = '${ORG_A}';`,
+    );
+    const antes = sql(
+      `select count(*) from public.contacts where organization_id = '${ORG_A}' and source = 'webchat';`,
+    );
+    expect(
+      sql(`select public.fn_iniciar_webchat_publico('${publicId}', 'https://outro.example',
       'Cliente Novo', 'suporte', 'Preciso de ajuda', repeat('1',64), repeat('2',64),
-      '05440000-6666-4000-8000-000000000001')->>'ok';`)).toBe("false");
-    expect(sql(`select public.fn_iniciar_webchat_publico('${publicId}', '${ORIGIN}',
+      '05440000-6666-4000-8000-000000000001')->>'ok';`),
+    ).toBe("false");
+    expect(
+      sql(`select public.fn_iniciar_webchat_publico('${publicId}', '${ORIGIN}',
       'Cliente Novo', 'financeiro', 'Preciso de ajuda', repeat('1',64), repeat('2',64),
-      '05440000-6666-4000-8000-000000000002')->>'ok';`)).toBe("false");
-    expect(sql(`select count(*) from public.contacts where organization_id = '${ORG_A}' and source = 'webchat';`)).toBe(antes);
-    const started = JSON.parse(sql(`select public.fn_iniciar_webchat_publico('${publicId}', '${ORIGIN}',
+      '05440000-6666-4000-8000-000000000002')->>'ok';`),
+    ).toBe("false");
+    expect(
+      sql(
+        `select count(*) from public.contacts where organization_id = '${ORG_A}' and source = 'webchat';`,
+      ),
+    ).toBe(antes);
+    const started = JSON.parse(
+      sql(`select public.fn_iniciar_webchat_publico('${publicId}', '${ORIGIN}',
       'Cliente Novo', 'suporte', 'Preciso de ajuda', repeat('1',64), repeat('2',64),
-      '05440000-6666-4000-8000-000000000003');`)) as {
-      ok: boolean; conversation_id: string; organization_id: string; message: { body: string };
+      '05440000-6666-4000-8000-000000000003');`),
+    ) as {
+      ok: boolean;
+      conversation_id: string;
+      organization_id: string;
+      message: { body: string };
     };
-    expect(started).toMatchObject({ ok: true, organization_id: ORG_A,
-      message: { body: "Preciso de ajuda" } });
-    expect(sql(`select c.channel || ':' || s.provider || ':' || ct.name from public.conversations c
+    expect(started).toMatchObject({
+      ok: true,
+      organization_id: ORG_A,
+      message: { body: "Preciso de ajuda" },
+    });
+    expect(
+      sql(`select c.channel || ':' || s.provider || ':' || ct.name from public.conversations c
       join public.channel_sessions s on s.id = c.channel_session_id
       join public.contacts ct on ct.id = c.contact_id
-      where c.id = '${started.conversation_id}' and c.organization_id = '${ORG_A}';`))
-      .toBe("webchat:webchat:Cliente Novo");
-    expect(sql(`select count(*) from public.messages where conversation_id = '${started.conversation_id}';`)).toBe("0");
-    const visitor = JSON.parse(sql(`select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), '${ORIGIN}');`)) as Array<{ body: string }>;
+      where c.id = '${started.conversation_id}' and c.organization_id = '${ORG_A}';`),
+    ).toBe("webchat:webchat:Cliente Novo");
+    expect(
+      sql(
+        `select count(*) from public.messages where conversation_id = '${started.conversation_id}';`,
+      ),
+    ).toBe("0");
+    const visitor = JSON.parse(
+      sql(`select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), '${ORIGIN}');`),
+    ) as Array<{ body: string }>;
     expect(visitor).toEqual([expect.objectContaining({ body: "Preciso de ajuda" })]);
-    expect(sql(`select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), 'https://outro.example');`)).toBe("");
+    expect(
+      sql(
+        `select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), 'https://outro.example');`,
+      ),
+    ).toBe("");
+
+    sql(
+      `update public.conversations set status = 'closed' where id = '${started.conversation_id}';`,
+    );
+    const closedSession = JSON.parse(
+      sql(`select public.fn_webchat_sessao_visitante(repeat('1',64), '${ORIGIN}');`),
+    ) as { active: boolean; closed_at: string };
+    expect(closedSession.active).toBe(false);
+    expect(closedSession.closed_at).toBeTruthy();
+    const closedMessages = JSON.parse(
+      sql(`select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), '${ORIGIN}');`),
+    ) as Array<{ body: string; direction: string }>;
+    expect(closedMessages).toEqual([
+      expect.objectContaining({ body: "Preciso de ajuda", direction: "visitor" }),
+      expect.objectContaining({
+        body: "Atendimento encerrado pela equipe.",
+        direction: "system",
+      }),
+    ]);
+    expect(
+      sql(`select public.fn_registrar_mensagem_webchat_visitante(
+        repeat('1',64), repeat('2',64), '${ORIGIN}', 'Ainda estou aqui',
+        '05440000-6666-4000-8000-000000000004'
+      )->>'reason';`),
+    ).toBe("conversation_closed");
   });
 
   it("anonimizar o contato redige as mensagens e revoga código e sessão na mesma transação", () => {

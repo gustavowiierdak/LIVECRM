@@ -17,6 +17,7 @@ import type { ModuloOpcional } from "@/lib/instalacao/modulos";
 import type { CapacidadeDaOrganizacao } from "@/lib/organizacao/capacidades";
 import { TOOLS_AGENDAMENTO } from "./agendamento";
 import { TOOLS_ATENDIMENTO } from "./atendimento";
+import { TOOLS_BEMOBI } from "./bemobi";
 import { TOOLS_COMERCIO } from "./comercio";
 import { TOOLS_DADOS_EXTERNOS } from "./dados-externos";
 import { TOOLS_EVOLUCAO } from "./evolucao";
@@ -34,6 +35,7 @@ export { declararTools } from "./tipos";
 export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_AGENDAMENTO,
   ...TOOLS_ATENDIMENTO,
+  ...TOOLS_BEMOBI,
   ...TOOLS_ESCALACAO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,

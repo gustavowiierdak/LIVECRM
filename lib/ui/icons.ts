@@ -64,6 +64,7 @@ export {
   SkipForward,
   Copy,
   DownloadSimple,
+  CloudArrowDown,
   Archive,
   // origem de uma captação de formulário (página, IP, link para o lead)
   Globe,

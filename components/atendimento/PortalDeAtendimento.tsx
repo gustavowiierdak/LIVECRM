@@ -65,6 +65,7 @@ function PainelDeSetores({
   setorAtual,
   onEscolher,
   ativo,
+  encerrado,
   ocupado,
   podeIniciarNovo,
   onNovo,
@@ -74,6 +75,7 @@ function PainelDeSetores({
   readonly setorAtual: SetorId;
   readonly onEscolher: (setor: SetorId) => void;
   readonly ativo: boolean;
+  readonly encerrado: boolean;
   readonly ocupado: boolean;
   readonly podeIniciarNovo: boolean;
   readonly onNovo: () => void;
@@ -86,13 +88,15 @@ function PainelDeSetores({
           {t("Como podemos ajudar?")}
         </p>
         <p className="mt-1.5 text-sm leading-6 text-text-muted">
-          {ativo
-            ? podeIniciarNovo
-              ? t(
-                  "Você está conversando com este setor. Para escolher outro assunto, inicie um novo atendimento.",
-                )
-              : t("Este é o assunto definido para sua conversa atual.")
-            : t("Escolha o assunto para iniciar o atendimento correto.")}
+          {encerrado
+            ? t("Este atendimento foi encerrado. Você pode iniciar um novo atendimento.")
+            : ativo
+              ? podeIniciarNovo
+                ? t(
+                    "Você está conversando com este setor. Para escolher outro assunto, inicie um novo atendimento.",
+                  )
+                : t("Este é o assunto definido para sua conversa atual.")
+              : t("Escolha o assunto para iniciar o atendimento correto.")}
         </p>
       </div>
       {ativo && podeIniciarNovo ? (
@@ -168,7 +172,15 @@ function PainelDeSetores({
   );
 }
 
-function PainelDeStatus({ setor, ativo }: { readonly setor: Setor; readonly ativo: boolean }) {
+function PainelDeStatus({
+  setor,
+  ativo,
+  encerrado,
+}: {
+  readonly setor: Setor;
+  readonly ativo: boolean;
+  readonly encerrado: boolean;
+}) {
   const t = useT();
   return (
     <aside className="flex h-full flex-col border-l border-border bg-surface px-6 py-7">
@@ -176,15 +188,24 @@ function PainelDeStatus({ setor, ativo }: { readonly setor: Setor; readonly ativ
       <div className="mt-6 rounded-2xl border border-border bg-surface-elevated p-5">
         <div className="flex items-center gap-3 text-sm font-semibold text-text">
           <span
-            className={cn("size-2.5 rounded-full", ativo ? "bg-emerald-400" : "bg-text-subtle")}
+            className={cn(
+              "size-2.5 rounded-full",
+              encerrado ? "bg-text-subtle" : ativo ? "bg-emerald-400" : "bg-text-subtle",
+            )}
             aria-hidden
           />
-          {ativo ? t("Conectado ao atendimento") : t("Aguardando identificação")}
+          {encerrado
+            ? t("Atendimento encerrado")
+            : ativo
+              ? t("Conectado ao atendimento")
+              : t("Aguardando identificação")}
         </div>
         <p className="mt-3 text-sm leading-6 text-text-muted">
-          {ativo
-            ? t("Esta conversa acontece somente nesta página de atendimento.")
-            : t("Escolha um assunto e envie sua primeira mensagem para começar.")}
+          {encerrado
+            ? t("A equipe encerrou esta conversa. Inicie um novo atendimento se precisar.")
+            : ativo
+              ? t("Esta conversa acontece somente nesta página de atendimento.")
+              : t("Escolha um assunto e envie sua primeira mensagem para começar.")}
         </p>
       </div>
       <div className="mt-6 border-t border-border pt-5">
@@ -225,6 +246,7 @@ export function PortalDeAtendimento({
   const [nome, setNome] = useState("");
   const [primeiraMensagem, setPrimeiraMensagem] = useState("");
   const [ativo, setAtivo] = useState(false);
+  const [encerrado, setEncerrado] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState("");
@@ -243,6 +265,7 @@ export function PortalDeAtendimento({
   const novoAtendimento = () => {
     geracaoDaConversa.current += 1;
     setAtivo(false);
+    setEncerrado(false);
     setMensagens([]);
     setRascunho("");
     setPrimeiraMensagem("");
@@ -254,6 +277,7 @@ export function PortalDeAtendimento({
       setorAtual={setorAtual}
       onEscolher={setSetorAtual}
       ativo={ativo}
+      encerrado={encerrado}
       ocupado={ocupado}
       podeIniciarNovo={Boolean(publicId)}
       onNovo={novoAtendimento}
@@ -271,7 +295,7 @@ export function PortalDeAtendimento({
         });
         if (response.status === 401) return;
         const payload = (await response.json()) as {
-          data?: { sector?: SetorId };
+          data?: { sector?: SetorId; active?: boolean };
           error?: { message?: string };
         };
         if (!mounted) return;
@@ -281,6 +305,7 @@ export function PortalDeAtendimento({
         }
         setSetorAtual(payload.data.sector);
         setAtivo(true);
+        setEncerrado(payload.data.active === false);
       } catch {
         if (mounted) setErro(t("Não foi possível verificar sua sessão."));
       }
@@ -293,22 +318,39 @@ export function PortalDeAtendimento({
   const carregarMensagens = useCallback(async () => {
     const geracao = geracaoDaConversa.current;
     try {
-      const response = await fetch("/api/public/webchat/messages", {
-        credentials: "same-origin",
-        headers: publicId ? { "x-webchat-public-id": publicId } : {},
-      });
-      const payload = (await response.json()) as {
+      const headers: Record<string, string> = {};
+      if (publicId) headers["x-webchat-public-id"] = publicId;
+      const [sessionResponse, messagesResponse] = await Promise.all([
+        fetch("/api/public/webchat/session", { credentials: "same-origin", headers }),
+        fetch("/api/public/webchat/messages", { credentials: "same-origin", headers }),
+      ]);
+      const sessionPayload = (await sessionResponse.json()) as {
+        data?: { sector?: SetorId; active?: boolean };
+        error?: { message?: string };
+      };
+      const messagesPayload = (await messagesResponse.json()) as {
         data?: MensagemWebchat[];
         error?: { message?: string };
       };
       if (geracao !== geracaoDaConversa.current) return;
-      if (response.status === 401) {
+      if (sessionResponse.status === 401 || messagesResponse.status === 401) {
         setAtivo(false);
+        setEncerrado(false);
         setMensagens([]);
+        return;
       }
-      if (!response.ok || !payload.data)
-        throw new Error(payload.error?.message ?? t("Não foi possível carregar as mensagens."));
-      setMensagens(payload.data);
+      if (!sessionResponse.ok || !sessionPayload.data?.sector)
+        throw new Error(
+          sessionPayload.error?.message ?? t("Não foi possível verificar sua sessão."),
+        );
+      if (!messagesResponse.ok || !messagesPayload.data)
+        throw new Error(
+          messagesPayload.error?.message ?? t("Não foi possível carregar as mensagens."),
+        );
+      setSetorAtual(sessionPayload.data.sector);
+      setAtivo(true);
+      setEncerrado(sessionPayload.data.active === false);
+      setMensagens(messagesPayload.data);
       setErro(null);
     } catch {
       if (geracao !== geracaoDaConversa.current) return;
@@ -348,6 +390,7 @@ export function PortalDeAtendimento({
       setSetorAtual(payload.data.sector);
       setCodigo("");
       setAtivo(true);
+      setEncerrado(false);
     } catch (cause) {
       setErro(cause instanceof Error ? cause.message : t("Não foi possível validar o código."));
     } finally {
@@ -384,6 +427,7 @@ export function PortalDeAtendimento({
       setMensagens([payload.data.message]);
       setPrimeiraMensagem("");
       setAtivo(true);
+      setEncerrado(false);
     } catch (cause) {
       setErro(
         cause instanceof Error ? cause.message : t("Não foi possível iniciar o atendimento."),
@@ -428,8 +472,10 @@ export function PortalDeAtendimento({
       if (geracao !== geracaoDaConversa.current) return;
       if (response.status === 401) {
         setAtivo(false);
+        setEncerrado(false);
         setMensagens([]);
       }
+      if (response.status === 409) setEncerrado(true);
       if (!response.ok || !payload.data)
         throw new Error(payload.error?.message ?? t("Não foi possível enviar a mensagem."));
       setMensagens((anteriores) => [...anteriores, payload.data as MensagemWebchat]);
@@ -514,7 +560,11 @@ export function PortalDeAtendimento({
                   {tituloDoSetor(setor.id, t)}
                 </h1>
                 <p className="mt-0.5 text-sm text-text-muted">
-                  {ativo ? t("Atendimento em andamento") : descricaoDoSetor(setor.id, t)}
+                  {encerrado
+                    ? t("Atendimento encerrado")
+                    : ativo
+                      ? t("Atendimento em andamento")
+                      : descricaoDoSetor(setor.id, t)}
                 </p>
               </div>
             </div>
@@ -531,35 +581,45 @@ export function PortalDeAtendimento({
                     {t("Aguardando mensagens deste atendimento.")}
                   </p>
                 ) : (
-                  mensagens.map((item) => (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        "flex max-w-[85%] flex-col gap-1.5 sm:max-w-[72%]",
-                        item.direction === "visitor"
-                          ? "items-end self-end"
-                          : "items-start self-start",
-                      )}
-                    >
-                      <span className="text-xs font-medium text-text-muted">
-                        {item.direction === "visitor" ? t("Você") : t("Equipe")} ·{" "}
-                        {new Date(item.created_at).toLocaleTimeString(tagDoIdioma, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <p
+                  mensagens.map((item) =>
+                    item.direction === "system" ? (
+                      <div
+                        key={item.id}
+                        className="self-center rounded-full border border-border bg-surface px-4 py-2 text-center text-xs font-medium text-text-muted"
+                        role="status"
+                      >
+                        {t(item.body)}
+                      </div>
+                    ) : (
+                      <div
+                        key={item.id}
                         className={cn(
-                          "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
+                          "flex max-w-[85%] flex-col gap-1.5 sm:max-w-[72%]",
                           item.direction === "visitor"
-                            ? "rounded-br-md border border-border bg-surface"
-                            : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
+                            ? "items-end self-end"
+                            : "items-start self-start",
                         )}
                       >
-                        {item.body}
-                      </p>
-                    </div>
-                  ))
+                        <span className="text-xs font-medium text-text-muted">
+                          {item.direction === "visitor" ? t("Você") : t("Equipe")} ·{" "}
+                          {new Date(item.created_at).toLocaleTimeString(tagDoIdioma, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <p
+                          className={cn(
+                            "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
+                            item.direction === "visitor"
+                              ? "rounded-br-md border border-border bg-surface"
+                              : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
+                          )}
+                        >
+                          {item.body}
+                        </p>
+                      </div>
+                    ),
+                  )
                 )}
                 <div ref={fimDaConversa} aria-hidden />
               </div>
@@ -647,7 +707,7 @@ export function PortalDeAtendimento({
               </p>
             ) : null}
 
-            {ativo ? (
+            {ativo && !encerrado ? (
               <div className="border-t border-border bg-surface p-4 sm:p-5">
                 <label htmlFor="mensagem-atendimento" className="sr-only">
                   {t("Mensagem")}
@@ -684,7 +744,7 @@ export function PortalDeAtendimento({
           </section>
 
           <div className="hidden lg:block">
-            <PainelDeStatus setor={setor} ativo={ativo} />
+            <PainelDeStatus setor={setor} ativo={ativo} encerrado={encerrado} />
           </div>
         </div>
       </section>

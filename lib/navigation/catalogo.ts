@@ -1005,6 +1005,24 @@ export const NAV_CATALOG = [
     minRole: "admin",
   },
   {
+    href: "/app/settings/ixc",
+    label: "IXC Provedor",
+    description: "Conecte o IXC para consultar clientes, contratos, financeiro e ordens de serviço.",
+    icon: "CloudArrowDown",
+    group: "organizacao",
+    section: "Dados e acesso",
+    minRole: "admin",
+  },
+  {
+    href: "/app/settings/bemobi",
+    label: "Bemobi / 7AZ",
+    description: "Conecte faturas, PIX, boleto, PDF e links de pagamento ao atendimento.",
+    icon: "Receipt",
+    group: "organizacao",
+    section: "Dados e acesso",
+    minRole: "admin",
+  },
+  {
     href: "/app/extensions",
     label: "Extensões",
     description:

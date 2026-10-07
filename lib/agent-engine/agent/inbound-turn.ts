@@ -184,7 +184,7 @@ import {
   tipoDeEnvio,
 } from '../guardrails/before-send';
 import { isStatusSendable } from '../../channels/meta/template-binding';
-import { capabilitiesOf } from '@/lib/channels/capabilities';
+import { requiresTemplatesForTurn } from '@/lib/channels/capabilities';
 import { renderTemplateBody } from '@/lib/channels/meta/render-template';
 import { acenderDigitando, esperarComoHumano } from './atraso-humano';
 import { instrucaoDeBolhas, sendInBubbles, splitForSend } from './split-message';
@@ -4030,7 +4030,7 @@ async function executarTurnoDoAgente(
       preview && !preview.channelId
         ? DEFAULT_CHANNEL_PROVIDER
         : await loadChannelProvider(pool, tenantId, input.channelSessionId);
-    if (!capabilitiesOf(provider).requiresTemplates) {
+    if (!requiresTemplatesForTurn(provider)) {
       delete rawTools.send_template;
     }
   }
@@ -4464,6 +4464,65 @@ async function executarTurnoDoAgente(
       { registry: deps.registry, log: runLog },
     );
 
+    let mensagensDoTurno = turn.result.response.messages;
+    const semRespostaVisivel = preview
+      ? preview.result.candidates.length === 0
+      : outcomes.length === 0;
+    // O modelo pode encerrar com texto direto depois de registrar um estágio ou
+    // caso. Texto direto não é enviado: peça UMA chamada final, limitada à
+    // ferramenta de envio, para não deixar o cliente sem resposta. A ferramenta
+    // continua passando pela mesma política de prévia ou pelos mesmos guardrails.
+    if (
+      agentConfig !== null &&
+      semRespostaVisivel &&
+      runError === null &&
+      !turnoDescartado &&
+      (preview !== undefined || turnoVaiFalarComOLead(liveJob())) &&
+      tools.send_message
+    ) {
+      const fechamento = await runModelCall(
+        pool,
+        deps.llmCfg,
+        {
+          tenantId,
+          leadId: leadId || null,
+          jobId: job?.id,
+          agentId: agentConfig.agentId,
+          purpose: preview ? 'agent_preview' : 'agent_turn',
+          system:
+            system +
+            '\n\nFechamento obrigatório: responda ao cliente agora usando send_message. Não afirme que uma proposta não executada foi concluída.',
+          messages: [
+            ...openingMessages,
+            ...mensagensDoTurno,
+            { role: 'user', content: 'Finalize este atendimento com uma resposta visível ao cliente.' },
+          ],
+          tools: { send_message: tools.send_message },
+          toolChoice: 'required',
+          maxSteps: 2,
+          pararQuando: () =>
+            preview ? preview.result.candidates.length > 0 : outcomes.length > 0,
+          model: agentConfig.model,
+          llmOverride: {
+            provider: agentConfig.provider,
+            credentialId: agentConfig.credentialId,
+          },
+        },
+        { registry: deps.registry, log: runLog },
+      );
+      mensagensDoTurno = [...mensagensDoTurno, ...fechamento.result.response.messages];
+      if (
+        preview &&
+        preview.result.candidates.length === 0 &&
+        preview.result.impediments.length === 0
+      ) {
+        preview.result.impediments.push({
+          code: 'forced_reply_missing',
+          message: 'O agente tentou responder, mas a ferramenta de envio não concluiu. Verifique o canal e as regras de envio.',
+        });
+      }
+    }
+
     // F4-04: correlação dos dois sinais do MESMO turno — jailbreak ALTO + tentativa de
     // promessa fora de tabela (F4-01). Ambos estão determinados aqui (o jailbreak rodou na
     // abertura; as tentativas de envio já passaram pelo loop). Dispara escalação humana em
@@ -4561,8 +4620,8 @@ async function executarTurnoDoAgente(
     // sufixo por-lead, nunca no prefixo estável (regra de cache 15).
     const responseMessages =
       deps.knobs.prune !== undefined
-        ? pruneToolResults(turn.result.response.messages, deps.knobs.prune)
-        : turn.result.response.messages;
+        ? pruneToolResults(mensagensDoTurno, deps.knobs.prune)
+        : mensagensDoTurno;
 
     // Fechamento imposto pelo runtime: 2ª chamada, mesma conversa, só o checkpoint.
     //
