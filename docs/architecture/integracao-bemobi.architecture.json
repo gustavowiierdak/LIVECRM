@@ -35,6 +35,7 @@
     { "id": "e6", "from": "bemobi", "to": "payment_tool", "label": "Dados do meio escolhido" },
     { "id": "e7", "from": "payment_tool", "to": "channel", "label": "Envia sem devolver o código ao modelo" },
     { "id": "e8", "from": "payment_tool", "to": "audit", "label": "Registra efeito e deduplicação" },
-    { "id": "e9", "from": "settings", "to": "audit", "label": "Salva, testa e desconecta com rastro" }
+    { "id": "e9", "from": "settings", "to": "audit", "label": "Salva, testa e desconecta com rastro" },
+    { "id": "e10", "from": "bemobi", "to": "settings", "label": "Teste devolve apenas estrutura segura se o formato divergir" }
   ]
 }

@@ -9,6 +9,16 @@ import {
   testarConexaoBemobi,
 } from "./client";
 
+async function capturarFalha(promise: Promise<unknown>): Promise<BemobiConnectionError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof BemobiConnectionError) return error;
+    throw error;
+  }
+  throw new Error("A consulta deveria falhar.");
+}
+
 describe("cliente Bemobi", () => {
   it("normaliza CPF/CNPJ e recusa documentos fora do tamanho", () => {
     expect(normalizarDocumentoBemobi("123.456.789-01")).toBe("12345678901");
@@ -56,5 +66,36 @@ describe("cliente Bemobi", () => {
     await expect(testarConexaoBemobi("chave", "12345678901", transportar)).resolves.toEqual({
       total: 0,
     });
+  });
+
+  it("mostra apenas a estrutura segura quando a resposta não é uma lista", async () => {
+    const transportar = vi.fn().mockResolvedValue(JSON.stringify({
+      data: [{ erpInvoiceId: "documento-12345678901", amount: 99 }],
+      message: "CPF 12345678901 token chave-ultrassecreta",
+      "12345678901": "outro dado sigiloso",
+    }));
+    const falha = await capturarFalha(
+      listarFaturasBemobi("chave-ultrassecreta", "12345678901", transportar),
+    );
+    expect(falha).toMatchObject({ code: "unexpected_response" });
+    expect(falha.message).toContain("raiz=objeto");
+    expect(falha.message).toContain("data=lista");
+    expect(falha.message).toContain("outros_campos=1");
+    expect(falha.message).not.toMatch(/12345678901|chave-ultrassecreta|99|outro dado sigiloso/);
+  });
+
+  it("aponta campos obrigatórios ausentes sem mostrar valores da fatura", async () => {
+    const transportar = vi.fn().mockResolvedValue(JSON.stringify([{
+      erpInvoiceId: "fatura-privada",
+      amount: "R$ 123,45",
+      status: 1,
+      "cliente@example.com": "dado privado",
+    }]));
+    const falha = await capturarFalha(listarFaturasBemobi("chave", "12345678901", transportar));
+    expect(falha).toMatchObject({ code: "unexpected_response" });
+    expect(falha.message).toContain("raiz=lista");
+    expect(falha.message).toContain("amount=texto");
+    expect(falha.message).toContain("faltam: uniqueId");
+    expect(falha.message).not.toMatch(/fatura-privada|123,45|cliente@example.com|dado privado/);
   });
 });

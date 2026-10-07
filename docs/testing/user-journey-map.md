@@ -3298,3 +3298,10 @@ Spec: `tests/e2e/mapas-em-provedores.spec.ts`.
 | J41.7 | Atendente abre a nova conversa na Inbox e responde; cliente lê no site | webchat aparece na Fila com marca própria, usa só a timeline web e não aciona o envio WhatsApp | **PASS manual na VPS (2026-10-06)** — mensagem enviada pela página pública apareceu na Inbox; resposta da Inbox apareceu na página do cliente. Prints fora do repo em `webchat-evidence/` da tarefa local; E2E automatizado com banco fresco ainda pendente |
 | J41.8 | Cliente com conversa em andamento quer tratar outro assunto | tela mostra a conversa como chat, não sugere que ainda precisa iniciá-la; botão Novo atendimento devolve escolha de setor e o novo envio cria sessão própria sem misturar mensagens anteriores | **PASS manual na VPS (2026-10-06)** — sessão antiga de Suporte → Novo atendimento → Financeiro; duas mensagens apareceram na Inbox, resposta da equipe voltou ao site. **PASS unit** — `components/atendimento/PortalDeAtendimento.test.tsx`, inclusive recuperação de falha transitória na leitura. Prints conferidos na tarefa local. |
 | J41.9 | Cliente abre o atendimento com tema escuro salvo | portal e menu de assuntos no celular continuam claros; a preferência global não é alterada | Teste unitário em `components/atendimento/PortalDeAtendimento.test.tsx` e prova visual/E2E em `tests/e2e/webchat-entrada-publica.spec.ts`. |
+
+## J42 — Testar conexão Bemobi sem expor dados financeiros `[P1]` (2026-10-07)
+
+| # | Caso | Expectativa | Resultado |
+|---|---|---|---|
+| J42.1 | Testar com um CPF/CNPJ quando a Bemobi devolve JSON fora do contrato | a tela diz a estrutura recebida (tipos e campos conhecidos), não o documento, chave nem valores da fatura | **PASS unitário** — `lib/bemobi/client.test.ts`; confirmação pela tela com uma resposta real da Bemobi ainda pendente |
+| J42.2 | Corrigir a interpretação a partir da estrutura real | retestar com o mesmo documento pela tela e confirmar uma listagem válida sem expor o dado no diagnóstico | **PENDENTE** — depende do novo teste da conexão já configurada |

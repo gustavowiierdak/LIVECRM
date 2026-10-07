@@ -11,6 +11,13 @@ export const BEMOBI_BASE_URL = "https://api.7az.com.br";
 const BEMOBI_HOST = "api.7az.com.br";
 const BEMOBI_TIMEOUT_MS = 10_000;
 const BEMOBI_RESPONSE_LIMIT = 1024 * 1024;
+const CAMPOS_DIAGNOSTICO = [
+  "data", "items", "invoices", "results", "result", "payload", "content",
+  "success", "status", "code", "message", "error",
+  "erpInvoiceId", "uniqueId", "dueDate", "amount", "erpContractId",
+  "id", "invoiceId", "invoice_id", "value", "total", "situacao",
+] as const;
+const CAMPOS_OBRIGATORIOS_FATURA = ["erpInvoiceId", "uniqueId", "amount", "status"] as const;
 
 export type BemobiErrorCode =
   | "invalid_document"
@@ -72,6 +79,41 @@ export interface BemobiTransportInput {
 }
 
 export type BemobiTransport = (input: BemobiTransportInput) => Promise<string>;
+
+function tipoSeguro(valor: unknown): string {
+  if (valor === null) return "nulo";
+  if (Array.isArray(valor)) return "lista";
+  if (typeof valor === "object") return "objeto";
+  if (typeof valor === "string") return "texto";
+  if (typeof valor === "number") return "numero";
+  if (typeof valor === "boolean") return "booleano";
+  return "outro";
+}
+
+/** Só nomes de campos fixos e tipos, nunca valores nem chaves arbitrárias da resposta. */
+function diagnosticoFormatoSeguro(valor: unknown): string {
+  const raiz = tipoSeguro(valor);
+  const primeiro = Array.isArray(valor) ? valor[0] : valor;
+  const objeto = primeiro !== null && typeof primeiro === "object" && !Array.isArray(primeiro)
+    ? primeiro as Record<string, unknown>
+    : null;
+  const campos = objeto
+    ? CAMPOS_DIAGNOSTICO.filter((campo) => Object.hasOwn(objeto, campo))
+        .map((campo) => `${campo}=${tipoSeguro(objeto[campo])}`)
+    : [];
+  const desconhecidos = objeto ? Object.keys(objeto).length - campos.length : 0;
+  const ausentes = Array.isArray(valor) && objeto
+    ? CAMPOS_OBRIGATORIOS_FATURA.filter((campo) => !Object.hasOwn(objeto, campo))
+    : [];
+  const partes = [
+    `raiz=${raiz}`,
+    ...(Array.isArray(valor) ? [`itens=${valor.length}`, `primeiro=${tipoSeguro(primeiro)}`] : []),
+    ...(campos.length ? [`campos: ${campos.join(", ")}`] : []),
+    ...(desconhecidos ? [`outros_campos=${desconhecidos}`] : []),
+    ...(ausentes.length ? [`faltam: ${ausentes.join(", ")}`] : []),
+  ];
+  return partes.join("; ").slice(0, 400);
+}
 
 /** CPF/CNPJ só sai do servidor na query da Bemobi; formatação é removida. */
 export function normalizarDocumentoBemobi(valor: string): string {
@@ -239,7 +281,7 @@ async function executar<T>(
     if (!parsed.success) {
       throw new BemobiConnectionError(
         "unexpected_response",
-        "A Bemobi respondeu em um formato diferente do esperado.",
+        `A Bemobi respondeu em um formato diferente do esperado. Estrutura: ${diagnosticoFormatoSeguro(json)}.`,
       );
     }
     return parsed.data;
