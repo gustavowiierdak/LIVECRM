@@ -12,8 +12,27 @@ describe("PortalDeAtendimento", () => {
     ),
   );
   afterEach(() => {
+    document.documentElement.setAttribute("data-theme", "light");
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("mantém portal e menu de assuntos claros mesmo com preferência global escura", async () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+    const user = userEvent.setup();
+    const { container } = render(
+      <PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />,
+    );
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(container.querySelector("main")).toHaveAttribute("data-theme", "light");
+
+    await user.click(screen.getByRole("button", { name: "Escolher assunto" }));
+    const menu = await screen.findByRole("dialog");
+    expect(menu).toHaveAttribute("data-theme", "light");
+    expect(menu).toHaveStyle({ "--atendimento-accent": "#550CA1" });
+    expect(screen.getAllByText("Suporte técnico").length).toBeGreaterThan(0);
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 
   it("troca o setor sem criar uma conversa ou habilitar um envio sem sessão", async () => {

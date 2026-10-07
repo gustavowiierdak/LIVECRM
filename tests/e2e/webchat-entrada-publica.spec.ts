@@ -38,12 +38,16 @@ test.describe("atendimento web público até a Inbox", () => {
     if (erroUsuario || !usuario.user) throw erroUsuario ?? new Error("Usuário não criado");
     usuarioId = usuario.user.id;
 
-    const { data: org, error: erroOrg } = await db.from("organizations").insert({
-      slug: `webchat-publico-${sufixo}`,
-      legal_name: `Webchat Público ${sufixo}`,
-      display_name: `Webchat Público ${sufixo}`,
-      onboarded_at: new Date().toISOString(),
-    }).select("id").single();
+    const { data: org, error: erroOrg } = await db
+      .from("organizations")
+      .insert({
+        slug: `webchat-publico-${sufixo}`,
+        legal_name: `Webchat Público ${sufixo}`,
+        display_name: `Webchat Público ${sufixo}`,
+        onboarded_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
     if (erroOrg || !org) throw erroOrg ?? new Error("Organização não criada");
     orgId = (org as { id: string }).id;
 
@@ -78,15 +82,23 @@ test.describe("atendimento web público até a Inbox", () => {
     const origem = new URL(page.url()).origin;
     await page.getByLabel("Endereços permitidos").fill(origem);
     await page.getByRole("button", { name: "Salvar atendimento web" }).click();
-    await expect(page.getByLabel("Link para clientes")).toHaveValue(/\/atendimento\/[0-9a-f-]{36}$/);
+    await expect(page.getByLabel("Link para clientes")).toHaveValue(
+      /\/atendimento\/[0-9a-f-]{36}$/,
+    );
     await page.screenshot({ path: `${evidencia}/01-conexoes.jpg`, fullPage: true });
     const link = await page.getByLabel("Link para clientes").inputValue();
 
-    const contextoCliente = await browser.newContext();
+    const contextoCliente = await browser.newContext({ colorScheme: "dark" });
     try {
+      await contextoCliente.addInitScript(() => localStorage.setItem("deskcomm-theme", "dark"));
       const cliente = await contextoCliente.newPage();
       await cliente.goto(link);
-      await expect(cliente.getByRole("heading", { name: "Vamos iniciar seu atendimento" })).toBeVisible();
+      await expect(cliente.locator("html")).toHaveAttribute("data-theme", "dark");
+      await expect(cliente.locator("main")).toHaveAttribute("data-theme", "light");
+      await expect(cliente.locator("main")).toHaveCSS("background-color", "rgb(250, 249, 246)");
+      await expect(
+        cliente.getByRole("heading", { name: "Vamos iniciar seu atendimento" }),
+      ).toBeVisible();
       await cliente.getByLabel("Seu nome").fill(nomeCliente);
       await cliente.getByLabel("Como podemos ajudar?").fill(primeiraMensagem);
       await cliente.screenshot({ path: `${evidencia}/02-pagina-cliente.jpg`, fullPage: true });
@@ -95,17 +107,26 @@ test.describe("atendimento web público até a Inbox", () => {
 
       await page.goto("/app/inbox?filter=all");
       await page.getByLabel("Buscar conversas", { exact: true }).fill(nomeCliente);
-      const conversa = page.locator('button[data-conversation-id]').filter({ hasText: nomeCliente });
+      const conversa = page
+        .locator("button[data-conversation-id]")
+        .filter({ hasText: nomeCliente });
       await expect(conversa).toBeVisible({ timeout: 60_000 });
       await conversa.click();
       const painel = page.getByRole("region", { name: "Atendimento web" });
       await expect(painel.getByText(primeiraMensagem)).toBeVisible({ timeout: 30_000 });
       await page.screenshot({ path: `${evidencia}/03-inbox.jpg`, fullPage: true });
-      await painel.getByRole("textbox", { name: "Responder pelo atendimento web" }).fill(respostaOperador);
+      await painel
+        .getByRole("textbox", { name: "Responder pelo atendimento web" })
+        .fill(respostaOperador);
       await painel.getByRole("button", { name: "Enviar", exact: true }).click();
       await expect(painel.getByText(respostaOperador)).toBeVisible();
       await expect(cliente.getByText(respostaOperador)).toBeVisible({ timeout: 20_000 });
       await cliente.screenshot({ path: `${evidencia}/04-resposta-cliente.jpg`, fullPage: true });
+
+      await cliente.setViewportSize({ width: 390, height: 844 });
+      await cliente.getByRole("button", { name: "Escolher assunto" }).click();
+      await expect(cliente.getByRole("dialog")).toHaveAttribute("data-theme", "light");
+      await expect(cliente.getByRole("dialog")).toHaveCSS("background-color", "rgb(250, 249, 246)");
     } finally {
       await contextoCliente.close();
     }

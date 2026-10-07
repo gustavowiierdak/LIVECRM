@@ -443,7 +443,7 @@ export function PortalDeAtendimento({
   };
 
   return (
-    <main style={css} className="min-h-screen bg-bg text-text">
+    <main data-theme="light" style={css} className="min-h-screen bg-bg text-text">
       <section className="mx-auto flex min-h-screen max-w-[1600px] flex-col overflow-hidden bg-surface">
         <header className="flex min-h-20 items-center justify-between gap-4 border-b border-border px-5 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
@@ -476,7 +476,12 @@ export function PortalDeAtendimento({
                   <Menu aria-hidden />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[min(88vw,23rem)] p-5">
+              <SheetContent
+                side="left"
+                data-theme="light"
+                style={css}
+                className="w-[min(88vw,23rem)] p-5"
+              >
                 <SheetHeader className="pr-8 text-left">
                   <SheetTitle>{t("Escolha o assunto")}</SheetTitle>
                   <SheetDescription>
