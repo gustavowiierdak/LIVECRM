@@ -84,7 +84,7 @@ const TOOLS_DO_SEED = [
   // estourar por 2 muda o texto da tela e o caso morre, caber no teto faz a
   // recusa sumir e o caso virar verde sem medir nada.
   //
-  // Os 17 são o pacote "Atender" DEPOIS da #528, e foi ela que mudou o número:
+  // O pacote "Atender" tinha 17 depois da #528 e agora tem 19 com Bemobi:
   // a crítica que o pacote contava (o envio de WhatsApp, que o motor descarta
   // em todo turno) deixou de ser oferecida, e com ela saiu uma vaga da conta.
   //
@@ -227,21 +227,21 @@ test.describe("Configurar o que o agente pode fazer", () => {
 
     // O TETO ENTRA NA JORNADA (issue #162), e entra antes do clique.
     //
-    // "Atender" exige 17 vagas: 17 automáticas e nenhuma crítica — a única que
-    // ele tinha (o envio de WhatsApp) deixou de ser oferecida na #528, e com ela
-    // saiu uma vaga da conta. Com os 11 do seed (3 + 8) dá 28, acima do teto de 27.
+    // "Atender" exige 19 vagas: a consulta Bemobi e o envio financeiro entraram
+    // no pacote. O envio de WhatsApp segue não oferecido desde a #528.
+    // Com as 9 do seed (3 + 6) dá 28, acima do teto de 27.
     //
-    // ⚠️ AS 8 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
+    // ⚠️ AS 6 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
     // estourava o teto de 20. A cada subida do teto (20 → 25 → 27, a última
     // quando a proposta comercial entrou no `vender`) e a cada queda do pacote
     // "Atender" (18 → 17, na #528), a mesma soma ameaçava caber de novo — e cada
     // vez que isso acontece a recusa deixa de existir e o caso vira um clique que
     // sempre dá certo, verde sem medir nada, o pior desfecho para um teste de
-    // recusa. As 8 (4 de agenda + 4 de leitura pura) estão FORA de "Atender", senão
+    // recusa. As 6 (4 de agenda + 2 de leitura pura) estão FORA de "Atender", senão
     // a união seria menor que a soma.
     //
-    // Aritmética atual: 11 + 17 = 28 > 27, recusa por 1 vaga; desligar uma das
-    // oito deixa 10 + 17 = 27, o teto exato.
+    // Aritmética atual: 9 + 19 = 28 > 27, recusa por 1 vaga; desligar uma das
+    // seis deixa 8 + 19 = 27, o teto exato.
     //
     // Antes da correção a tela aceitava o pacote, chegava a 20 exatas e deixava
     // o checkbox da crítica DESABILITADO — prometia uma escolha que o produto
