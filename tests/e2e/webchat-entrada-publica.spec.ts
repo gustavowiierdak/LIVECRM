@@ -127,6 +127,7 @@ test.describe("atendimento web público até a Inbox", () => {
       await cliente.getByRole("button", { name: "Escolher assunto" }).click();
       await expect(cliente.getByRole("dialog")).toHaveAttribute("data-theme", "light");
       await expect(cliente.getByRole("dialog")).toHaveCSS("background-color", "rgb(250, 249, 246)");
+      await expect(cliente.getByRole("dialog")).toHaveCSS("color", "rgb(28, 26, 22)");
     } finally {
       await contextoCliente.close();
     }

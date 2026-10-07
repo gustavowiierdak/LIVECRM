@@ -30,6 +30,7 @@ describe("PortalDeAtendimento", () => {
     await user.click(screen.getByRole("button", { name: "Escolher assunto" }));
     const menu = await screen.findByRole("dialog");
     expect(menu).toHaveAttribute("data-theme", "light");
+    expect(menu).toHaveClass("text-text");
     expect(menu).toHaveStyle({ "--atendimento-accent": "#550CA1" });
     expect(screen.getAllByText("Suporte técnico").length).toBeGreaterThan(0);
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");

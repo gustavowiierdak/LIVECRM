@@ -480,7 +480,7 @@ export function PortalDeAtendimento({
                 side="left"
                 data-theme="light"
                 style={css}
-                className="w-[min(88vw,23rem)] p-5"
+                className="w-[min(88vw,23rem)] p-5 text-text"
               >
                 <SheetHeader className="pr-8 text-left">
                   <SheetTitle>{t("Escolha o assunto")}</SheetTitle>
