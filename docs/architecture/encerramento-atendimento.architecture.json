@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Fronteira do atendimento — comunidade 360 Task4",
-    "subtitle": "Conversa e demanda têm encerramentos independentes; efeitos operacionais conservam sua origem",
+    "subtitle": "Conversa e demanda têm encerramentos independentes; recibo de fatura e despedida podem fechar só a conversa",
     "output": "encerramento-atendimento.html",
     "quality_profile": "standard"
   },
@@ -112,6 +112,13 @@
       "col": 2,
       "type": "database",
       "label": "Evento/destino — recibo imutável entre consumidores e retries"
+    },
+    {
+      "id": "invoice_farewell",
+      "lane": "service",
+      "col": 3,
+      "type": "backend",
+      "label": "Despedida simples + recibo Bemobi + revisão vigente → fecha só conversa"
     }
   ],
   "edges": [
@@ -199,6 +206,21 @@
       "from": "receipt",
       "to": "job",
       "label": "Reutiliza origem, nunca renova"
+    },
+    {
+      "from": "receipt",
+      "to": "invoice_farewell",
+      "label": "Prova envio Bemobi no atendimento"
+    },
+    {
+      "from": "inbound",
+      "to": "invoice_farewell",
+      "label": "Última entrada é despedida sem novo pedido"
+    },
+    {
+      "from": "invoice_farewell",
+      "to": "boundary",
+      "label": "fn_service_status com mutex e revisão; demanda preservada"
     }
   ]
 }

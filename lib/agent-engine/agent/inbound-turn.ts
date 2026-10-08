@@ -68,6 +68,8 @@ import { HANDOFF_REASON_ORCAMENTO } from '../edge/llm/orcamento';
 import { abreAvisoDoEspelhoRecusado, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
 import { insertInboxItem } from '../db/repository';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { audit } from '@/lib/audit';
+import { encerrarConversaAposFatura, despedidaSimples } from './encerramento-apos-fatura';
 import { moverLeadParaEtapaDeHandoff } from '@/lib/leads/handoff-stage-move';
 import { detectUrgencySignal } from '../guardrails/sinal-de-urgencia';
 import { buildNativeMediaParts } from './media-parts';
@@ -5057,6 +5059,58 @@ async function executarTurnoDoAgente(
       throw new JobSettledError(
         'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
       );
+    }
+
+    // A despedida depois da segunda via é um fim de CONVERSA, não quitação da
+    // fatura nem desfecho de demanda. A checagem transacional confirma o recibo
+    // Bemobi, a resposta enviada e que ninguém escreveu/assumiu no intervalo.
+    // Falha em fechar nunca reprocessa o turno: reenviar PIX por causa de um
+    // problema no status seria mais grave que deixar a conversa aberta.
+    if (
+      liveJob().kind === 'inbound_turn' && input.inboundMessageId &&
+      inboundsPendentes.length === 1 && despedidaSimples(currentInboundText ?? '') &&
+      !turnoDescartado && !identidadeFinanceiraRecusada
+    ) {
+      let respostaId: string | null = null;
+      for (const item of [...outcomes].reverse()) {
+        if ((item.kind === 'sent' || item.kind === 'already_sent') && item.messageId) {
+          respostaId = item.messageId;
+          break;
+        }
+      }
+      if (respostaId) {
+        try {
+          const encerrada = await encerrarConversaAposFatura(pool, {
+            organizationId: tenantId,
+            conversationId: input.conversationId,
+            inboundMessageId: input.inboundMessageId,
+            replyMessageId: respostaId,
+          });
+          if (encerrada) {
+            await audit({
+              action: 'conversation.closed',
+              organizationId: tenantId,
+              resourceType: 'conversation',
+              resourceId: input.conversationId,
+              requestId: liveJob().id,
+              metadata: { reason: 'invoice_delivered_customer_farewell', job_id: liveJob().id },
+            }).catch((error) => {
+              runLog.warn('auditoria do encerramento após fatura falhou', {
+                conversation_id: input.conversationId,
+                error: error instanceof Error ? error.name : 'unknown',
+              });
+            });
+            runLog.info('conversa encerrada após fatura entregue e despedida do cliente', {
+              conversation_id: input.conversationId,
+            });
+          }
+        } catch (error) {
+          runLog.warn('encerramento após fatura indisponível — conversa permanece aberta', {
+            conversation_id: input.conversationId,
+            error: error instanceof Error ? error.name : 'unknown',
+          });
+        }
+      }
     }
 
     runLog.info('turno do agente concluído', {

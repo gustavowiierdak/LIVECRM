@@ -30,4 +30,16 @@ describe("recusa de identidade financeira no turno real", () => {
     expect(trecho).toContain("if (identidadeFinanceiraRecusada)");
     expect(trecho).toContain("code: 'identidade_financeira_nao_confirmada'");
   });
+
+  it("liga o fechamento após fatura ao fim do turno real, sem reprocessar o envio", () => {
+    const fechamento = fonte.indexOf('encerrarConversaAposFatura(pool, {');
+    const conclusao = fonte.indexOf("runLog.info('turno do agente concluído'", fechamento);
+    expect(fechamento).toBeGreaterThan(-1);
+    expect(conclusao).toBeGreaterThan(fechamento);
+    const trecho = fonte.slice(fechamento - 600, conclusao);
+    expect(trecho).toContain("liveJob().kind === 'inbound_turn'");
+    expect(trecho).toContain('despedidaSimples(currentInboundText');
+    expect(trecho).toContain("item.kind === 'sent'");
+    expect(trecho).toContain("action: 'conversation.closed'");
+  });
 });
