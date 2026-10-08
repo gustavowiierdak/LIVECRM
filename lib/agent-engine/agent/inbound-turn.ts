@@ -3118,7 +3118,7 @@ async function executarTurnoDoAgente(
             ok: false,
             error: {
               code: 'identidade_financeira_nao_confirmada',
-              message: 'A identidade não foi confirmada. Não prometa consulta, envio ou retorno; a conversa foi encaminhada para uma pessoa.',
+              message: 'A identidade não foi confirmada. Não prometa consulta, envio ou retorno e não mande outra mensagem neste turno. O sistema está tratando a passagem para uma pessoa.',
             },
           };
         }
