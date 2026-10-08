@@ -125,6 +125,30 @@ describe("confirmação de documento no turno", () => {
     expect(JSON.stringify(resposta)).not.toContain(CPF);
   });
 
+  it("aceita CPF encontrado no IXC para fatura mesmo com outro telefone", async () => {
+    const { ctx } = contexto();
+    vi.mocked(buscarClienteIxc).mockResolvedValue({
+      id: "42",
+      razao: "Titular",
+      fantasia: null,
+      ativo: "S",
+      telefone_celular: "(62) 98888-7777",
+      whatsapp: null,
+    });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF, "fatura")).resolves.toEqual({
+      ok: true,
+      document: CPF,
+    });
+  });
+
+  it("não aceita CPF ausente no IXC nem para fatura", async () => {
+    const { ctx } = contexto();
+    vi.mocked(buscarClienteIxc).mockResolvedValue(null);
+    await expect(confirmarDocumentoDoTurno(ctx, CPF, "fatura")).resolves.toMatchObject({
+      resposta: { erro: "cpf_nao_confirmado" },
+    });
+  });
+
   it("recusa identidade sem telefone de canal, sem turno real ou com IXC desligado", async () => {
     for (const input of [
       { waIdentity: "lid:123" },

@@ -4127,7 +4127,7 @@ async function executarTurnoDoAgente(
                             log: runLog,
                           },
                           {
-                            por_que: 'A confirmação automática do documento com o número deste atendimento falhou.',
+                            por_que: 'A confirmação automática do documento para a consulta solicitada falhou.',
                             o_que_tentei: [{
                               o_que: name === 'crm_list_bemobi_invoices'
                                 ? 'Consultar as faturas com confirmação de identidade'

@@ -1,8 +1,8 @@
 /**
  * Ferramentas financeiras da Bemobi/7AZ.
  *
- * A leitura exige CPF já vinculado ao contato ou número da conversa confirmado
- * no IXC para o mesmo CPF. O valor é retirado da auditoria. O envio de PIX/boleto
+ * A leitura exige CPF já vinculado ao contato ou encontrado no IXC durante
+ * um turno WhatsApp real. O valor é retirado da auditoria. O envio de PIX/boleto
  * é determinístico: o modelo escolhe fatura e formato, mas nunca recebe o
  * código de pagamento; o handler busca e envia diretamente ao cliente.
  */
@@ -92,7 +92,7 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
   name: "crm_list_bemobi_invoices",
   description:
     "Consulta as faturas do cliente atual na Bemobi. Use somente depois que o cliente informar o CPF. " +
-    "O CPF deve estar vinculado ao contato ou ter o número desta conversa confirmado no IXC; nunca tente o documento de outra pessoa.",
+    "O CPF deve estar vinculado ao contato ou ser encontrado no IXC neste turno; nunca tente o documento de outra pessoa.",
   inputSchema: listarInputShape,
   category: "read",
   requiresRole: "agent",
@@ -105,7 +105,7 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
     return r.total === 0 ? "nenhuma_fatura" : null;
   },
   handler: async (input, ctx) => {
-    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
+    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document, "fatura");
     if (!confirmado.ok) return confirmado.resposta;
 
     const integracao = await carregarIntegracaoBemobi(ctx.supabase, ctx.organizationId, "invoices");
@@ -182,7 +182,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         mensagem: "Informe uma chave de idempotência antes de enviar o pagamento.",
       };
     }
-    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
+    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document, "fatura");
     if (!confirmado.ok) return confirmado.resposta;
     const { data: conversa } = await ctx.supabase
       .from("conversations")

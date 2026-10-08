@@ -5,7 +5,7 @@ import { listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/cli
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
 import { depsDoRitmo, registrarEnvioPorToken, segurarEnvioPorToken } from "@/lib/messaging/ritmo-do-envio-por-token";
 
-import { crmSendBemobiPayment } from "./bemobi";
+import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
 import type { McpContext } from "../types";
@@ -123,12 +123,21 @@ describe("envio financeiro Bemobi", () => {
     } as never);
   });
 
+  it("consulta faturas com a política de CPF do financeiro", async () => {
+    const { ctx } = contexto();
+    await expect(crmListBemobiInvoices.handler({ document: INPUT.document }, ctx)).resolves.toMatchObject({
+      total: 1,
+    });
+    expect(confirmarDocumentoDoTurno).toHaveBeenCalledWith(ctx, INPUT.document, "fatura");
+  });
+
   it("reserva antes de enviar e usa chave do job, não a sugerida pelo modelo", async () => {
     const { ctx, insert, update } = contexto();
     const resposta = await crmSendBemobiPayment.handler(
       { ...INPUT, idempotency_key: "chave-arbitraria-do-modelo" }, ctx,
     );
     expect(resposta).toMatchObject({ message_id: "mensagem-1", status: "sent" });
+    expect(confirmarDocumentoDoTurno).toHaveBeenCalledWith(ctx, INPUT.document, "fatura");
     expect(insert).toHaveBeenCalledTimes(1);
     expect(insert.mock.calls[0]?.[0].key).toMatch(/^bemobi:[a-f0-9]{64}$/);
     expect(update).toHaveBeenCalledTimes(1);

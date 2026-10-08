@@ -22,18 +22,20 @@ const RECUSA_IDENTIDADE = {
   resposta: {
     erro: "cpf_nao_confirmado",
     mensagem:
-      "Não foi possível confirmar o documento e o número deste atendimento com segurança. Encaminhe ao atendimento humano sem consultar ou enviar faturas.",
+      "Não foi possível confirmar o documento neste atendimento com segurança. Encaminhe ao atendimento humano sem consultar ou enviar faturas.",
   },
 };
 
 /**
- * Só aceita CPF já associado ao contato ou CPF cujo celular/WhatsApp no IXC
- * coincide com a identidade numérica da conversa recebida pelo canal.
+ * Para faturas, aceita CPF já associado ao contato ou encontrado no IXC em
+ * um turno WhatsApp real. Para cadastro/contratos, exige também que o telefone
+ * no IXC coincida com a identidade numérica da conversa.
  * A checagem externa é efêmera: não grava CPF informado no chat no cadastro.
  */
 export async function confirmarDocumentoDoTurno(
   ctx: McpContext,
   informado: string,
+  finalidade: "cadastro" | "fatura" = "cadastro",
 ): Promise<DocumentoConfirmado> {
   if (!ctx.contatoDoTurno) {
     return {
@@ -71,7 +73,7 @@ export async function confirmarDocumentoDoTurno(
     };
   }
   if (!contato.cpf_hash) {
-    // Só o contexto real de turno pode acionar a confirmação por telefone;
+    // Só o contexto real de turno pode acionar a confirmação via IXC;
     // um caller MCP externo não escolhe a identidade do atendimento.
     if (!ctx.sourceJobId || !ctx.conversationIdDoTurno || !contato.wa_identity?.startsWith("phone:")) {
       return RECUSA_IDENTIDADE;
@@ -102,6 +104,9 @@ export async function confirmarDocumentoDoTurno(
     try {
       const cliente = await buscarClienteIxc(integracao.baseUrl, integracao.token, documento);
       if (!cliente) return RECUSA_IDENTIDADE;
+      // Política da fatura: o CPF informado neste turno WhatsApp basta quando
+      // o IXC confirma o cadastro. Não estender às consultas operacionais.
+      if (finalidade === "fatura") return { ok: true, document: documento };
       const telefones = [cliente.whatsapp, cliente.telefone_celular]
         .map(telefoneBrasileiro)
         .filter((numero): numero is string => !!numero);
