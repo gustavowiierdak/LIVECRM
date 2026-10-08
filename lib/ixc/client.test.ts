@@ -51,6 +51,8 @@ describe("cliente IXC", () => {
             cnpj_cpf: "123.456.789-09",
             razao: "Cliente",
             ativo: "S",
+            telefone_celular: "(62) 99999-8888",
+            whatsapp: "62999998888",
             segredo: "não expor",
           },
         ],
@@ -63,6 +65,8 @@ describe("cliente IXC", () => {
       razao: "Cliente",
       fantasia: undefined,
       ativo: "S",
+      telefone_celular: "(62) 99999-8888",
+      whatsapp: "62999998888",
     });
     const chamada = transportar.mock.calls[0]?.[0];
     expect(JSON.parse(chamada.body)).toMatchObject({

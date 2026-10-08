@@ -206,6 +206,8 @@ const clienteIxcSchema = z
     razao: z.string().nullish(),
     fantasia: z.string().nullish(),
     ativo: z.string().nullish(),
+    telefone_celular: z.string().nullish(),
+    whatsapp: z.string().nullish(),
   })
   .passthrough();
 const contratoIxcSchema = z
@@ -222,7 +224,7 @@ const contratoIxcSchema = z
 
 export type IxcCustomer = Pick<
   z.infer<typeof clienteIxcSchema>,
-  "id" | "razao" | "fantasia" | "ativo"
+  "id" | "razao" | "fantasia" | "ativo" | "telefone_celular" | "whatsapp"
 >;
 export type IxcContract = z.infer<typeof contratoIxcSchema>;
 
@@ -325,6 +327,8 @@ export async function buscarClienteIxc(
           razao: parsed.data.razao,
           fantasia: parsed.data.fantasia,
           ativo: parsed.data.ativo,
+          telefone_celular: parsed.data.telefone_celular,
+          whatsapp: parsed.data.whatsapp,
         };
       }
     }

@@ -6,7 +6,7 @@ export const TOOLS_BEMOBI = declararTools([
     category: "read",
     rotulo: "Consultar faturas na Bemobi",
     explicacao:
-      "Confere as cobranças do cliente atual na Bemobi depois que o CPF dele coincide com o documento já confirmado no cadastro.",
+      "Confere as cobranças na Bemobi após verificar o CPF no cadastro ou confirmar o número da conversa no IXC.",
     oQueToca: "Faturas do assinante",
     risco: "seguro",
     pacotes: ["atender"],

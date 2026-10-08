@@ -14,7 +14,7 @@ const inputShape = {
     .trim()
     .min(11)
     .max(18)
-    .describe("CPF informado e confirmado pelo cliente deste atendimento."),
+    .describe("CPF informado no atendimento e validado pelo cadastro ou pelo número da conversa."),
 };
 
 function mensagemIntegracao(reason: string) {

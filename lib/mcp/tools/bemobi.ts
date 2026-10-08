@@ -1,8 +1,8 @@
 /**
  * Ferramentas financeiras da Bemobi/7AZ.
  *
- * A leitura aceita o CPF apenas para confirmar o mesmo documento já vinculado
- * ao contato do turno. O valor é retirado da auditoria. O envio de PIX/boleto
+ * A leitura exige CPF já vinculado ao contato ou número da conversa confirmado
+ * no IXC para o mesmo CPF. O valor é retirado da auditoria. O envio de PIX/boleto
  * é determinístico: o modelo escolhe fatura e formato, mas nunca recebe o
  * código de pagamento; o handler busca e envia diretamente ao cliente.
  */
@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
+import { hashDaColuna, hashLido } from "@/lib/api/idempotency";
 import { idDePagamentoBemobi, listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
 import {
@@ -19,11 +20,47 @@ import {
 } from "@/lib/messaging/ritmo-do-envio-por-token";
 import { sendMessageSchema } from "@/lib/schemas/messaging";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/logger";
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
-import type { McpToolDefinition } from "../types";
+import type { McpContext, McpToolDefinition } from "../types";
 
 const ENDPOINT_ENVIO = "mcp:crm_send_bemobi_payment";
+const TITULO_REVISAO = "Envio financeiro precisa de revisão";
+
+/** Uma reserva sem recibo não morre em silêncio nem provoca reenvio automático. */
+async function avisarRevisaoDoEnvio(ctx: McpContext, conversationId: string): Promise<void> {
+  try {
+    const { data: aberto, error: erroBusca } = await ctx.supabase
+      .from("agent_inbox_items")
+      .select("id")
+      .eq("organization_id", ctx.organizationId)
+      .eq("kind", "other")
+      .eq("ref_kind", "conversation")
+      .eq("ref_id", conversationId)
+      .eq("status", "open")
+      .eq("title", TITULO_REVISAO)
+      .limit(1)
+      .maybeSingle();
+    if (erroBusca) throw erroBusca;
+    if (aberto) return;
+    const { error: erroInsert } = await ctx.supabase.from("agent_inbox_items").insert({
+      organization_id: ctx.organizationId,
+      kind: "other",
+      severity: "warn",
+      title: TITULO_REVISAO,
+      body: "Confira na conversa e no canal se a cobrança chegou antes de tentar um novo envio.",
+      ref_kind: "conversation",
+      ref_id: conversationId,
+    });
+    if (erroInsert) throw erroInsert;
+  } catch {
+    logger.warn("[bemobi.envio] aviso de revisão indisponível", {
+      organizationId: ctx.organizationId,
+      conversationId,
+    });
+  }
+}
 
 function hashRequest(input: Record<string, unknown>) {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
@@ -55,7 +92,7 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
   name: "crm_list_bemobi_invoices",
   description:
     "Consulta as faturas do cliente atual na Bemobi. Use somente depois que o cliente informar o CPF. " +
-    "O CPF precisa coincidir com o documento já confirmado no cadastro deste contato; nunca tente o documento de outra pessoa.",
+    "O CPF deve estar vinculado ao contato ou ter o número desta conversa confirmado no IXC; nunca tente o documento de outra pessoa.",
   inputSchema: listarInputShape,
   category: "read",
   requiresRole: "agent",
@@ -111,7 +148,8 @@ const enviarInputShape = {
     .describe("O mesmo CPF confirmado usado para listar as faturas deste cliente."),
   invoice_id: z.string().trim().min(1).max(100),
   method: z.enum(["pix", "boleto", "pdf", "link"]),
-  idempotency_key: z.string().min(1).max(200).describe("Chave estável run_id+fatura+método."),
+  idempotency_key: z.string().min(1).max(200).optional()
+    .describe("Só para chamadas externas; no turno de IA a chave é gerada pelo sistema."),
 };
 
 function valorFormatado(valor: number | null | undefined) {
@@ -123,13 +161,27 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
   name: "crm_send_bemobi_payment",
   description:
     "Busca na Bemobi e envia diretamente ao cliente atual o PIX, a linha do boleto, o PDF ou o link de pagamento de uma fatura já consultada. " +
-    "O código financeiro não é devolvido ao modelo. Exige idempotency_key para não duplicar o envio.",
+    "O código financeiro não é devolvido ao modelo. O sistema gera a chave de idempotência do turno para não duplicar o envio.",
   inputSchema: enviarInputShape,
   category: "write",
   requiresRole: "agent",
   requiresScope: "mcp:write",
-  redigirParaAuditoria: (args) => ({ ...args, document: "[redigido]" }),
+  redigirParaAuditoria: (args) => ({ ...args, document: "[redigido]", idempotency_key: "[redigido]" }),
   handler: async (input, ctx) => {
+    const chaveIdempotencia = ctx.sourceJobId
+      ? `bemobi:${hashRequest({
+          job_id: ctx.sourceJobId,
+          conversation_id: input.conversation_id,
+          invoice_id: input.invoice_id,
+          method: input.method,
+        })}`
+      : input.idempotency_key ?? ctx.idempotencyKey;
+    if (!chaveIdempotencia) {
+      return {
+        erro: "idempotencia_obrigatoria",
+        mensagem: "Informe uma chave de idempotência antes de enviar o pagamento.",
+      };
+    }
     const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
     if (!confirmado.ok) return confirmado.resposta;
     const { data: conversa } = await ctx.supabase
@@ -172,15 +224,6 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       return { erro: integracao.reason, mensagem: mensagemIntegracao(integracao.reason) };
     }
 
-    const { data: cached } = await ctx.supabase
-      .from("idempotency_keys")
-      .select("response_body")
-      .eq("organization_id", ctx.organizationId)
-      .eq("endpoint", ENDPOINT_ENVIO)
-      .eq("key", input.idempotency_key)
-      .maybeSingle();
-    if (cached) return { ...(cached.response_body as Record<string, unknown>), deduplicated: true };
-
     let dados;
     try {
       dados = await obterDadosPagamentoBemobi(integracao.apiKey, input.invoice_id);
@@ -220,12 +263,58 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       };
     }
 
-    const parsed = sendMessageSchema.parse({ conversation_id: input.conversation_id, ...envio });
+    const requestHash = hashRequest({
+      conversation_id: input.conversation_id,
+      invoice_id: input.invoice_id,
+      method: input.method,
+    });
+    // Um veto de ritmo acontece ANTES da reserva: ainda não houve envio e a
+    // próxima tentativa precisa continuar livre para executar.
     const ritmo = await depsDoRitmo(createAdminClient());
     const segurado = await segurarEnvioPorToken(ritmo, {
       organizationId: ctx.organizationId,
       conversationId: input.conversation_id,
       requestId: ctx.requestId,
+    });
+    // Reservar ANTES do efeito impede dois turnos concorrentes de enviarem a
+    // mesma cobrança. Uma reserva sem recibo exige revisão, nunca reenvio cego.
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const hashNoBanco = hashDaColuna(requestHash);
+    const { error: reservaErro } = await ctx.supabase.from("idempotency_keys").insert({
+      organization_id: ctx.organizationId,
+      endpoint: ENDPOINT_ENVIO,
+      key: chaveIdempotencia,
+      request_hash: hashNoBanco,
+      response_body: null,
+      status_code: null,
+      expires_at: expiresAt,
+    });
+    if (reservaErro) {
+      if (reservaErro.code !== "23505") {
+        return { erro: "envio_indisponivel", mensagem: "Não foi possível reservar o envio com segurança." };
+      }
+      const { data: anterior } = await ctx.supabase
+        .from("idempotency_keys")
+        .select("request_hash,response_body")
+        .eq("organization_id", ctx.organizationId)
+        .eq("endpoint", ENDPOINT_ENVIO)
+        .eq("key", chaveIdempotencia)
+        .maybeSingle<{ request_hash: string; response_body: Record<string, unknown> | null }>();
+      if (!anterior || hashLido(anterior.request_hash) !== requestHash) {
+        return { erro: "chave_em_conflito", mensagem: "Esta chave já pertence a outro pedido." };
+      }
+      if (anterior.response_body) return { ...anterior.response_body, deduplicated: true };
+      await avisarRevisaoDoEnvio(ctx, input.conversation_id);
+      return {
+        erro: "envio_em_revisao",
+        mensagem: "O envio desta fatura está em processamento ou precisa de revisão humana. Não reenvie.",
+      };
+    }
+
+    const parsed = sendMessageSchema.parse({
+      conversation_id: input.conversation_id,
+      ...envio,
+      metadata: { idempotency_key: chaveIdempotencia },
     });
     const message = await sendMessageHandler(
       ctx.supabase,
@@ -240,20 +329,12 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       method: input.method,
       sent_at: message.sent_at,
     };
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await ctx.supabase.from("idempotency_keys").insert({
-      organization_id: ctx.organizationId,
-      endpoint: ENDPOINT_ENVIO,
-      key: input.idempotency_key,
-      request_hash: hashRequest({
-        conversation_id: input.conversation_id,
-        invoice_id: input.invoice_id,
-        method: input.method,
-      }),
-      response_body: response,
-      status_code: 200,
-      expires_at: expiresAt,
-    });
+    const { error: reciboErro } = await ctx.supabase.from("idempotency_keys")
+      .update({ response_body: response, status_code: 200 })
+      .eq("organization_id", ctx.organizationId)
+      .eq("endpoint", ENDPOINT_ENVIO)
+      .eq("key", chaveIdempotencia);
+    if (reciboErro) await avisarRevisaoDoEnvio(ctx, input.conversation_id);
     return response;
   },
 };
