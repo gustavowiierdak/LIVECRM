@@ -22,7 +22,7 @@
     { "id": "ixc", "lane": "externo", "label": "POST /webservice/v1/cliente com rp=1" },
     { "id": "status", "lane": "humano", "label": "Último teste visível e ação de tentar novamente" },
     { "id": "audit", "lane": "db", "label": "api_audit_log sem URL sensível, token nem CPF" },
-    { "id": "turno", "lane": "app", "label": "Contato do turno + CPF hash ou identidade WhatsApp" },
+    { "id": "turno", "lane": "app", "label": "Contato e conversa do job inbound; origem do cadastro não prova o canal" },
     { "id": "identidade", "lane": "app", "label": "CPF informado só é liberado se telefone cadastrado no IXC coincidir com a conversa" },
     { "id": "tools", "lane": "app", "label": "Tools read-only: cliente e contratos com projeção mínima" },
     { "id": "agente", "lane": "humano", "label": "Rascunhos Financeiro, Suporte e Relacionamento; publicação manual" }
@@ -44,7 +44,7 @@
     { "id": "e14", "from": "client", "to": "tools", "label": "Valida CPF e vínculo do contrato" },
     { "id": "e15", "from": "tools", "to": "agente", "label": "Resposta mínima; erro e vazio rastreáveis" },
     { "id": "e16", "from": "tools", "to": "audit", "label": "Argumento com CPF redigido" },
-    { "id": "e17", "from": "turno", "to": "identidade", "label": "Sem hash, usa número de origem do canal" },
+    { "id": "e17", "from": "turno", "to": "identidade", "label": "Sem hash, exige sessão WhatsApp e telefone do contato desta conversa" },
     { "id": "e18", "from": "identidade", "to": "client", "label": "Busca cliente pelo CPF apenas para comparar telefones" },
     { "id": "e19", "from": "client", "to": "identidade", "label": "Telefone confirmado ou falha fechada" }
   ]

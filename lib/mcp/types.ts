@@ -19,6 +19,8 @@ export interface McpContext {
   idempotencyKey?: string;
   /** Job estável do runtime in-process; nunca vem dos argumentos da tool. */
   sourceJobId?: string;
+  /** Conversa do inbound WhatsApp, derivada do job real pelo runtime; nunca da tool. */
+  conversationIdDoTurno?: string;
   /**
    * O CONTATO que este turno atende — contexto de CONFIANÇA do handler.
    *

@@ -1,5 +1,6 @@
 import { hashCpf, normalizeCpf } from "@/lib/contacts/cpf";
 import { samePhone } from "@/lib/channels/phone-variants";
+import { sessaoTransportaWhatsapp } from "@/lib/channels/sessao-transporta-whatsapp";
 import { buscarClienteIxc } from "@/lib/ixc/client";
 import { carregarIntegracaoIxc } from "@/lib/ixc/integration";
 
@@ -55,10 +56,10 @@ export async function confirmarDocumentoDoTurno(
   }
   const { data: contato } = await ctx.supabase
     .from("contacts")
-    .select("cpf_hash,wa_identity,source")
+    .select("cpf_hash,wa_identity")
     .eq("organization_id", ctx.organizationId)
     .eq("id", ctx.contatoDoTurno)
-    .maybeSingle<{ cpf_hash: string | null; wa_identity: string | null; source: string }>();
+    .maybeSingle<{ cpf_hash: string | null; wa_identity: string | null }>();
   if (!contato) return RECUSA_IDENTIDADE;
   if (contato.cpf_hash && hashCpf(documento) !== contato.cpf_hash) {
     return {
@@ -72,9 +73,28 @@ export async function confirmarDocumentoDoTurno(
   if (!contato.cpf_hash) {
     // Só o contexto real de turno pode acionar a confirmação por telefone;
     // um caller MCP externo não escolhe a identidade do atendimento.
-    if (!ctx.sourceJobId || contato.source !== "whatsapp" || !contato.wa_identity?.startsWith("phone:")) {
+    if (!ctx.sourceJobId || !ctx.conversationIdDoTurno || !contato.wa_identity?.startsWith("phone:")) {
       return RECUSA_IDENTIDADE;
     }
+    // `contacts.source` registra o primeiro cadastro: um contato importado
+    // continua com essa origem depois de conversar pelo WhatsApp. A prova do
+    // canal precisa vir da conversa que acordou ESTE job, não dessa coluna.
+    const { data: conversa } = await ctx.supabase
+      .from("conversations")
+      .select("contact_id,channel_session_id")
+      .eq("organization_id", ctx.organizationId)
+      .eq("id", ctx.conversationIdDoTurno)
+      .maybeSingle<{ contact_id: string; channel_session_id: string | null }>();
+    if (conversa?.contact_id !== ctx.contatoDoTurno || !conversa.channel_session_id) {
+      return RECUSA_IDENTIDADE;
+    }
+    const { data: sessao } = await ctx.supabase
+      .from("channel_sessions")
+      .select("provider")
+      .eq("organization_id", ctx.organizationId)
+      .eq("id", conversa.channel_session_id)
+      .maybeSingle<{ provider: string }>();
+    if (!sessaoTransportaWhatsapp(sessao?.provider)) return RECUSA_IDENTIDADE;
     const numeroDaConversa = telefoneBrasileiro(contato.wa_identity.slice("phone:".length));
     if (!numeroDaConversa) return RECUSA_IDENTIDADE;
     const integracao = await carregarIntegracaoIxc(ctx.supabase, ctx.organizationId, "customers");

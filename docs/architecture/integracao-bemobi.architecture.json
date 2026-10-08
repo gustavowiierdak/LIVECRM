@@ -19,7 +19,7 @@
     { "id": "settings", "lane": "humano", "label": "Dados e acesso › Bemobi: credenciais, recursos e teste" },
     { "id": "team", "lane": "humano", "label": "Cinco agentes e roteador nascem em rascunho" },
     { "id": "vault", "lane": "db", "label": "erp_integrations por organização; chave+segredo cifrados" },
-    { "id": "contact", "lane": "db", "label": "Contato do turno: hash do CPF ou identidade WhatsApp" },
+    { "id": "contact", "lane": "db", "label": "Contato do turno: hash do CPF ou telefone vinculado à conversa WhatsApp inbound" },
     { "id": "identity", "lane": "app", "label": "Se não há hash, confirma o telefone do IXC para o CPF informado; divergência para humano" },
     { "id": "invoice_tool", "lane": "agente", "label": "Consultar faturas: CPF redigido no audit e preso ao contato confirmado" },
     { "id": "payment_tool", "lane": "app", "label": "Valida fatura, reserva chave do job antes do envio e registra recibo" },

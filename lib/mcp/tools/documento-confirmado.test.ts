@@ -10,6 +10,9 @@ import type { McpContext } from "../types";
 
 vi.mock("@/lib/ixc/client", () => ({ buscarClienteIxc: vi.fn() }));
 vi.mock("@/lib/ixc/integration", () => ({ carregarIntegracaoIxc: vi.fn() }));
+vi.mock("@/lib/channels/sessao-transporta-whatsapp", () => ({
+  sessaoTransportaWhatsapp: (provider: string) => provider === "mensagens",
+}));
 
 const CPF = "12345678909";
 const IXC = { ok: true as const, baseUrl: "https://ixc.example", token: "secreto" };
@@ -19,6 +22,9 @@ function contexto(input: {
   waIdentity?: string | null;
   source?: string;
   sourceJobId?: string;
+  conversationIdDoTurno?: string;
+  conversationContactId?: string;
+  sessionProvider?: string;
 } = {}) {
   const contato = {
     cpf_hash: input.cpfHash ?? null,
@@ -32,14 +38,36 @@ function contexto(input: {
   };
   consulta.select.mockReturnValue(consulta);
   consulta.eq.mockReturnValue(consulta);
-  const from = vi.fn().mockReturnValue(consulta);
+  const conversa = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: { contact_id: input.conversationContactId ?? "contato-1", channel_session_id: "sessao-1" },
+    }),
+  };
+  conversa.select.mockReturnValue(conversa);
+  conversa.eq.mockReturnValue(conversa);
+  const sessao = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: { provider: input.sessionProvider ?? "mensagens" } }),
+  };
+  sessao.select.mockReturnValue(sessao);
+  sessao.eq.mockReturnValue(sessao);
+  const from = vi.fn((table: string) => {
+    if (table === "contacts") return consulta;
+    if (table === "conversations") return conversa;
+    if (table === "channel_sessions") return sessao;
+    throw new Error(`tabela inesperada: ${table}`);
+  });
   const ctx = {
     organizationId: "org-1",
     contatoDoTurno: "contato-1",
     sourceJobId: input.sourceJobId === "ausente" ? undefined : "job-1",
+    conversationIdDoTurno: input.conversationIdDoTurno === "ausente" ? undefined : "conversa-1",
     supabase: { from },
   } as unknown as McpContext;
-  return { ctx, from, consulta };
+  return { ctx, from, consulta, conversa, sessao };
 }
 
 describe("confirmação de documento no turno", () => {
@@ -63,7 +91,7 @@ describe("confirmação de documento no turno", () => {
   });
 
   it("confirma sem gravar CPF quando o número recebido coincide com o IXC", async () => {
-    const { ctx, consulta } = contexto();
+    const { ctx, consulta, conversa, sessao } = contexto({ source: "import" });
     vi.mocked(buscarClienteIxc).mockResolvedValue({
       id: "42",
       razao: "Cliente",
@@ -77,6 +105,8 @@ describe("confirmação de documento no turno", () => {
     expect(buscarClienteIxc).toHaveBeenCalledWith(IXC.baseUrl, IXC.token, CPF);
     expect(consulta.eq).toHaveBeenCalledWith("organization_id", "org-1");
     expect(consulta.eq).toHaveBeenCalledWith("id", "contato-1");
+    expect(conversa.eq).toHaveBeenCalledWith("id", "conversa-1");
+    expect(sessao.eq).toHaveBeenCalledWith("id", "sessao-1");
     expect(consulta).not.toHaveProperty("update");
   });
 
@@ -99,7 +129,10 @@ describe("confirmação de documento no turno", () => {
     for (const input of [
       { waIdentity: "lid:123" },
       { sourceJobId: "ausente" },
-      { source: "import" },
+      { conversationIdDoTurno: "ausente" },
+      { conversationContactId: "outro-contato" },
+      { sessionProvider: "social" },
+      { sessionProvider: "voz" },
     ]) {
       const { ctx } = contexto(input);
       await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toMatchObject({
