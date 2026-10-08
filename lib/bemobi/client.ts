@@ -17,7 +17,7 @@ const CAMPOS_DIAGNOSTICO = [
   "erpInvoiceId", "uniqueId", "dueDate", "amount", "erpContractId",
   "id", "invoiceId", "invoice_id", "value", "total", "situacao",
 ] as const;
-const CAMPOS_OBRIGATORIOS_FATURA = ["erpInvoiceId", "uniqueId", "amount", "status"] as const;
+const CAMPOS_OBRIGATORIOS_FATURA = ["erpInvoiceId", "amount", "status"] as const;
 
 export type BemobiErrorCode =
   | "invalid_document"
@@ -38,7 +38,7 @@ export class BemobiConnectionError extends Error {
 const faturaSchema = z
   .object({
     erpInvoiceId: z.union([z.string(), z.number()]).transform(String),
-    uniqueId: z.string().min(1),
+    uniqueId: z.string().min(1).nullable().optional(),
     dueDate: z.string().nullable().optional(),
     formatedDueDate: z.string().nullable().optional(),
     amount: z.number(),
@@ -68,6 +68,11 @@ const dadosPagamentoSchema = z
 
 export type BemobiInvoice = z.infer<typeof faturaSchema>;
 export type BemobiPaymentData = z.infer<typeof dadosPagamentoSchema>;
+
+/** A API de PDF e pagamento usa erpInvoiceId, mesmo quando uniqueId vem nulo. */
+export function idDePagamentoBemobi(fatura: BemobiInvoice): string {
+  return fatura.erpInvoiceId;
+}
 
 export interface BemobiTransportInput {
   url: URL;

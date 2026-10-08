@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
-import { listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
+import { idDePagamentoBemobi, listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
 import { hashCpf, normalizeCpf } from "@/lib/contacts/cpf";
 import {
@@ -132,7 +132,7 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
       return {
         total: faturas.length,
         faturas: faturas.map((fatura) => ({
-          invoice_id: fatura.uniqueId,
+          invoice_id: idDePagamentoBemobi(fatura),
           erp_invoice_id: fatura.erpInvoiceId,
           due_date: fatura.dueDate ?? null,
           formatted_due_date: fatura.formatedDueDate ?? null,
@@ -204,7 +204,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     let faturaPertenceAoContato = false;
     try {
       const faturas = await listarFaturasBemobi(consulta.apiKey, confirmado.document);
-      faturaPertenceAoContato = faturas.some((fatura) => fatura.uniqueId === input.invoice_id);
+      faturaPertenceAoContato = faturas.some((fatura) => idDePagamentoBemobi(fatura) === input.invoice_id);
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",

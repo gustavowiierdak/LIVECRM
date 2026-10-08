@@ -32,7 +32,7 @@
     { "id": "e3", "from": "contact", "to": "invoice_tool", "label": "Confere o hash do documento" },
     { "id": "e4", "from": "vault", "to": "invoice_tool", "label": "Decifra só no servidor" },
     { "id": "e5", "from": "invoice_tool", "to": "bemobi", "label": "GET faturas por txId" },
-    { "id": "e6", "from": "bemobi", "to": "payment_tool", "label": "Dados do meio escolhido" },
+    { "id": "e6", "from": "bemobi", "to": "payment_tool", "label": "erpInvoiceId da fatura confirmada consulta dados do meio escolhido" },
     { "id": "e7", "from": "payment_tool", "to": "channel", "label": "Envia sem devolver o código ao modelo" },
     { "id": "e8", "from": "payment_tool", "to": "audit", "label": "Registra efeito e deduplicação" },
     { "id": "e9", "from": "settings", "to": "audit", "label": "Salva, testa e desconecta com rastro" },

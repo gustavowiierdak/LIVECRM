@@ -3303,5 +3303,5 @@ Spec: `tests/e2e/mapas-em-provedores.spec.ts`.
 
 | # | Caso | Expectativa | Resultado |
 |---|---|---|---|
-| J42.1 | Testar com um CPF/CNPJ quando a Bemobi devolve JSON fora do contrato | a tela diz a estrutura recebida (tipos e campos conhecidos), não o documento, chave nem valores da fatura | **PASS unitário** — `lib/bemobi/client.test.ts`; confirmação pela tela com uma resposta real da Bemobi ainda pendente |
-| J42.2 | Corrigir a interpretação a partir da estrutura real | retestar com o mesmo documento pela tela e confirmar uma listagem válida sem expor o dado no diagnóstico | **PENDENTE** — depende do novo teste da conexão já configurada |
+| J42.1 | Testar com um CPF/CNPJ quando a Bemobi devolve JSON fora do contrato | a tela diz a estrutura recebida (tipos e campos conhecidos), não o documento, chave nem valores da fatura | **PASS unitário** — `lib/bemobi/client.test.ts`; resposta real diagnosticada na VPS com `uniqueId=nulo` (2026-10-08) |
+| J42.2 | Corrigir a interpretação a partir da estrutura real | aceita `uniqueId` nulo e usa `erpInvoiceId` nas APIs de PDF e pagamento, após conferir a fatura na lista do CPF | **PASS unitário** — `lib/bemobi/client.test.ts`; reteste pela tela com o mesmo documento ainda pendente |
