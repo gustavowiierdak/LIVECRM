@@ -76,6 +76,39 @@ describe("cliente IXC", () => {
     });
   });
 
+  it("tenta o CPF com máscara quando o IXC omite registros para total zero", async () => {
+    const transportar = vi
+      .fn()
+      .mockResolvedValueOnce(JSON.stringify({ page: "1", total: 0 }))
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          page: "1",
+          total: "1",
+          registros: [{ id: "42", cnpj_cpf: "123.456.789-09" }],
+        }),
+      );
+    await expect(
+      buscarClienteIxc("https://ixc.example", "token", "12345678909", transportar),
+    ).resolves.toMatchObject({ id: "42" });
+    expect(transportar).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(transportar.mock.calls[1]?.[0].body)).toMatchObject({
+      query: "123.456.789-09",
+    });
+  });
+
+  it("aceita resultado vazio sem registros, mas recusa lista ausente com total positivo", async () => {
+    await expect(
+      buscarClienteIxc("https://ixc.example", "token", "12345678909", async () =>
+        JSON.stringify({ page: "1", total: "0" }),
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      buscarClienteIxc("https://ixc.example", "token", "12345678909", async () =>
+        JSON.stringify({ page: "1", total: "1" }),
+      ),
+    ).rejects.toMatchObject({ code: "unexpected_response" });
+  });
+
   it("não devolve cliente de outro CPF mesmo que o IXC o retorne", async () => {
     const transportar = vi.fn().mockResolvedValue(
       JSON.stringify({

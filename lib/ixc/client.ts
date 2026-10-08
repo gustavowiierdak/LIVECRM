@@ -267,12 +267,18 @@ async function consultarRegistrosIxc(
     }
     const resposta = z
       .object({
-        registros: z.array(z.unknown()).max(100),
+        // O IXC real omite `registros` quando `total` é zero. Isso não é
+        // erro: a busca por CPF sem máscara precisa seguir para a máscara.
+        registros: z.array(z.unknown()).max(100).optional(),
         total: z.union([z.string(), z.number()]).optional(),
         type: z.string().optional(),
       })
       .safeParse(json);
     if (!resposta.success || resposta.data.type === "error") {
+      throw new IxcConnectionError("unexpected_response", "O IXC retornou um formato inesperado.");
+    }
+    if (!resposta.data.registros) {
+      if (resposta.data.total === 0 || resposta.data.total === "0") return [];
       throw new IxcConnectionError("unexpected_response", "O IXC retornou um formato inesperado.");
     }
     const total = Number(resposta.data.total ?? resposta.data.registros.length);
