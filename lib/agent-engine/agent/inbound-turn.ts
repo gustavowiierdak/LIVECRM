@@ -2796,6 +2796,11 @@ async function executarTurnoDoAgente(
   // as tools do modelo rodam em passos anteriores do mesmo loop, o valor já está certo
   // quando o modelo decide mandar a resposta.
   let agendaToolCalledThisTurn = false;
+  // Recusa de identidade em consulta financeira/cadastral exige uma pessoa.
+  // A passagem durável silencia o automático nos turnos seguintes; só corrigir
+  // a frase deste turno deixaria o próximo "oi" repetir a promessa vazia.
+  let identidadeFinanceiraRecusada = false;
+  let escalacaoPorIdentidade: Promise<void> | null = null;
   // Lido pelo `casePromiseGate` (#1873): true só depois de `schedule_followup` AGENDAR com
   // sucesso neste turno. Libera apenas a promessa de retorno do próprio assistente.
   let followupAgendadoNesteTurno = false;
@@ -3108,6 +3113,15 @@ async function executarTurnoDoAgente(
     send_message: tool({
       ...AGENT_TOOL_DEFS.send_message,
       execute: async ({ body, produto_codigo }) => {
+        if (identidadeFinanceiraRecusada) {
+          return {
+            ok: false,
+            error: {
+              code: 'identidade_financeira_nao_confirmada',
+              message: 'A identidade não foi confirmada. Não prometa consulta, envio ou retorno; a conversa foi encaminhada para uma pessoa.',
+            },
+          };
+        }
         // CORPO VAZIO NÃO SAI. Medido ao vivo (2026-09-19): o `gpt-4o-mini`
         // chamou `send_message` várias vezes com corpo que virou vazio e o
         // WhatsApp do cliente recebeu bolhas em branco. O schema garante
@@ -4077,6 +4091,76 @@ async function executarTurnoDoAgente(
           mcpCleanup = mcp.cleanup;
           for (const [name, mcpTool] of Object.entries(mcp.tools)) {
             if (name in rawTools) continue;
+            if (
+              (name === 'crm_list_bemobi_invoices' || name === 'crm_get_ixc_customer') &&
+              typeof mcpTool.execute === 'function'
+            ) {
+              const executeOriginal = mcpTool.execute.bind(mcpTool);
+              rawTools[name] = {
+                ...mcpTool,
+                execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                  const resultado = await executeOriginal(...args);
+                  if (
+                    resultado !== null &&
+                    typeof resultado === 'object' &&
+                    'erro' in resultado &&
+                    resultado.erro === 'cpf_nao_confirmado'
+                  ) {
+                    identidadeFinanceiraRecusada = true;
+                    if (!preview) {
+                      escalacaoPorIdentidade ??= (async () => {
+                        // O aviso sai ANTES de force_human: depois a cadeia de envio
+                        // bloquearia até a despedida. A passagem é durável e coloca
+                        // a conversa na fila, inclusive se o aviso não sair.
+                        const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
+                          ...avisoDaEscalacao().base,
+                          motivo: 'outro',
+                        });
+                        const passagem = await applyRequestHumanHandoff(
+                          pool,
+                          { tenantId, leadId, conversationId: input.conversationId },
+                          {
+                            conversationSummary: buildHandoffSummary(previous),
+                            contextoDoTurno: { checkpoint: previous, pendentesDoCliente: inboundsPendentes },
+                            avisoAoLead: aviso,
+                            gatilho: { inboundMessageId: input.inboundMessageId },
+                            log: runLog,
+                          },
+                          {
+                            por_que: 'A confirmação automática do documento com o número deste atendimento falhou.',
+                            o_que_tentei: [{
+                              o_que: name === 'crm_list_bemobi_invoices'
+                                ? 'Consultar as faturas com confirmação de identidade'
+                                : 'Consultar o cadastro com confirmação de identidade',
+                              desfecho: 'Identidade não confirmada; nenhuma fatura foi consultada ou enviada.',
+                            }],
+                            cliente_quer: name === 'crm_list_bemobi_invoices'
+                              ? 'Receber a fatura ou boleto.'
+                              : 'Obter informações do próprio cadastro.',
+                          },
+                        );
+                        if (!passagem.ok) {
+                          runLog.warn('passagem humana recusada após falha de identidade', {
+                            code: passagem.error.code,
+                          });
+                          noteRunError(new Error(`passagem humana recusada: ${passagem.error.code}`));
+                        }
+                      })();
+                      try {
+                        await escalacaoPorIdentidade;
+                      } catch (err) {
+                        noteRunError(err instanceof Error ? err : new Error(String(err)));
+                        runLog.error('passagem humana falhou após recusa de identidade', {
+                          error: err instanceof Error ? err.message : String(err),
+                        });
+                      }
+                    }
+                  }
+                  return resultado;
+                }) as typeof mcpTool.execute,
+              };
+              continue;
+            }
             if (
               (name === 'crm_search_products' || name === 'crm_search_knowledge') &&
               typeof mcpTool.execute === 'function'
