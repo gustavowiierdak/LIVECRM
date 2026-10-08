@@ -240,6 +240,9 @@ jobs:
             suffix=-${{ matrix.arch }},onlatest=true
           tags: |
             type=ref,event=branch
+            # Dispatch de uma branch para homologação precisa de pin imutável:
+            # update.sh --to <sha> instala o código e as quatro imagens do mesmo commit.
+            type=raw,value=${{ github.sha }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             # `enable={{is_default_branch}}` NÃO basta: o metadata-action o
@@ -331,6 +334,7 @@ jobs:
           flavor: latest=false
           tags: |
             type=ref,event=branch
+            type=raw,value=${{ github.sha }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref_type == 'branch' && github.ref_name == 'main' }}

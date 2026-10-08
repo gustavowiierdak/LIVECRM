@@ -1,6 +1,16 @@
 import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
+const appHostname = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_APP_URL
+      ? new URL(process.env.NEXT_PUBLIC_APP_URL).hostname
+      : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
 /** Performance budget (EPIC-12 §S-12.05):
  *  - LCP < 2.5s p75
  *  - CLS < 0.1 p75
@@ -74,6 +84,9 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   poweredByHeader: false,
+  allowedDevOrigins: Array.from(
+    new Set(["localhost", "127.0.0.1", ...(appHostname ? [appHostname] : [])]),
+  ),
   // typedRoutes moved out of experimental in Next 15.5+
   typedRoutes: true,
   experimental: {
@@ -111,7 +124,7 @@ const nextConfig: NextConfig = {
           // notifications=(self): bandeja do SO quando a janela está minimizada.
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(self), geolocation=(), notifications=(self)",
+            value: "camera=(), microphone=(self), geolocation=()",
           },
         ],
       },

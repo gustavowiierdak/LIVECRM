@@ -80,6 +80,8 @@ const ESCRITA_QUE_E_TRABALHO_DE_ATENDENTE: ReadonlyArray<string> = [
   "crm_move_lead_stage",
   // `app/api/v1/messages/` — exige `agent`. Responder cliente é o trabalho do dia.
   "crm_send_whatsapp_message",
+  // Mesmo endpoint de mensagem (agent+) após confirmar CPF, conversa e fatura.
+  "crm_send_bemobi_payment",
   // `app/api/v1/ai/cases/[id]/reply/` — POST exige `agent`. Registrar no chamado
   // é o trabalho de quem atende (paridade medida na integração do papel novo).
   "crm_add_case_note",

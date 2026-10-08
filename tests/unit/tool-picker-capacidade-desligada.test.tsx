@@ -5,7 +5,7 @@
  * `crm_draft_proposal`; sem esta distinção, toda instalação nova via na tela do
  * agente um aviso falso, com o nome interno e um botão "Desligar".
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -66,5 +66,32 @@ describe("ToolPicker — capacidade desligada pela organização", () => {
     abrir(["crm_search_contacts", "crm_que_nao_existe"]);
     await waitFor(() => expect(screen.getByTestId("capacidades-orfas")).toBeTruthy());
     expect(screen.queryByTestId("capacidades-desligadas-pela-organizacao")).toBeNull();
+  });
+
+  it("não oferece capacidade não marcável nem no modo avançado", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        tools: [
+          BUSCA,
+          {
+            ...BUSCA,
+            id: "crm_send_whatsapp_message",
+            rotulo: "Enviar mensagem no WhatsApp",
+            risco: "critico",
+            marcavel: false,
+            motivo_nao_marcavel: "O envio usa outra ferramenta do agente.",
+          },
+        ],
+        desligadas_pela_organizacao: [],
+      },
+    });
+    abrir([]);
+    await waitFor(() => expect(screen.getByTestId("tool-picker")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("toggle-avancado"));
+    const ficha = screen.getByTestId("lista-avancada").querySelector(
+      '[data-testid="capacidade-crm_send_whatsapp_message"]',
+    );
+    expect(ficha?.querySelector("input[type=checkbox]")?.hasAttribute("disabled")).toBe(true);
   });
 });

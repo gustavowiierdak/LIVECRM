@@ -136,6 +136,8 @@ export const CHANNEL_PROVIDER_ZERNIO: ChannelProvider = "zernio";
 export const CHANNEL_PROVIDER_DATAFY: ChannelProvider = "datafy";
 /** Chamada de voz WhatsApp (spec 18). Não transporta mensagem — ver abaixo. */
 export const CHANNEL_PROVIDER_WACALLS: ChannelProvider = "wacalls";
+/** Portal próprio: mensagem passa pelo webchat, não pelo dispatcher de canais. */
+export const CHANNEL_PROVIDER_WEBCHAT: ChannelProvider = "webchat";
 
 /**
  * Os providers por onde MENSAGEM entra e sai — a única lista que responde
@@ -176,13 +178,16 @@ export function transportaMensagem(provider: string | null | undefined): boolean
 }
 
 /**
- * Os providers que ESTE código conhece e que, sabidamente, não conversam.
+ * Os providers que ESTE dispatcher conhece e que não mandam pelo transporte genérico.
  *
  * A diferença para `!transportaMensagem(p)` é a que separa "categoria" de
  * "falha", e ela decide o que o vigia de conexão faz com a linha:
  *
  *   - `wacalls` está aqui: ignorar em silêncio é o certo, e um aviso por sessão
  *     de voz a cada minuto seria ruído perpétuo.
+ *   - `webchat` conversa pelo endpoint e pelas RPCs próprias; incluí-lo aqui
+ *     evita que a sessão sintética seja oferecida como número de saída ou
+ *     vigiada como conexão de provedor externo.
  *   - um provider que o CHECK do banco já aceita e esta imagem ainda não conhece
  *     (o clone que aplicou o baseline antes de puxar a imagem nova) NÃO está
  *     aqui — ele tem de fazer barulho, porque uma conexão sem vigia e sem
@@ -192,7 +197,9 @@ export function transportaMensagem(provider: string | null | undefined): boolean
  * hora de escolher por onde mandar recado, o desconhecido é tão inútil quanto a
  * voz. Aqui a pergunta é outra.
  */
-export const PROVIDERS_SEM_MENSAGEM = ["wacalls"] as const;
+// O webchat conversa pela sessão HTTP própria, não pelo dispatcher de canal.
+// Também não deve ser escolhido como número/transportador nem vigiado pelo WAHA.
+export const PROVIDERS_SEM_MENSAGEM = ["wacalls", "webchat"] as const;
 
 /**
  * Erro de COMPILAÇÃO enquanto sobrar provider fora das duas listas. Provider
@@ -216,4 +223,28 @@ export function capabilitiesOf(provider: ChannelProvider): ChannelCapabilities {
   // barra em compilação; isto barra o que vem do banco em runtime.
   if (!caps) throw new Error(`unknown_channel_provider: ${provider}`);
   return caps;
+}
+
+/** Portal HTTP: conversa livre, sem regras de janela ou transporte externo. */
+const WEBCHAT_CAPABILITIES: ChannelCapabilities = {
+  freeformOutsideWindow: true,
+  requiresTemplates: false,
+  canManageTemplates: false,
+  banRisk: false,
+  minIntervalMs: null,
+  voiceNote: "server-convert",
+  groups: "none",
+  costPerMessage: false,
+  alteraMensagemEnviada: false,
+};
+
+/** Capabilities de uma conversa, inclusive a sessão HTTP interna. */
+export function capabilitiesForConversation(provider: ChannelProvider): ChannelCapabilities {
+  if (provider === "webchat") return WEBCHAT_CAPABILITIES;
+  return capabilitiesOf(provider);
+}
+
+/** Se o turno pode precisar de template para responder neste canal. */
+export function requiresTemplatesForTurn(provider: ChannelProvider): boolean {
+  return capabilitiesForConversation(provider).requiresTemplates;
 }

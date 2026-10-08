@@ -4,8 +4,8 @@
  * ## O defeito que este teste encurta
  *
  * O caso de recusa de `tests/e2e/capacidades-do-agente.spec.ts` clica em
- * "Atender" e espera `/faltam? 1 vaga/`. A aritmética é o seed da spec (11,
- * todas FORA do pacote) somado às 17 do pacote: 28 contra o teto de 27. Quando
+ * "Atender" e espera `/faltam? 1 vaga/`. A aritmética é o seed da spec (7,
+ * todas FORA do pacote) somado às 21 do pacote: 28 contra o teto de 27. Quando
  * uma ferramenta nova entra em `atender` — a #1684 fez exatamente isso — a
  * recusa na tela vira "faltam 2 vagas" e quem repara é o e2e, uns 20 minutos
  * depois, longe da mudança que causou o problema.
@@ -32,6 +32,7 @@ import {
 } from "@/lib/mcp/tools/selecao-por-pacote";
 
 const SPEC_DA_E2E = join(process.cwd(), "tests/e2e/capacidades-do-agente.spec.ts");
+const SCRIPT_DO_SEED = join(process.cwd(), "scripts/seed-e2e-capacidades.ts");
 
 /**
  * O seed lido do ARQUIVO, não importado: a spec roda `loadCreds()` no corpo do
@@ -80,6 +81,14 @@ const EM_ATENDER = CATALOGO_DA_TELA.filter((c) => c.pacotes.includes("atender"))
 );
 
 describe("ligar Atender com o seed da spec excede o teto em exatamente uma vaga", () => {
+  it("o seed executado pela E2E liga exatamente as ferramentas que a spec conta", () => {
+    const fonte = readFileSync(SCRIPT_DO_SEED, "utf8");
+    const bloco = fonte.match(/const TOOLS_LIGADAS = \[([\s\S]*?)\];/);
+    expect(bloco?.[1], "o script precisa declarar TOOLS_LIGADAS").toBeDefined();
+    const ligadas = [...(bloco?.[1] ?? "").matchAll(/^\s*"([^"]+)",?\s*$/gm)].map((m) => m[1]!);
+    expect(ligadas).toEqual(SEED);
+  });
+
   it("leu o seed da spec (guarda de vacuidade)", () => {
     // Um seed vazio faria a conta abaixo medir só o pacote — verde sobre nada.
     expect(SEED.length, "o seed da spec foi lido vazio").toBeGreaterThan(0);
@@ -98,7 +107,7 @@ describe("ligar Atender com o seed da spec excede o teto em exatamente uma vaga"
 
   it("nenhuma ferramenta do seed está DENTRO de Atender", () => {
     // Se uma entrasse, a união seria menor que a soma e a aritmética da spec
-    // (11 + 17) deixaria de descrever o que a tela faz ao clicar.
+    // (7 + 21) deixaria de descrever o que a tela faz ao clicar.
     for (const ferramenta of SEED) {
       expect(
         EM_ATENDER.includes(ferramenta),

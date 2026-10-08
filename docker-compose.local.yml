@@ -84,6 +84,9 @@ services:
 
   waha:
     image: devlikeapro/waha:latest-2026.7.2
+    # A imagem fixada ainda não publica manifest ARM64; Docker Desktop no
+    # Apple Silicon executa a variante x86_64 via emulação para o ambiente local.
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       # 127.0.0.1 e não 0.0.0.0: o dashboard do WAHA está ligado logo abaixo e
@@ -131,6 +134,8 @@ services:
   srh:
     image: hiett/serverless-redis-http@sha256:5b0bb9239fce53abf87b2018a7a0deb9ec7bd900c5360738fe5fbeeb426f9150
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8079:80"
     environment:
       SRH_MODE: env
       SRH_TOKEN: ${SRH_TOKEN}

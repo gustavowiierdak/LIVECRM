@@ -22,6 +22,7 @@ import {
   type DecisaoDeTranscricao,
 } from "@/lib/messaging/media/escada-de-transcricao";
 import { logger } from "@/lib/logger";
+import { validarParProvedorModelo } from "@/lib/ai/par-provedor-modelo";
 import { reagirAConclusaoDeDerivacao } from "@/lib/escalacao/handoff-tecnico";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { motivoDaRecusaDeDestino } from "@/lib/automation/destinos-internos-autorizados";
@@ -54,7 +55,11 @@ interface MessageRow {
   media_mime: string | null;
   media_storage_path: string | null;
   media_derived_status: string | null;
-  /** Onde o motivo do `failed` mora: sem ele o operador vê o estado sem a causa. */
+  /**
+   * Onde o motivo do `failed` mora: sem ele o operador vê o estado sem a causa.
+   * É também o marcador da retenção (migration 0557, #1534): `media_status='expired'`
+   * separa "arquivo que ainda vai chegar" de "arquivo que a política já retirou".
+   */
   metadata: Record<string, unknown> | null;
   /** Só a mensagem ENTRADA do cliente vira pedido (#2233) — ver o guard lá embaixo. */
   direction: string | null;
@@ -100,6 +105,12 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
       .eq("id", msg.id).eq("organization_id", msg.organization_id);
     return { consumer_key, status: "skipped", detail };
   };
+
+  // A retenção já retirou esta mídia (migration 0557, #1534): não há o que
+  // derivar e, principalmente, nada a baixar do provedor — o `media_storage_path`
+  // foi anulado junto, mas o DETALHE tem de dizer o motivo real, senão o turno
+  // seguinte esperaria 120s por uma leitura que a política proibiu.
+  if (msg.metadata?.media_status === "expired") return markSkipped("expired by retention");
 
   if (!msg.media_storage_path) return markSkipped("no media");
   if (msg.media_derived_status === "ready") return { consumer_key, status: "skipped", detail: "already derived" };
@@ -207,6 +218,9 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
     // que o turno usa.
     let baseUrlDaVisao: string | null = null;
     let llm: Awaited<ReturnType<typeof resolveOrgLlmConfig>> | null = null;
+    // De onde veio o MODELO que vai sair (binding do ponto ou padrão da org) —
+    // é metade do log estruturado da chamada (issue #2377).
+    let origemDoModelo = "padrao";
 
     if (bindingDaVisao) {
       try {
@@ -215,6 +229,7 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
           credentialId: bindingDaVisao.credential_id,
         });
         llm = { ...comBinding, defaultModel: bindingDaVisao.model_id };
+        origemDoModelo = "binding";
         // Só vale se a credencial do binding resolveu: no catch abaixo o worker
         // volta para o padrão da org, e aí o endpoint do padrão é o correto.
         baseUrlDaVisao = bindingDaVisao.base_url;
@@ -342,7 +357,7 @@ export async function deriveMessageMedia(row: EventRow): Promise<HandlerResult> 
 
     // O 5º argumento é a `base_url` do binding: o factory precisa dela para não
     // cair no endpoint padrão do provedor (ver o comentário lá em cima).
-    const deps = buildDeriveDeps(llm, decisao, row.organization_id, admin, baseUrlDaVisao, chaveEhDaInstalacao);
+    const deps = buildDeriveDeps(llm, decisao, row.organization_id, admin, baseUrlDaVisao, chaveEhDaInstalacao, origemDoModelo);
 
     const text = await deriveMediaText(msg.type, buffer, msg.media_mime ?? "application/octet-stream", deps);
 
@@ -533,6 +548,9 @@ function buildDeriveDeps(
   // do provedor, que é o comportamento do turno do agente sem `baseUrl`.
   baseUrlDaVisao: string | null = null,
   chaveEhDaInstalacao = false,
+  // De onde veio o MODELO (issue #2377): o log da recusa de par precisa dizer
+  // se veio do binding do ponto ou do padrao da organizacao.
+  origemDoModelo = "padrao",
 ): DeriveDeps {
   const registry = createDefaultRegistry();
   // Thunk, não consulta: nada vai ao banco até a visão ser de fato perguntada,
@@ -625,6 +643,27 @@ function buildDeriveDeps(
     const factory = registry[llm.provider];
     if (!factory) {
       await avisarMidiaNaoLida(orgId, "imagem", `o provedor ${llm.provider} não está disponível nesta instalação`);
+      return MARCADOR_NAO_LIDA;
+    }
+    // ─── O PAR ANTES DE ENVIAR A FOTO ──────────────────────────────────────
+    //
+    // Caminho especializado: era um dos que falhavam sozinhos enquanto o
+    // atendimento de texto ia bem, porque o `default_model` resolvido aqui
+    // podia ser um id da Anthropic sobre o provedor da OpenAI (issue #2377).
+    // A recusa abre o MESMO aviso da Central das outras de mídia — o operador
+    // vê o motivo em vez de o worker tentar de novo até esgotar — e o log leva
+    // provedor, modelo, propósito e origem da configuração.
+    const parDaVisao = validarParProvedorModelo(llm.provider, llm.defaultModel ?? "");
+    if (!parDaVisao.valido) {
+      logger.warn("ia: par provedor+modelo recusado antes da chamada", {
+        organization_id: orgId,
+        purpose: "visao_de_imagem",
+        provider: llm.provider,
+        model: llm.defaultModel ?? "",
+        origem_da_configuracao: origemDoModelo,
+        motivo: parDaVisao.motivo,
+      });
+      await avisarMidiaNaoLida(orgId, "imagem", parDaVisao.motivo);
       return MARCADOR_NAO_LIDA;
     }
     const res = await generateText({

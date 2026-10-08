@@ -68,6 +68,8 @@ import { HANDOFF_REASON_ORCAMENTO } from '../edge/llm/orcamento';
 import { abreAvisoDoEspelhoRecusado, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
 import { insertInboxItem } from '../db/repository';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { audit } from '@/lib/audit';
+import { encerrarConversaAposFatura, despedidaSimples } from './encerramento-apos-fatura';
 import { moverLeadParaEtapaDeHandoff } from '@/lib/leads/handoff-stage-move';
 import { detectUrgencySignal } from '../guardrails/sinal-de-urgencia';
 import { buildNativeMediaParts } from './media-parts';
@@ -184,7 +186,7 @@ import {
   tipoDeEnvio,
 } from '../guardrails/before-send';
 import { isStatusSendable } from '../../channels/meta/template-binding';
-import { capabilitiesOf } from '@/lib/channels/capabilities';
+import { requiresTemplatesForTurn } from '@/lib/channels/capabilities';
 import { renderTemplateBody } from '@/lib/channels/meta/render-template';
 import { acenderDigitando, esperarComoHumano } from './atraso-humano';
 import { instrucaoDeBolhas, sendInBubbles, splitForSend } from './split-message';
@@ -488,6 +490,15 @@ export const AGENT_TOOL_DEFS = {
  * que o modelo não fez não vale um cliente sem resposta.
  */
 export const MAX_VETOS_DE_VOCABULARIO_INTERNO = 2;
+
+/**
+ * Quantos vetos de `clinical_claim` o turno tolera antes do fail-safe. A saída aqui é
+ * a OPOSTA da do vocabulário interno: aquele solta o envio, este NUNCA solta — uma
+ * frase com diagnóstico ou dose não sai por insistência do modelo. O que o fail-safe
+ * faz é chamar a equipe (abre um caso), e aí o modelo tem uma saída honesta: dizer que
+ * a equipe vai falar com a pessoa, que agora é verdade.
+ */
+export const MAX_VETOS_DE_AFIRMACAO_CLINICA = 2;
 
 /**
  * O mesmo degrau para o veto de `false_empty_inbound`, e pela mesma assimetria.
@@ -2729,6 +2740,9 @@ async function executarTurnoDoAgente(
   // (`internal_vocabulary_leak`): 1º veto no turno ensina o modelo a reescrever; persistir
   // solta o envio com registro. Por turno (closure), nunca cross-turno.
   let internalVocabularyVetoCount = 0;
+  // Contador do fail-safe do gate de afirmação clínica (`clinical_claim`): 1º veto ensina;
+  // persistir abre caso para a equipe — e o envio continua barrado. Por turno (closure).
+  let clinicalClaimVetoCount = 0;
   // Uma recusa deste tipo devolve o texto confirmado ao modelo para que ele
   // reescreva antes de falar com o cliente. Não gasta envio nem toca no canal.
   let falseEmptyInboundVetoCount = 0;
@@ -2784,6 +2798,11 @@ async function executarTurnoDoAgente(
   // as tools do modelo rodam em passos anteriores do mesmo loop, o valor já está certo
   // quando o modelo decide mandar a resposta.
   let agendaToolCalledThisTurn = false;
+  // Recusa de identidade em consulta financeira/cadastral exige uma pessoa.
+  // A passagem durável silencia o automático nos turnos seguintes; só corrigir
+  // a frase deste turno deixaria o próximo "oi" repetir a promessa vazia.
+  let identidadeFinanceiraRecusada = false;
+  let escalacaoPorIdentidade: Promise<void> | null = null;
   // Lido pelo `casePromiseGate` (#1873): true só depois de `schedule_followup` AGENDAR com
   // sucesso neste turno. Libera apenas a promessa de retorno do próprio assistente.
   let followupAgendadoNesteTurno = false;
@@ -3096,6 +3115,15 @@ async function executarTurnoDoAgente(
     send_message: tool({
       ...AGENT_TOOL_DEFS.send_message,
       execute: async ({ body, produto_codigo }) => {
+        if (identidadeFinanceiraRecusada) {
+          return {
+            ok: false,
+            error: {
+              code: 'identidade_financeira_nao_confirmada',
+              message: 'A identidade não foi confirmada. Não prometa consulta, envio ou retorno e não mande outra mensagem neste turno. O sistema está tratando a passagem para uma pessoa.',
+            },
+          };
+        }
         // CORPO VAZIO NÃO SAI. Medido ao vivo (2026-09-19): o `gpt-4o-mini`
         // chamou `send_message` várias vezes com corpo que virou vazio e o
         // WhatsApp do cliente recebeu bolhas em branco. O schema garante
@@ -3256,6 +3284,11 @@ async function executarTurnoDoAgente(
             // não é dele, e a única saída seria o silêncio. O follow-up determinístico
             // idem (ver GateContext.internalVocabularyEnforced).
             enforceInternalVocabulary: true,
+            // Afirmação clínica: mesma razão do vocabulário (só o corpo do MODELO), e
+            // só para a organização que ligou a camada — ver
+            // `GateContext.clinicalClaimEnforced`. Sem linha, desligada: não há padrão de
+            // ambiente para uma proteção que só faz sentido em saúde.
+            enforceClinicalClaim: camadaLigada(camadas.afirmacao_clinica, false),
             // Mesmo padrão do vocabulário interno: só o `send_message` arma — é o único
             // corpo escrito pelo modelo. `active` é ter QUALQUER ferramenta de agenda:
             // um agente que só CONSULTA promete "vou verificar" igual, e enquanto a
@@ -3428,6 +3461,54 @@ async function executarTurnoDoAgente(
               hasOpenCase: true,
               openedCaseThisTurn: true,
             });
+          }
+          if (chain.status === 'vetoed' && chain.code === 'clinical_claim') {
+            // Fail-safe do gate de afirmação clínica. Ao contrário do vocabulário interno,
+            // este NUNCA solta o envio: não existe "frase com diagnóstico, mas melhor que
+            // silêncio". O que muda na insistência é que o sistema chama a equipe — abre um
+            // caso com a frase barrada — e o erro devolvido ao modelo passa a dizer que a
+            // equipe foi acionada, para ele avisar a pessoa sem repetir a afirmação. A
+            // resposta seguinte passa pelo `case_promise` porque o caso agora existe.
+            clinicalClaimVetoCount += 1;
+            if (
+              clinicalClaimVetoCount >= MAX_VETOS_DE_AFIRMACAO_CLINICA &&
+              agentConfig?.casesEnabled === true &&
+              !openedCaseThisTurn &&
+              !hasOpenCase
+            ) {
+              const auto = await openCase(
+                pool,
+                {
+                  tenantId,
+                  conversationId: input.conversationId,
+                  agentId: agentConfig?.agentId ?? null,
+                },
+                {
+                  title: 'Pergunta clínica que precisa de um profissional',
+                  summary: body, // a mensagem que o assistente tentou enviar e foi barrada
+                  blocker:
+                    'Aberto automaticamente: o assistente insistiu numa afirmação clínica ' +
+                    '(diagnóstico, remédio, promessa de resultado ou câncer) e o envio foi barrado.',
+                  source: 'guardrail_autofallback',
+                  contextSnapshot: buildCaseContextSnapshot(),
+                },
+              );
+              if (auto.ok) {
+                openedCaseThisTurn = true;
+                moverParaHandoffBestEffort('clinical_claim_autofallback');
+                return {
+                  ok: false,
+                  error: {
+                    code: chain.code,
+                    message:
+                      'A mensagem continua barrada. A equipe já foi acionada: diga à pessoa, ' +
+                      'em uma frase, que um profissional da equipe vai falar com ela, sem ' +
+                      'repetir nada sobre diagnóstico, remédio ou resultado.',
+                  },
+                };
+              }
+            }
+            return { ok: false, error: { code: chain.code, message: chain.message } };
           }
           if (chain.status === 'vetoed' && chain.code === 'internal_vocabulary_leak') {
             // Fail-safe do gate de vazamento — O CLIENTE NUNCA FICA SEM RESPOSTA.
@@ -3965,7 +4046,7 @@ async function executarTurnoDoAgente(
       preview && !preview.channelId
         ? DEFAULT_CHANNEL_PROVIDER
         : await loadChannelProvider(pool, tenantId, input.channelSessionId);
-    if (!capabilitiesOf(provider).requiresTemplates) {
+    if (!requiresTemplatesForTurn(provider)) {
       delete rawTools.send_template;
     }
   }
@@ -4002,7 +4083,7 @@ async function executarTurnoDoAgente(
           {
             organizationId: tenantId,
             jobId: preview?.runId ?? liveJob().id,
-            ...(leadId ? { contactId: leadId } : {}),
+            contactId: leadId || null,
           },
           configDoTurno,
           runLog,
@@ -4012,6 +4093,76 @@ async function executarTurnoDoAgente(
           mcpCleanup = mcp.cleanup;
           for (const [name, mcpTool] of Object.entries(mcp.tools)) {
             if (name in rawTools) continue;
+            if (
+              (name === 'crm_list_bemobi_invoices' || name === 'crm_get_ixc_customer') &&
+              typeof mcpTool.execute === 'function'
+            ) {
+              const executeOriginal = mcpTool.execute.bind(mcpTool);
+              rawTools[name] = {
+                ...mcpTool,
+                execute: (async (...args: Parameters<typeof executeOriginal>) => {
+                  const resultado = await executeOriginal(...args);
+                  if (
+                    resultado !== null &&
+                    typeof resultado === 'object' &&
+                    'erro' in resultado &&
+                    resultado.erro === 'cpf_nao_confirmado'
+                  ) {
+                    identidadeFinanceiraRecusada = true;
+                    if (!preview) {
+                      escalacaoPorIdentidade ??= (async () => {
+                        // O aviso sai ANTES de force_human: depois a cadeia de envio
+                        // bloquearia até a despedida. A passagem é durável e coloca
+                        // a conversa na fila, inclusive se o aviso não sair.
+                        const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
+                          ...avisoDaEscalacao().base,
+                          motivo: 'outro',
+                        });
+                        const passagem = await applyRequestHumanHandoff(
+                          pool,
+                          { tenantId, leadId, conversationId: input.conversationId },
+                          {
+                            conversationSummary: buildHandoffSummary(previous),
+                            contextoDoTurno: { checkpoint: previous, pendentesDoCliente: inboundsPendentes },
+                            avisoAoLead: aviso,
+                            gatilho: { inboundMessageId: input.inboundMessageId },
+                            log: runLog,
+                          },
+                          {
+                            por_que: 'A confirmação automática do documento para a consulta solicitada falhou.',
+                            o_que_tentei: [{
+                              o_que: name === 'crm_list_bemobi_invoices'
+                                ? 'Consultar as faturas com confirmação de identidade'
+                                : 'Consultar o cadastro com confirmação de identidade',
+                              desfecho: 'Identidade não confirmada; nenhuma fatura foi consultada ou enviada.',
+                            }],
+                            cliente_quer: name === 'crm_list_bemobi_invoices'
+                              ? 'Receber a fatura ou boleto.'
+                              : 'Obter informações do próprio cadastro.',
+                          },
+                        );
+                        if (!passagem.ok) {
+                          runLog.warn('passagem humana recusada após falha de identidade', {
+                            code: passagem.error.code,
+                          });
+                          noteRunError(new Error(`passagem humana recusada: ${passagem.error.code}`));
+                        }
+                      })();
+                      try {
+                        await escalacaoPorIdentidade;
+                      } catch (err) {
+                        noteRunError(err instanceof Error ? err : new Error(String(err)));
+                        runLog.error('passagem humana falhou após recusa de identidade', {
+                          error: err instanceof Error ? err.message : String(err),
+                        });
+                      }
+                    }
+                  }
+                  return resultado;
+                }) as typeof mcpTool.execute,
+              };
+              continue;
+            }
             if (
               (name === 'crm_search_products' || name === 'crm_search_knowledge') &&
               typeof mcpTool.execute === 'function'
@@ -4399,6 +4550,65 @@ async function executarTurnoDoAgente(
       { registry: deps.registry, log: runLog },
     );
 
+    let mensagensDoTurno = turn.result.response.messages;
+    const semRespostaVisivel = preview
+      ? preview.result.candidates.length === 0
+      : outcomes.length === 0;
+    // O modelo pode encerrar com texto direto depois de registrar um estágio ou
+    // caso. Texto direto não é enviado: peça UMA chamada final, limitada à
+    // ferramenta de envio, para não deixar o cliente sem resposta. A ferramenta
+    // continua passando pela mesma política de prévia ou pelos mesmos guardrails.
+    if (
+      agentConfig !== null &&
+      semRespostaVisivel &&
+      runError === null &&
+      !turnoDescartado &&
+      (preview !== undefined || turnoVaiFalarComOLead(liveJob())) &&
+      tools.send_message
+    ) {
+      const fechamento = await runModelCall(
+        pool,
+        deps.llmCfg,
+        {
+          tenantId,
+          leadId: leadId || null,
+          jobId: job?.id,
+          agentId: agentConfig.agentId,
+          purpose: preview ? 'agent_preview' : 'agent_turn',
+          system:
+            system +
+            '\n\nFechamento obrigatório: responda ao cliente agora usando send_message. Não afirme que uma proposta não executada foi concluída.',
+          messages: [
+            ...openingMessages,
+            ...mensagensDoTurno,
+            { role: 'user', content: 'Finalize este atendimento com uma resposta visível ao cliente.' },
+          ],
+          tools: { send_message: tools.send_message },
+          toolChoice: 'required',
+          maxSteps: 2,
+          pararQuando: () =>
+            preview ? preview.result.candidates.length > 0 : outcomes.length > 0,
+          model: agentConfig.model,
+          llmOverride: {
+            provider: agentConfig.provider,
+            credentialId: agentConfig.credentialId,
+          },
+        },
+        { registry: deps.registry, log: runLog },
+      );
+      mensagensDoTurno = [...mensagensDoTurno, ...fechamento.result.response.messages];
+      if (
+        preview &&
+        preview.result.candidates.length === 0 &&
+        preview.result.impediments.length === 0
+      ) {
+        preview.result.impediments.push({
+          code: 'forced_reply_missing',
+          message: 'O agente tentou responder, mas a ferramenta de envio não concluiu. Verifique o canal e as regras de envio.',
+        });
+      }
+    }
+
     // F4-04: correlação dos dois sinais do MESMO turno — jailbreak ALTO + tentativa de
     // promessa fora de tabela (F4-01). Ambos estão determinados aqui (o jailbreak rodou na
     // abertura; as tentativas de envio já passaram pelo loop). Dispara escalação humana em
@@ -4496,8 +4706,8 @@ async function executarTurnoDoAgente(
     // sufixo por-lead, nunca no prefixo estável (regra de cache 15).
     const responseMessages =
       deps.knobs.prune !== undefined
-        ? pruneToolResults(turn.result.response.messages, deps.knobs.prune)
-        : turn.result.response.messages;
+        ? pruneToolResults(mensagensDoTurno, deps.knobs.prune)
+        : mensagensDoTurno;
 
     // Fechamento imposto pelo runtime: 2ª chamada, mesma conversa, só o checkpoint.
     //
@@ -4849,6 +5059,58 @@ async function executarTurnoDoAgente(
       throw new JobSettledError(
         'cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada',
       );
+    }
+
+    // A despedida depois da segunda via é um fim de CONVERSA, não quitação da
+    // fatura nem desfecho de demanda. A checagem transacional confirma o recibo
+    // Bemobi, a resposta enviada e que ninguém escreveu/assumiu no intervalo.
+    // Falha em fechar nunca reprocessa o turno: reenviar PIX por causa de um
+    // problema no status seria mais grave que deixar a conversa aberta.
+    if (
+      liveJob().kind === 'inbound_turn' && input.inboundMessageId &&
+      inboundsPendentes.length === 1 && despedidaSimples(currentInboundText ?? '') &&
+      !turnoDescartado && !identidadeFinanceiraRecusada
+    ) {
+      let respostaId: string | null = null;
+      for (const item of [...outcomes].reverse()) {
+        if ((item.kind === 'sent' || item.kind === 'already_sent') && item.messageId) {
+          respostaId = item.messageId;
+          break;
+        }
+      }
+      if (respostaId) {
+        try {
+          const encerrada = await encerrarConversaAposFatura(pool, {
+            organizationId: tenantId,
+            conversationId: input.conversationId,
+            inboundMessageId: input.inboundMessageId,
+            replyMessageId: respostaId,
+          });
+          if (encerrada) {
+            await audit({
+              action: 'conversation.closed',
+              organizationId: tenantId,
+              resourceType: 'conversation',
+              resourceId: input.conversationId,
+              requestId: liveJob().id,
+              metadata: { reason: 'invoice_delivered_customer_farewell', job_id: liveJob().id },
+            }).catch((error) => {
+              runLog.warn('auditoria do encerramento após fatura falhou', {
+                conversation_id: input.conversationId,
+                error: error instanceof Error ? error.name : 'unknown',
+              });
+            });
+            runLog.info('conversa encerrada após fatura entregue e despedida do cliente', {
+              conversation_id: input.conversationId,
+            });
+          }
+        } catch (error) {
+          runLog.warn('encerramento após fatura indisponível — conversa permanece aberta', {
+            conversation_id: input.conversationId,
+            error: error instanceof Error ? error.name : 'unknown',
+          });
+        }
+      }
     }
 
     runLog.info('turno do agente concluído', {

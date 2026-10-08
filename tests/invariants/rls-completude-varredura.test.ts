@@ -75,6 +75,7 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  { tabela: "jev_router_decisions", razao: "tests/invariants/jev-roteador-decisoes.test.ts — dois tenants por JWT: leitura local, zero do vizinho; anon sem leitura, authenticated sem escrita; poda com piso no banco." },
   { tabela: "golden_candidates", razao: "tests/invariants/golden-candidates.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },
   { tabela: "jev_observacoes", razao: "tests/invariants/jev-observacoes.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },
   { tabela: "prospecting_settings", razao: "tests/invariants/prospecting.test.ts — tabela exclusiva do servidor, ACL e RLS verificadas; FK composta e comandos autenticados cercam a organização." },
@@ -245,6 +246,14 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "orçamento, criativo e performance de quem anuncia.",
   },
   {
+    tabela: "erp_integrations",
+    razao:
+      "tests/invariants/credencial-de-anuncios-e-server-side.test.ts — o mesmo " +
+      "deny-all com privilégio NENHUM para anon/authenticated, RLS ligada e " +
+      "service_role como único leitor. Guarda o token do IXC, que alcança " +
+      "cadastro, contratos e financeiro da organização.",
+  },
+  {
     tabela: "map_provider_credentials",
     razao:
       "tests/invariants/credencial-de-mapas-e-server-side.test.ts — privilégio " +
@@ -339,6 +348,17 @@ const PROVA_PROPRIA: readonly Excecao[] = [
       "UPDATE, DELETE nem TRUNCATE para anon, authenticated ou PUBLIC. O " +
       "isolamento é medido num sentido só (org de teste → outra). Migration 0482.",
   },
+  ...[
+    "webchat_channel_configs",
+    "webchat_handoffs",
+    "webchat_visitor_sessions",
+    "webchat_messages",
+  ].map((tabela) => ({
+    tabela,
+    razao:
+      "tests/invariants/webchat-isolamento.test.ts — tentativa real de SELECT com SET ROLE anon e authenticated " +
+      "recebe permission denied; RLS ligada e ACL sem escrita. Somente as RPCs service_role alcançam o canal isolado.",
+  })),
 ];
 
 /**

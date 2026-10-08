@@ -69,7 +69,7 @@ const TOOLS_DO_SEED = [
   "crm_get_lead",
   "crm_move_lead_stage",
   "crm_list_leads",
-  // ⚠️ AS OITO ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
+  // ⚠️ AS QUATRO ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
   //
   // A jornada do teto (issue #162) só existe se a soma passar do teto: eram 3
   // do seed + 18 de "Atender" = 21 contra teto 20, e a tela recusava dizendo
@@ -77,30 +77,24 @@ const TOOLS_DO_SEED = [
   // e o caso vira um clique que sempre dá certo — verde sem medir nada.
   //
   // A cada subida do teto a aritmética ameaçava caber de novo. Com teto 27
-  // (a proposta comercial entrou no `vender` e o teto subiu com ela) as oito
-  // reproduzem a MESMA conta: com os 3 do seed, 11 + 17 = 28 > 27, recusa por
-  // 1 vaga; desligar uma das oito deixa 10 + 17 = 27, que é o teto exato e
+  // (a proposta comercial entrou no `vender` e o teto subiu com ela) o seed
+  // era 11. Duas ferramentas Bemobi e duas IXC entraram em "Atender":
+  // agora 7 + 21 = 28 > 27, recusa por 1 vaga; desligar uma deixa 6 + 21 = 27 e
   // passa. O que segura o caso é essa soma estourar por exatamente UMA vaga —
   // estourar por 2 muda o texto da tela e o caso morre, caber no teto faz a
   // recusa sumir e o caso virar verde sem medir nada.
   //
-  // Os 17 são o pacote "Atender" DEPOIS da #528, e foi ela que mudou o número:
+  // O pacote "Atender" tinha 17 depois da #528, 19 com Bemobi e 21 com IXC:
   // a crítica que o pacote contava (o envio de WhatsApp, que o motor descarta
   // em todo turno) deixou de ser oferecida, e com ela saiu uma vaga da conta.
   //
   // As escolhidas ficam FORA do pacote "Atender" de propósito — se alguma
   // estivesse dentro, a união seria menor que a soma e a conta acima não valeria.
-  // Quatro são a família de agenda, que é o assunto do defeito que subiu o teto
-  // pela primeira vez; as quatro últimas são leitura pura de outros pacotes,
-  // para a aritmética continuar estourando a cada subida.
+  // As quatro são a família de agenda, assunto do defeito que subiu o teto.
   "crm_find_free_slots",
   "crm_list_appointments",
   "crm_book_appointment",
   "crm_reschedule_appointment",
-  "crm_list_pipelines",
-  "crm_list_event_types",
-  "crm_list_human_cases",
-  "crm_list_knowledge_sources",
 ];
 
 /**
@@ -230,21 +224,21 @@ test.describe("Configurar o que o agente pode fazer", () => {
 
     // O TETO ENTRA NA JORNADA (issue #162), e entra antes do clique.
     //
-    // "Atender" exige 17 vagas: 17 automáticas e nenhuma crítica — a única que
-    // ele tinha (o envio de WhatsApp) deixou de ser oferecida na #528, e com ela
-    // saiu uma vaga da conta. Com os 11 do seed (3 + 8) dá 28, acima do teto de 27.
+    // "Atender" exige 19 vagas: a consulta Bemobi e o envio financeiro entraram
+    // no pacote. O envio de WhatsApp segue não oferecido desde a #528.
+    // Com as 9 do seed (3 + 6) dá 28, acima do teto de 27.
     //
-    // ⚠️ AS 8 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
+    // ⚠️ AS 6 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
     // estourava o teto de 20. A cada subida do teto (20 → 25 → 27, a última
     // quando a proposta comercial entrou no `vender`) e a cada queda do pacote
     // "Atender" (18 → 17, na #528), a mesma soma ameaçava caber de novo — e cada
     // vez que isso acontece a recusa deixa de existir e o caso vira um clique que
     // sempre dá certo, verde sem medir nada, o pior desfecho para um teste de
-    // recusa. As 8 (4 de agenda + 4 de leitura pura) estão FORA de "Atender", senão
+    // recusa. As 6 (4 de agenda + 2 de leitura pura) estão FORA de "Atender", senão
     // a união seria menor que a soma.
     //
-    // Aritmética atual: 11 + 17 = 28 > 27, recusa por 1 vaga; desligar uma das
-    // oito deixa 10 + 17 = 27, o teto exato.
+    // Aritmética atual: 7 + 21 = 28 > 27, recusa por 1 vaga; desligar uma das
+    // quatro deixa 6 + 21 = 27, o teto exato.
     //
     // Antes da correção a tela aceitava o pacote, chegava a 20 exatas e deixava
     // o checkbox da crítica DESABILITADO — prometia uma escolha que o produto
@@ -287,13 +281,17 @@ test.describe("Configurar o que o agente pode fazer", () => {
     await page.getByTestId("lista-avancada").waitFor({ state: "visible" });
     await expect.poll(() => estaMarcada(page, LEITURA), { timeout: 5_000 }).toBe(true);
 
-    // …e a que fala com o cliente de verdade, não — e desde a #528 nem poderia:
-    // ela deixou de ser oferecível, por clique ou por pacote.
+    // …mas o envio genérico de WhatsApp não — desde a #528 ele deixou de ser
+    // oferecível ao agente por clique ou por pacote. O envio financeiro Bemobi
+    // é outra capacidade crítica, com escolha individual abaixo.
     expect(await estaMarcada(page, ENVIO)).toBe(false);
 
-    // Sem crítica oferecível não há bloco de crítica. Ele existia porque o envio
-    // ERA a crítica do pacote — que o pacote oferecia para o motor descartar.
-    await expect(page.getByTestId("criticas-atender")).toHaveCount(0);
+    // Enviar pagamento é crítico e pede escolha individual. O pacote pode
+    // habilitar a consulta Bemobi, mas não autoriza PIX/boleto automaticamente.
+    const criticas = page.getByTestId("criticas-atender");
+    await expect(criticas).toBeVisible();
+    await expect(criticas.getByTestId("capacidade-crm_send_bemobi_payment")).toBeVisible();
+    expect(await estaMarcada(page, "crm_send_bemobi_payment")).toBe(false);
 
     // Mas a capacidade continua NA TELA, com o motivo escrito e o checkbox
     // travado: sumir com ela esconderia do dono um caminho que ele já viu na

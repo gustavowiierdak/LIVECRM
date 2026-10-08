@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Integração segura com IXC",
+    "subtitle": "Configuração por empresa e confirmação do CPF pelo telefone da conversa quando não há hash",
+    "output": "integracao-ixc.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "humano", "label": "Administrador" },
+    { "id": "app", "label": "Aplicativo" },
+    { "id": "db", "label": "Banco privado" },
+    { "id": "externo", "label": "IXC" }
+  ],
+  "mainPath": ["settings", "action", "vault", "client", "ixc", "status"],
+  "nodes": [
+    { "id": "settings", "lane": "humano", "label": "Dados e acesso › IXC: URL, token e grupos" },
+    { "id": "action", "lane": "app", "label": "Server Action: admin, MFA, tenant e auditoria" },
+    { "id": "vault", "lane": "db", "label": "erp_integrations: segredo cifrado e deny-all" },
+    { "id": "client", "lane": "app", "label": "Cliente IXC: HTTPS, DNS fixado, limite e sem redirect" },
+    { "id": "ixc", "lane": "externo", "label": "POST /webservice/v1/cliente com rp=1" },
+    { "id": "status", "lane": "humano", "label": "Último teste visível e ação de tentar novamente" },
+    { "id": "audit", "lane": "db", "label": "api_audit_log sem URL sensível, token nem CPF" },
+    { "id": "turno", "lane": "app", "label": "Contato e conversa do job inbound; origem do cadastro não prova o canal" },
+    { "id": "identidade", "lane": "app", "label": "CPF informado só é liberado se telefone cadastrado no IXC coincidir com a conversa" },
+    { "id": "tools", "lane": "app", "label": "Tools read-only: cliente e contratos com projeção mínima" },
+    { "id": "agente", "lane": "humano", "label": "Rascunhos Financeiro, Suporte e Relacionamento; publicação manual" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "settings", "to": "action", "label": "Salvar ou testar" },
+    { "id": "e2", "from": "action", "to": "vault", "label": "Cifrar e persistir por organização" },
+    { "id": "e3", "from": "vault", "to": "client", "label": "Decifrar somente no servidor" },
+    { "id": "e4", "from": "client", "to": "ixc", "label": "Consulta mínima autenticada" },
+    { "id": "e5", "from": "ixc", "to": "client", "label": "Formato e total de clientes" },
+    { "id": "e6", "from": "client", "to": "action", "label": "Sucesso ou falha segura" },
+    { "id": "e7", "from": "action", "to": "status", "label": "Gravar e mostrar diagnóstico" },
+    { "id": "e8", "from": "status", "to": "settings", "label": "Administrador corrige e repete" },
+    { "id": "e9", "from": "action", "to": "audit", "label": "Mudança e teste auditados" },
+    { "id": "e10", "from": "audit", "to": "status", "label": "Rastro operacional revisável" },
+    { "id": "e11", "from": "turno", "to": "tools", "label": "CPF verificado dentro do tenant" },
+    { "id": "e12", "from": "tools", "to": "vault", "label": "Recursos e segredo da organização" },
+    { "id": "e13", "from": "tools", "to": "client", "label": "Busca por CPF e depois por id_cliente" },
+    { "id": "e14", "from": "client", "to": "tools", "label": "Valida CPF e vínculo do contrato" },
+    { "id": "e15", "from": "tools", "to": "agente", "label": "Resposta mínima; erro e vazio rastreáveis" },
+    { "id": "e16", "from": "tools", "to": "audit", "label": "Argumento com CPF redigido" },
+    { "id": "e17", "from": "turno", "to": "identidade", "label": "Sem hash, exige sessão WhatsApp e telefone do contato desta conversa" },
+    { "id": "e18", "from": "identidade", "to": "client", "label": "Busca cliente pelo CPF apenas para comparar telefones" },
+    { "id": "e19", "from": "client", "to": "identidade", "label": "Telefone confirmado ou falha fechada" }
+  ]
+}

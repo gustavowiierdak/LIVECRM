@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     "crm_get_lead",
     "crm_move_lead_stage",
     "crm_list_leads",
-    // ⚠️ AS OITO ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
+    // ⚠️ AS QUATRO ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
     //
     // A jornada do teto (issue #162) só existe se a soma passar do teto: eram 3
     // do seed + 18 de "Atender" = 21 contra teto 20, e a tela recusava dizendo
@@ -121,30 +121,24 @@ async function main(): Promise<void> {
     // e o caso vira um clique que sempre dá certo — verde sem medir nada.
     //
     // A cada subida do teto a aritmética ameaçava caber de novo. Com teto 27
-    // (a proposta comercial entrou no `vender` e o teto subiu com ela) as oito
-    // reproduzem a MESMA conta: com os 3 do seed, 11 + 17 = 28 > 27, recusa por
-    // 1 vaga; desligar uma das oito deixa 10 + 17 = 27, que é o teto exato e
+    // (a proposta comercial entrou no `vender` e o teto subiu com ela) o seed
+    // era 11. Duas ferramentas Bemobi e duas IXC entraram em "Atender":
+    // agora 7 + 21 = 28 > 27, recusa por 1 vaga; desligar uma deixa 6 + 21 = 27 e
     // passa. O que segura o caso é essa soma estourar por exatamente UMA vaga —
     // estourar por 2 muda o texto da tela e o caso morre, caber no teto faz a
     // recusa sumir e o caso virar verde sem medir nada.
     //
-    // Os 17 são o pacote "Atender" DEPOIS da #528, e foi ela que mudou o número:
+    // O pacote "Atender" tinha 17 depois da #528, 19 com Bemobi e 21 com IXC:
     // a crítica que o pacote contava (o envio de WhatsApp, que o motor descarta
     // em todo turno) deixou de ser oferecida, e com ela saiu uma vaga da conta.
     //
     // As escolhidas ficam FORA do pacote "Atender" de propósito — se alguma
     // estivesse dentro, a união seria menor que a soma e a conta acima não valeria.
-    // Quatro são a família de agenda, que é o assunto do defeito que subiu o teto
-    // pela primeira vez; as quatro últimas são leitura pura de outros pacotes,
-    // para a aritmética continuar estourando a cada subida.
+    // As quatro são a família de agenda, assunto do defeito que subiu o teto.
     "crm_find_free_slots",
     "crm_list_appointments",
     "crm_book_appointment",
     "crm_reschedule_appointment",
-    "crm_list_pipelines",
-    "crm_list_event_types",
-    "crm_list_human_cases",
-    "crm_list_knowledge_sources",
   ];
 
   // REPÕE TODAS AS VERSÕES DRAFT DESTE AGENTE, não só a de maior número.
@@ -204,6 +198,7 @@ async function main(): Promise<void> {
         credential_id: fixtures.credential_id,
         channel_session_id: fixtures.channel_session_id,
         status: "draft",
+        created_at: new Date(Date.now() - 60 * 86_400_000).toISOString(),
         // Ligadas de propósito: o painel só mostra a mistura real (uma
         // saudável, uma que só falha, uma ligada e nunca usada, e uma usada
         // sem estar ligada) se a configuração e o histórico discordarem em

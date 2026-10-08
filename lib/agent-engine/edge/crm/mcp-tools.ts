@@ -56,8 +56,12 @@ export interface McpTurnTools {
 
 export async function buildMcpTurnTools(
   cfg: CrmEdgeConfig,
-  /** `contactId`: o contato do turno — ver `contatoDoTurno` em `lib/ai/runtime/tools.ts`. */
-  ids: { organizationId: string; jobId: string; contactId?: string },
+  /**
+   * `contactId`: o contato do turno — ver `contatoDoTurno` em `lib/ai/runtime/tools.ts`.
+   * Obrigatório de propósito: `null` só onde não há cliente (o ensaio do agente);
+   * omiti-lo num turno de conversa abriria as leituras escopadas por ele.
+   */
+  ids: { organizationId: string; jobId: string; contactId: string | null },
   agentConfig: PublishedAgentConfig,
   log: Logger,
   options?: { readOnly: boolean },
@@ -96,6 +100,10 @@ export async function buildMcpTurnTools(
   const claim = originJob ? claimOfJob(originJob) : undefined;
   const ctx: McpContext = {
     sourceJobId: ids.jobId,
+    ...(originJob?.id === ids.jobId && originJob.kind === 'inbound_turn' &&
+      typeof originJob.payload.conversation_id === 'string'
+      ? { conversationIdDoTurno: originJob.payload.conversation_id }
+      : {}),
     ...(originJob?.id === ids.jobId && boundary && claim
       ? { meetingBooking: { sourceJobId: originJob.id, claim, boundary } }
       : {}),

@@ -51,6 +51,9 @@ import { motivoDoErro, sql } from "./psql-transporte";
 
 /** As tabelas do eixo de anúncios, criadas pelas migrations 0213, 0214 e 0380. */
 const TABELAS = [
+  // 0583. O token do IXC alcança cadastro, contratos e financeiro; mesma
+  // fronteira server-side das credenciais de anúncios.
+  "erp_integrations",
   "ad_platform_connections",
   "ad_conversion_dispatches",
   "ad_insights_connections",

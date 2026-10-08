@@ -69,6 +69,13 @@ fi
 if [ -z "$release" ]; then
   release="$(cd "$ROOT" && bash -c 'source "$1/_common.sh" >/dev/null 2>&1; ultima_release_estavel' _ "$KIT" || true)"
 fi
+# Um fork recém-criado ainda não tem Release nem tags próprias. O teste deve
+# comparar com a versão de origem que a VPS já usa, sem declarar o gate verde
+# por vacuidade. Após a primeira Release do fork, volta automaticamente a ela.
+if [ -z "$release" ] && [ -n "${CONFERENCIA_KIT_BOOTSTRAP_REPO:-}" ]; then
+  release="${CONFERENCIA_KIT_BOOTSTRAP_RELEASE:-}"
+  echo "==> fork sem release: usando a versão de origem $release como controle"
+fi
 case "$release" in
   v[0-9]*) ;;
   *) echo "FATAL: não consegui saber qual é a última release publicada (sem rede? API fora?)." >&2
@@ -86,7 +93,10 @@ update_sh_da() {  # update_sh_da <tag> — caminho de uma cópia do update.sh da
   if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$1^{commit}" >/dev/null; then
     local profundidade=""
     [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" = true ] && profundidade="--depth=1"
-    git -C "$ROOT" fetch -q --no-tags $profundidade origin "+refs/tags/$1:refs/tags/$1"
+    if ! git -C "$ROOT" fetch -q --no-tags $profundidade origin "+refs/tags/$1:refs/tags/$1"; then
+      [ -n "${CONFERENCIA_KIT_BOOTSTRAP_REPO:-}" ] || return 1
+      git -C "$ROOT" fetch -q --no-tags $profundidade "$CONFERENCIA_KIT_BOOTSTRAP_REPO" "+refs/tags/$1:refs/tags/$1"
+    fi
   fi
   git -C "$ROOT" show "$1:hostgator-setup-kit/update.sh" > "$TMP/$1"
   printf '%s' "$TMP/$1"

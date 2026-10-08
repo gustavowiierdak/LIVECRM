@@ -128,6 +128,9 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
 
   // ---- não têm funil, e isso é declarado ----
   crm_send_whatsapp_message: "sem_funil",
+  // O envio financeiro opera por conversa do contato do turno, não por negócio.
+  // A posse da conversa e da fatura é conferida antes do envio no handler.
+  crm_send_bemobi_payment: "sem_funil",
   // Abre conversa nova (contato pode nem ter negócio ainda) e manda a primeira
   // mensagem — não recebe `lead_id` nem `pipeline_id`. Como as de configuração
   // logo abaixo, a barreira dela é OUTRA: `requiresRole: manager` +

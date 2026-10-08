@@ -9,6 +9,23 @@ import { describe, it, expect } from "vitest";
 import { isPublicPath } from "@/lib/auth/public-paths";
 
 describe("isPublicPath", () => {
+  it("libera a entrada visual e apenas links UUID do portal de atendimento", () => {
+    expect(isPublicPath("/atendimento")).toBe(true);
+    expect(isPublicPath("/atendimento/05440000-7777-4000-8000-000000000001")).toBe(true);
+    expect(isPublicPath("/atendimento/")).toBe(false);
+    expect(isPublicPath("/atendimento/sessao")).toBe(false);
+    expect(isPublicPath("/atendimento/05440000-7777-4000-8000-000000000001/admin")).toBe(false);
+  });
+
+  it("libera somente as quatro rotas públicas do webchat, cada uma com guarda própria", () => {
+    expect(isPublicPath("/api/public/webchat/consume")).toBe(true);
+    expect(isPublicPath("/api/public/webchat/session")).toBe(true);
+    expect(isPublicPath("/api/public/webchat/messages")).toBe(true);
+    expect(isPublicPath("/api/public/webchat/start")).toBe(true);
+    expect(isPublicPath("/api/public/webchat/admin")).toBe(false);
+    expect(isPublicPath("/api/public/webchat/messages/extra")).toBe(false);
+  });
+
   it("libera o heartbeat do agente do host (bearer, sem cookie)", () => {
     expect(isPublicPath("/api/v1/system/agent")).toBe(true);
   });

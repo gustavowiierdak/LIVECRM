@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { AGENT_TOOL_DEFS } from "@/lib/agent-engine/agent/inbound-turn";
-import { CHANNEL_PROVIDER_META, CHANNEL_PROVIDER_WAHA, capabilitiesOf } from "@/lib/channels/capabilities";
+import { CHANNEL_PROVIDER_META, CHANNEL_PROVIDER_WAHA, capabilitiesOf, requiresTemplatesForTurn } from "@/lib/channels/capabilities";
 
 /**
  * A LIGAÇÃO do `send_template` no turno do agente.
@@ -53,12 +53,12 @@ function corpoDoExecute(): string {
 }
 
 describe("send_template — a tool só existe onde o canal a exige", () => {
-  it("a decisão vem de capabilitiesOf, não de um literal de provider", () => {
+  it("a decisão vem da matriz de capacidades, não de um literal de provider", () => {
     // Invariante 1 da doutrina `docs/doctrine/restricao-de-canal.md`: nenhuma feature
     // nomeia um provider. Um `if (provider === 'meta_cloud')` aqui passaria nos testes
     // de hoje e quebraria no dia em que um segundo canal exigir template.
     const gate = FONTE.slice(FONTE.indexOf("delete rawTools.send_template") - 400);
-    expect(gate).toMatch(/capabilitiesOf\([^)]*\)\.requiresTemplates/);
+    expect(gate).toMatch(/requiresTemplatesForTurn\(provider\)/);
     expect(gate.slice(0, 400)).not.toMatch(/===\s*['"]meta_cloud['"]/);
   });
 
@@ -67,6 +67,12 @@ describe("send_template — a tool só existe onde o canal a exige", () => {
     // muda junto — que é exatamente o ponto de decidir por capability.
     expect(capabilitiesOf(CHANNEL_PROVIDER_WAHA).requiresTemplates).toBe(false);
     expect(capabilitiesOf(CHANNEL_PROVIDER_META).requiresTemplates).toBe(true);
+  });
+
+  it("não consulta a matriz de adapters para o portal web", () => {
+    // Webchat usa a sessão HTTP, não um adapter de mensagem. O preview de
+    // agentes ligados a ele deve excluir send_template sem lançar erro.
+    expect(requiresTemplatesForTurn("webchat")).toBe(false);
   });
 
   it("a remoção acontece de fato — a tool some do objeto, não só do prompt", () => {

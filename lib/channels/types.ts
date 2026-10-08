@@ -9,7 +9,7 @@ import type { OutboundMedia } from "@/lib/waha/media-send";
 
 export type { OutboundMedia };
 
-export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "zernio_social" | "wacalls" | "datafy";
+export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "zernio_social" | "wacalls" | "datafy" | "webchat";
 
 /**
  * Os providers que transportam MENSAGEM — o subconjunto sobre o qual a matriz
@@ -26,7 +26,8 @@ export type ChannelProvider = "waha" | "meta_cloud" | "zernio" | "zernio_social"
  * banco já aceitava `'wacalls'` enquanto este union não — e uma organização que
  * pareasse voz derrubava `getAdapter` com `unknown_channel_provider`.
  */
-export type ProviderDeMensagem = Exclude<ChannelProvider, "wacalls">;
+// O portal web transporta mensagens pela própria sessão HTTP, fora do adapter.
+export type ProviderDeMensagem = Exclude<ChannelProvider, "wacalls" | "webchat">;
 
 export interface ChannelCapabilities {
   /** Pode enviar texto livre a qualquer momento? false = exige template fora da janela. */

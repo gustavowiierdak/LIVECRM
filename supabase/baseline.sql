@@ -9355,7 +9355,7 @@ alter table public.channel_sessions
   add constraint channel_sessions_provider_check
   -- 'wacalls' (0233), 'zernio_social' (0368) e 'datafy' (0387) somados AQUI —
   -- UM bloco só por constraint (não duplicar drop+add por migration).
-  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text, 'zernio_social'::text, 'datafy'::text]));
+  check (provider = any (array['waha'::text, 'meta_cloud'::text, 'zernio'::text, 'wacalls'::text, 'zernio_social'::text, 'datafy'::text, 'webchat'::text]));
 
 alter table public.channel_sessions
   drop constraint if exists channel_sessions_provider_ref_check;
@@ -9368,7 +9368,8 @@ alter table public.channel_sessions
     -- é o mesmo intermediário, com outra superfície de canal.
     (provider in ('zernio', 'zernio_social') and zernio_account_id is not null) or
     (provider = 'wacalls'    and wacalls_session_id    is not null) or
-    (provider = 'datafy'     and datafy_phone_number_id is not null)
+    (provider = 'datafy'     and datafy_phone_number_id is not null) or
+    provider = 'webchat'
   );
 
 comment on column public.channel_sessions.zernio_account_id is
@@ -17522,21 +17523,45 @@ alter table public.catalog_products enable row level security;
 -- Leitura para a organização; ESCRITA só de `manager` para cima. É o molde da
 -- 0177 (`calendar_event_types`), e é o que a tabela da Nuvemshop não tem: preço
 -- de venda não se altera com papel de leitura.
+-- A ESCRITA é `insert`/`update`/`delete`, NUNCA `for all` (migration 0553): `for all`
+-- vale também para SELECT, e o OR das permissivas fazia toda leitura avaliar
+-- `fn_role_at_least` (security definer) em cada linha da organização — ~2 ms por
+-- produto, e a tela de Produtos estourava o statement_timeout de 8 s. Chamada que
+-- não depende da linha vai em `(select …)`: o planner a executa uma vez.
 drop policy if exists catalog_products_select on public.catalog_products;
 create policy catalog_products_select on public.catalog_products
   for select using (
-    (organization_id in (select public.fn_user_org_ids())) or public.fn_is_platform_admin()
+    (organization_id in (select public.fn_user_org_ids())) or (select public.fn_is_platform_admin())
   );
 
 drop policy if exists catalog_products_write on public.catalog_products;
+
+drop policy if exists catalog_products_insert on public.catalog_products;
+create policy catalog_products_insert on public.catalog_products
+  for insert with check (
+    (select public.fn_is_platform_admin_full())
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  );
+
+-- O nome `_write` fica com o UPDATE: é por ele que a 0533 e o invariante
+-- `platform-admin-full-so-escreve` conferem a expressão da escrita.
 create policy catalog_products_write on public.catalog_products
-  using (
-    public.fn_is_platform_admin_full()
+  for update using (
+    (select public.fn_is_platform_admin_full())
     or ((organization_id in (select public.fn_user_org_ids()))
         and public.fn_role_at_least(organization_id, 'manager'))
   )
   with check (
-    public.fn_is_platform_admin_full()
+    (select public.fn_is_platform_admin_full())
+    or ((organization_id in (select public.fn_user_org_ids()))
+        and public.fn_role_at_least(organization_id, 'manager'))
+  );
+
+drop policy if exists catalog_products_delete on public.catalog_products;
+create policy catalog_products_delete on public.catalog_products
+  for delete using (
+    (select public.fn_is_platform_admin_full())
     or ((organization_id in (select public.fn_user_org_ids()))
         and public.fn_role_at_least(organization_id, 'manager'))
   );
@@ -30727,7 +30752,10 @@ alter table public.entregas_de_aviso_de_caso
     -- desta organização — o laço robô-com-robô que a 0292 recusa ao DEFINIR o
     -- aviso. Este bloco é o único da constraint, e já carrega o vocabulário
     -- vigente: quem amplia o conjunto edita AQUI.
-    'destino_da_propria_organizacao'));
+    'destino_da_propria_organizacao',
+    -- (migration 0545) A conexão escolhida para os avisos foi PAUSADA pelo
+    -- operador (`channel_sessions.metadata.disabled`).
+    'canal_desativado'));
 
 -- A CHAVE DA IDEMPOTÊNCIA. O dreno do `event_log` reentrega o mesmo evento em
 -- retry e três processos diferentes drenam a mesma fila: sem esta unique, a
@@ -35175,7 +35203,7 @@ comment on column public.contacts.social_identity is
 -- primeira conexão de rede social.
 alter table public.conversations drop constraint if exists conversations_channel_check;
 alter table public.conversations add constraint conversations_channel_check
-  check (channel in ('whatsapp', 'instagram', 'facebook'));
+  check (channel in ('whatsapp', 'instagram', 'facebook', 'webchat'));
 
 
 -- APÊNDICE 20260921030100_0369_prospeccao_nativa.sql
@@ -39347,14 +39375,30 @@ grant  execute on function public.fn_expurgar_candidatos_do_golden(int,int) to s
 -- ---- a retenção de mídia passa a existir (migration 0432) ----
 -- ---- a fila de remoção de mídia deixa de ser eterna (migration 0434) ----
 -- ---- a contagem do expurgo volta para o retorno (migration 0435) ----
--- Ver o cabeçalho das DUAS migrations: a 0432 enfileira arquivo vencido e
+-- ---- a limpeza de mídia ganha interruptor, marca a mensagem e obedece à LGPD (migration 0557) ----
+--
+-- A 0557 (#1534, PR #2180) adiciona `organizations.media_retention_enforced`
+-- com default TRUE: a organização que já existe CONTINUA com a limpeza que
+-- roda desde a 0432, e o interruptor serve para quem quiser DESLIGAR (doc 92,
+-- opção A). SEM `update` de backfill, de propósito: o `update.sh` reaplica este
+-- arquivo inteiro a cada versão, e um `update` aqui desfaria a escolha de quem
+-- mexeu no interruptor. A função NO LUGAR abaixo passa a respeitar o
+-- interruptor, SUSPENDER a expiração enquanto a organização tem pedido LGPD em
+-- andamento (`lgpd_requests` em `received`/`processing`), anular `media_url`
+-- (a rota não busca de novo do provedor), zerar `media_derived_text` e marcar
+-- `media_status='expired'` + `media_expired_at` ao expirar.
+alter table public.organizations
+  add column if not exists media_retention_enforced boolean not null default true;
+
+-- Ver o cabeçalho das TRÊS migrations: a 0432 enfileira arquivo vencido e
 -- órfão na mesma fila da LGPD (o cron storage-redaction remove pelo Storage
 -- API); a 0434 (#1739) reabre `deleted`/`skipped` quando o mesmo caminho
 -- volta a existir e expurga linha `deleted` com mais de 90 dias; a 0435
 -- (#1765) devolve a contagem desse expurgo, que antes não aparecia nem no
--- retorno nem na trilha. O corpo abaixo é a 0435 EDITADA NO LUGAR — ele tem
--- de casar com o da última migration, senão quem instala pelo kit self-host
--- fica com outra função de quem aplica a cadeia
+-- retorno nem na trilha; a 0557 (#1534) obedece ao interruptor e marca a
+-- mensagem `media_status='expired'` ao expirar. O corpo abaixo é a 0557
+-- EDITADA NO LUGAR — ele tem de casar com o da última migration, senão quem
+-- instala pelo kit self-host fica com outra função de quem aplica a cadeia
 -- (apendice-do-baseline-nao-diverge-da-cadeia).
 create or replace function public.fn_enfileirar_midia_vencida(p_limite integer default 500)
 returns jsonb
@@ -39395,15 +39439,31 @@ begin
      and coalesce(processed_at, enqueued_at) < now() - v_janela_deleted;
   get diagnostics v_expurgadas = row_count;
 
-  -- 1. VENCIDAS: arquivo de mensagem mais velho que a retenção da organização.
-  --    A mensagem fica (texto, status, horário); só o arquivo sai, e a tela
-  --    mostra «Mídia indisponível». O piso de 30 dias é o mesmo do formulário.
+  -- 1. VENCIDAS: arquivo de mensagem mais velho que a retenção da organização —
+  --    SÓ de organização com o interruptor LIGADO (`media_retention_enforced`,
+  --    0557/#1534) e que NÃO está com pedido LGPD em andamento: um pedido de
+  --    acesso/eliminação em curso (`lgpd_requests` em `received`/`processing`)
+  --    não pode ter o objeto destruído no meio do atendimento — a suspensão é
+  --    da ORGANIZAÇÃO INTEIRA, o lado conservador de um prazo legal. O índice
+  --    `lgpd_requests_org_status_idx` (organization_id, status) cobre a
+  --    anti-join. A mensagem fica (texto, status, horário); o arquivo sai, a
+  --    `media_url` também (a rota não busca de novo do provedor), a transcrição
+  --    some junto (`media_derived_text`) e a tela mostra o aviso via
+  --    `metadata.media_status='expired'`. O piso de 30 dias é o mesmo do
+  --    formulário, mesmo com valor menor gravado no banco.
   with alvo as (
-    select m.id, m.organization_id, m.media_storage_path as caminho
+    select m.id, m.organization_id, m.media_storage_path as caminho,
+           greatest(coalesce(o.media_retention_days, 365), 30) as retencao_dias
       from public.messages m
       join public.organizations o on o.id = m.organization_id
      where m.media_storage_path is not null
+       and o.media_retention_enforced
        and m.created_at < now() - make_interval(days => greatest(coalesce(o.media_retention_days, 365), 30))
+       and not exists (
+         select 1 from public.lgpd_requests r
+          where r.organization_id = m.organization_id
+            and r.status in ('received', 'processing')
+       )
      order by m.created_at
      limit v_lim
      for update of m skip locked
@@ -39439,7 +39499,16 @@ begin
     returning 1
   ), limpas as (
     update public.messages m
-       set media_storage_path = null, updated_at = now()
+       set media_storage_path = null,
+           media_url = null,
+           media_derived_text = null,
+           metadata = coalesce(m.metadata, '{}'::jsonb)
+             || jsonb_build_object(
+                  'media_status', 'expired',
+                  'media_expired_at', to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                  'media_retention_days', alvo.retencao_dias
+                ),
+           updated_at = now()
       from alvo
      where m.id = alvo.id
     returning 1
@@ -44495,6 +44564,42 @@ end; $$;
 
 revoke execute on function public.fn_service_status(uuid,uuid,text,bigint) from public,anon,authenticated;
 grant execute on function public.fn_service_status(uuid,uuid,text,bigint) to service_role;
+-- ---- classificador do roteador nasce "Automático" (migration 0530) ----
+--
+-- `ai_routers.config` semeava `'classifier_model', 'claude-haiku-4-5'`: id fixo
+-- do Anthropic num produto multi-provedor. Numa organização configurada na
+-- OpenRouter, ele vencia o padrão da organização (precedência 3 de
+-- `decidirBinding`, `lib/ai/pontos/resolver.ts`) e ia para o endpoint errado —
+-- medido em 2026-10-02: 400 `claude-haiku-4-5 is not a valid model ID`, três
+-- vezes, e TODO turno caía no fallback do roteador. Na OpenRouter o modelo é
+-- `anthropic/claude-haiku-4.5`, com PONTO (catálogo público, 464 ids).
+--
+-- O default perde só `classifier_model` (`sticky` e `min_confidence` ficam): o
+-- roteador nasce em "Automático" e o seam resolve pelo painel de provedores,
+-- senão pelo padrão da organização. A cura só alcança a linha com a forma exata
+-- do seed E que quebrava: `classifier_model = 'claude-haiku-4-5'` (o único id
+-- semeado — `anthropic/claude-haiku-4-5` é escolha válida da Requesty, 0410),
+-- `classifier_provider` ausente (a tela grava os dois juntos) e organização fora
+-- do Anthropic (regra de `llmSettingsSchema`: provedor ausente, não-texto ou
+-- vazio vale 'anthropic'; lá o alias resolve, 0104, e o Haiku fica). Texto da
+-- cura idêntico ao da migration; o invariante executa ESTE bloco. Idempotente;
+-- não cria função, mas entra antes da varredura como todo apêndice.
+
+alter table public.ai_routers
+  alter column config set default jsonb_build_object(
+    'sticky', true,
+    'min_confidence', 0.6);
+
+update public.ai_routers r
+set config = r.config - 'classifier_model'
+from public.organizations o
+where o.id = r.organization_id
+  and r.config->>'classifier_model' = 'claude-haiku-4-5'
+  and coalesce(r.config->>'classifier_provider', '') = ''
+  and coalesce(
+        case when jsonb_typeof(o.settings->'llm'->'provider') = 'string'
+             then nullif(o.settings->'llm'->>'provider', '') end,
+        'anthropic') <> 'anthropic';
 
 -- ---- a anotação simultânea não apaga a outra (migration 0502) ----
 -- 0502 — duas anotações ao mesmo tempo não apagam uma à outra.
@@ -44820,6 +44925,55 @@ create trigger trg_demanda_marca_proximo_passo_com_o_caso
 
 notify pgrst, 'reload schema';
 
+-- ---- APÊNDICE 0545: toggle de canal desativado (`fn_definir_canal_desativado`) ----
+--
+-- Idempotente (`create or replace`, sem backfill): grava só a chave
+-- `disabled` no `metadata` de `channel_sessions` (leia como desligado apenas o
+-- booleano `true`; ausente/nulo/outro valor = ligado). Espelha a 0251.
+-- O código `canal_desativado` do CHECK de `entregas_de_aviso_de_caso.erro_codigo`
+-- entra no bloco único dessa constraint (0292/0439), não aqui.
+-- Migration: `supabase/migrations/20261005033449_0545_toggle_de_canal_desativado.sql`.
+
+create or replace function public.fn_definir_canal_desativado(
+  p_org uuid,
+  p_canal uuid,
+  p_desativado boolean
+)
+returns integer
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_linhas integer;
+begin
+  if p_desativado is null then
+    raise exception 'estado do canal inválido' using errcode = '22023';
+  end if;
+
+  update public.channel_sessions
+     set metadata = jsonb_set(
+       coalesce(metadata, '{}'::jsonb),
+       '{disabled}',
+       to_jsonb(p_desativado),
+       true
+     )
+   where organization_id = p_org
+     and id = p_canal
+     and archived_at is null;
+
+  get diagnostics v_linhas = row_count;
+  return v_linhas;
+end;
+$$;
+
+revoke execute on function public.fn_definir_canal_desativado(uuid, uuid, boolean)
+  from public, anon, authenticated;
+grant execute on function public.fn_definir_canal_desativado(uuid, uuid, boolean)
+  to service_role;
+
+notify pgrst, 'reload schema';
+
 -- ---- teto do nome de sessão WAHA recusado pelo banco (migration 0543, #686) ----
 --
 -- O `@MaxLength(54)` do WAHA ficava conferido no teste de banco, no teste
@@ -44850,6 +45004,922 @@ create trigger trg_teto_nome_de_sessao_waha before insert or update on public.ch
  for each row execute function public.fn_teto_nome_de_sessao_waha();
 
 notify pgrst,'reload schema';
+
+-- manifest: Canal webchat separado e fechado por padrão, com handoff opaco de uso único, mensagens isoladas e RPCs atômicas para nunca expor o histórico ou a identidade do WhatsApp ao visitante.
+
+create table if not exists public.webchat_channel_configs (
+  organization_id uuid primary key references public.organizations(id) on delete cascade,
+  enabled boolean not null default false,
+  public_id uuid not null default gen_random_uuid(),
+  channel_session_id uuid references public.channel_sessions(id) on delete restrict,
+  allowed_sectors text[] not null default '{}', allowed_origins text[] not null default '{}',
+  handoff_ttl_seconds integer not null default 900 check (handoff_ttl_seconds between 60 and 3600),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  constraint webchat_channel_configs_sectors_check check (allowed_sectors <@ array['suporte', 'financeiro', 'cancelamento']::text[]),
+  constraint webchat_channel_configs_enabled_requires_allowlist_check check (not enabled or (cardinality(allowed_sectors) > 0 and cardinality(allowed_origins) > 0))
+);
+alter table public.webchat_channel_configs
+  add column if not exists public_id uuid not null default gen_random_uuid(),
+  add column if not exists channel_session_id uuid references public.channel_sessions(id) on delete restrict;
+create unique index if not exists webchat_channel_configs_public_id_unique on public.webchat_channel_configs(public_id);
+create table if not exists public.webchat_handoffs (
+  id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id) on delete cascade,
+  source_conversation_id uuid not null references public.conversations(id) on delete restrict, source_channel_session_id uuid not null references public.channel_sessions(id) on delete restrict, contact_id uuid not null references public.contacts(id) on delete restrict,
+  sector text not null check (sector in ('suporte', 'financeiro', 'cancelamento')),
+  token_digest text not null unique check (token_digest ~ '^[0-9a-f]{64}$'), expires_at timestamptz not null,
+  consumed_at timestamptz, revoked_at timestamptz, issued_by uuid not null references auth.users(id) on delete restrict,
+  created_at timestamptz not null default now(), check (expires_at > created_at)
+);
+create index if not exists webchat_handoffs_claim on public.webchat_handoffs(token_digest, expires_at) where consumed_at is null and revoked_at is null;
+create table if not exists public.webchat_visitor_sessions (
+  id uuid primary key default gen_random_uuid(), handoff_id uuid unique references public.webchat_handoffs(id) on delete restrict,
+  organization_id uuid not null references public.organizations(id) on delete cascade, contact_id uuid not null references public.contacts(id) on delete restrict,
+  source_conversation_id uuid not null references public.conversations(id) on delete restrict,
+  sector text not null check (sector in ('suporte', 'financeiro', 'cancelamento')),
+  session_digest text not null unique check (session_digest ~ '^[0-9a-f]{64}$'), csrf_digest text not null check (csrf_digest ~ '^[0-9a-f]{64}$'),
+  expires_at timestamptz not null, revoked_at timestamptz, created_at timestamptz not null default now()
+);
+create index if not exists webchat_visitor_sessions_active on public.webchat_visitor_sessions(session_digest, expires_at) where revoked_at is null;
+alter table public.webchat_visitor_sessions alter column handoff_id drop not null;
+create table if not exists public.webchat_messages (
+  id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id) on delete cascade,
+  visitor_session_id uuid not null references public.webchat_visitor_sessions(id) on delete cascade,
+  source_conversation_id uuid not null references public.conversations(id) on delete restrict,
+  direction text not null check (direction in ('visitor', 'operator')), body text not null check (char_length(trim(body)) between 1 and 4000),
+  idempotency_key uuid not null, sent_by_user_id uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(),
+  constraint webchat_messages_idempotent unique (visitor_session_id, direction, idempotency_key)
+);
+create index if not exists webchat_messages_operator_timeline on public.webchat_messages(organization_id, source_conversation_id, visitor_session_id, created_at);
+alter table public.webchat_channel_configs enable row level security;
+alter table public.webchat_handoffs enable row level security;
+alter table public.webchat_visitor_sessions enable row level security;
+alter table public.webchat_messages enable row level security;
+revoke all on public.webchat_channel_configs, public.webchat_handoffs, public.webchat_visitor_sessions, public.webchat_messages from anon, authenticated;
+
+-- O token puro nunca entra no banco. Consumo e criação de sessão são atômicos.
+create or replace function public.fn_emitir_webchat_handoff(p_organization_id uuid, p_source_conversation_id uuid, p_sector text, p_token_digest text, p_issued_by uuid) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_config public.webchat_channel_configs%rowtype; v_conversation public.conversations%rowtype; v_handoff public.webchat_handoffs%rowtype;
+begin
+  select * into v_config from public.webchat_channel_configs where organization_id = p_organization_id and enabled = true for update;
+  if not found or not (p_sector = any(v_config.allowed_sectors)) then return jsonb_build_object('ok', false, 'reason', 'webchat_disabled'); end if;
+  select * into v_conversation from public.conversations where id = p_source_conversation_id and organization_id = p_organization_id;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'conversation_not_found'); end if;
+  if not exists (select 1 from public.contacts where id = v_conversation.contact_id and organization_id = p_organization_id and is_anonymized = false)
+    then return jsonb_build_object('ok', false, 'reason', 'contact_unavailable'); end if;
+  insert into public.webchat_handoffs (organization_id, source_conversation_id, source_channel_session_id, contact_id, sector, token_digest, expires_at, issued_by)
+  values (p_organization_id, v_conversation.id, v_conversation.channel_session_id, v_conversation.contact_id, p_sector, p_token_digest, now() + make_interval(secs => v_config.handoff_ttl_seconds), p_issued_by) returning * into v_handoff;
+  return jsonb_build_object('ok', true, 'handoff_id', v_handoff.id, 'expires_at', v_handoff.expires_at);
+end; $$;
+create or replace function public.fn_consumir_webchat_handoff(p_token_digest text, p_session_digest text, p_csrf_digest text, p_origin text) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_handoff public.webchat_handoffs%rowtype; v_session public.webchat_visitor_sessions%rowtype;
+begin
+  update public.webchat_handoffs h set consumed_at = now() from public.webchat_channel_configs c
+  where h.token_digest = p_token_digest and h.organization_id = c.organization_id and c.enabled = true and p_origin = any(c.allowed_origins)
+    and h.consumed_at is null and h.revoked_at is null and h.expires_at > now() returning h.* into v_handoff;
+  if not found then return jsonb_build_object('ok', false); end if;
+  insert into public.webchat_visitor_sessions (handoff_id, organization_id, contact_id, source_conversation_id, sector, session_digest, csrf_digest, expires_at)
+  values (v_handoff.id, v_handoff.organization_id, v_handoff.contact_id, v_handoff.source_conversation_id, v_handoff.sector, p_session_digest, p_csrf_digest, now() + interval '8 hours') returning * into v_session;
+  return jsonb_build_object('ok', true, 'sector', v_session.sector, 'expires_at', v_session.expires_at);
+end; $$;
+create or replace function public.fn_webchat_sessao_visitante(p_session_digest text, p_origin text) returns jsonb language sql security definer set search_path = public stable as $$
+  select coalesce(jsonb_build_object('ok', true, 'sector', s.sector, 'expires_at', s.expires_at, 'public_id', c.public_id), '{"ok":false}'::jsonb) from public.webchat_visitor_sessions s join public.webchat_channel_configs c on c.organization_id = s.organization_id where s.session_digest = p_session_digest and s.expires_at > now() and s.revoked_at is null and c.enabled = true and p_origin = any(c.allowed_origins) limit 1;
+$$;
+create or replace function public.fn_ler_mensagens_webchat_visitante(p_session_digest text, p_origin text) returns jsonb language sql security definer set search_path = public stable as $$
+  select coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'direction', m.direction, 'body', m.body, 'created_at', m.created_at) order by m.created_at asc) from public.webchat_messages m where m.visitor_session_id = s.id), '[]'::jsonb)
+  from public.webchat_visitor_sessions s join public.webchat_channel_configs c on c.organization_id = s.organization_id
+  where s.session_digest = p_session_digest and s.expires_at > now() and s.revoked_at is null and c.enabled = true and p_origin = any(c.allowed_origins) limit 1;
+$$;
+create or replace function public.fn_registrar_mensagem_webchat_visitante(p_session_digest text, p_csrf_digest text, p_origin text, p_body text, p_idempotency_key uuid) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_session public.webchat_visitor_sessions%rowtype; v_message public.webchat_messages%rowtype;
+begin
+  select s.* into v_session from public.webchat_visitor_sessions s join public.webchat_channel_configs c on c.organization_id = s.organization_id join public.contacts ct on ct.id = s.contact_id and ct.organization_id = s.organization_id where s.session_digest = p_session_digest and s.csrf_digest = p_csrf_digest and s.expires_at > now() and s.revoked_at is null and c.enabled = true and p_origin = any(c.allowed_origins) and ct.is_blocked = false and ct.is_anonymized = false for update of s;
+  if not found then return jsonb_build_object('ok', false); end if;
+  insert into public.webchat_messages (organization_id, visitor_session_id, source_conversation_id, direction, body, idempotency_key) values (v_session.organization_id, v_session.id, v_session.source_conversation_id, 'visitor', trim(p_body), p_idempotency_key) on conflict (visitor_session_id, direction, idempotency_key) do nothing returning * into v_message;
+  if found then
+    perform public.fn_mark_conversation_message(v_session.source_conversation_id, 'inbound', left(v_message.body, 160), v_message.created_at);
+    update public.conversations set status_changed_at = now(), status = 'open', updated_at = now()
+      where id = v_session.source_conversation_id and organization_id = v_session.organization_id
+        and status in ('closed', 'resolved', 'archived');
+  else
+    select * into v_message from public.webchat_messages where visitor_session_id = v_session.id and direction = 'visitor' and idempotency_key = p_idempotency_key;
+  end if;
+  return jsonb_build_object('ok', true, 'message', jsonb_build_object('id', v_message.id, 'direction', v_message.direction, 'body', v_message.body, 'created_at', v_message.created_at));
+end; $$;
+create or replace function public.fn_ler_mensagens_webchat_operador(p_organization_id uuid, p_source_conversation_id uuid, p_visitor_session_id uuid) returns jsonb language sql security definer set search_path = public stable as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'direction', m.direction, 'body', m.body, 'created_at', m.created_at) order by m.created_at asc), '[]'::jsonb) from public.webchat_messages m join public.webchat_visitor_sessions s on s.id = m.visitor_session_id where m.organization_id = p_organization_id and m.source_conversation_id = p_source_conversation_id and m.visitor_session_id = p_visitor_session_id and s.organization_id = p_organization_id and s.source_conversation_id = p_source_conversation_id;
+$$;
+create or replace function public.fn_enviar_mensagem_webchat_operador(p_organization_id uuid, p_source_conversation_id uuid, p_visitor_session_id uuid, p_body text, p_idempotency_key uuid, p_sent_by_user_id uuid) returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_session public.webchat_visitor_sessions%rowtype; v_message public.webchat_messages%rowtype;
+begin
+  select s.* into v_session from public.webchat_visitor_sessions s join public.webchat_channel_configs c on c.organization_id = s.organization_id where s.id = p_visitor_session_id and s.organization_id = p_organization_id and s.source_conversation_id = p_source_conversation_id and s.expires_at > now() and s.revoked_at is null and c.enabled = true for update of s;
+  if not found then return jsonb_build_object('ok', false); end if;
+  insert into public.webchat_messages (organization_id, visitor_session_id, source_conversation_id, direction, body, idempotency_key, sent_by_user_id) values (p_organization_id, v_session.id, p_source_conversation_id, 'operator', trim(p_body), p_idempotency_key, p_sent_by_user_id) on conflict (visitor_session_id, direction, idempotency_key) do nothing returning * into v_message;
+  if found then
+    perform public.fn_mark_conversation_message(p_source_conversation_id, 'outbound', left(v_message.body, 160), v_message.created_at);
+  else
+    select * into v_message from public.webchat_messages where visitor_session_id = v_session.id and direction = 'operator' and idempotency_key = p_idempotency_key;
+  end if;
+  return jsonb_build_object('ok', true, 'message', jsonb_build_object('id', v_message.id, 'direction', v_message.direction, 'body', v_message.body, 'created_at', v_message.created_at));
+end; $$;
+create or replace function public.fn_listar_sessoes_webchat_operador(p_organization_id uuid, p_source_conversation_id uuid) returns jsonb language sql security definer set search_path = public stable as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'sector', s.sector, 'expires_at', s.expires_at, 'active', c.enabled and s.expires_at > now() and s.revoked_at is null) order by s.created_at desc), '[]'::jsonb)
+  from public.webchat_visitor_sessions s join public.webchat_channel_configs c on c.organization_id = s.organization_id
+  where s.organization_id = p_organization_id and s.source_conversation_id = p_source_conversation_id;
+$$;
+revoke all on function public.fn_emitir_webchat_handoff(uuid, uuid, text, text, uuid), public.fn_consumir_webchat_handoff(text, text, text, text), public.fn_webchat_sessao_visitante(text, text), public.fn_ler_mensagens_webchat_visitante(text, text), public.fn_registrar_mensagem_webchat_visitante(text, text, text, text, uuid), public.fn_ler_mensagens_webchat_operador(uuid, uuid, uuid), public.fn_enviar_mensagem_webchat_operador(uuid, uuid, uuid, text, uuid, uuid), public.fn_listar_sessoes_webchat_operador(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.fn_emitir_webchat_handoff(uuid, uuid, text, text, uuid), public.fn_consumir_webchat_handoff(text, text, text, text), public.fn_webchat_sessao_visitante(text, text), public.fn_ler_mensagens_webchat_visitante(text, text), public.fn_registrar_mensagem_webchat_visitante(text, text, text, text, uuid), public.fn_ler_mensagens_webchat_operador(uuid, uuid, uuid), public.fn_enviar_mensagem_webchat_operador(uuid, uuid, uuid, text, uuid, uuid), public.fn_listar_sessoes_webchat_operador(uuid, uuid) to service_role;
+
+-- A virada de is_anonymized é compartilhada pelos dois caminhos de LGPD.
+-- Preserva o fato e as datas do atendimento, mas revoga acessos e redige texto livre.
+create or replace function public.fn_webchat_redigir_contato() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  update public.webchat_messages m set body = '[mensagem anonimizada]'
+    from public.webchat_visitor_sessions s
+   where m.visitor_session_id = s.id and s.organization_id = new.organization_id
+     and s.contact_id = new.id and m.body <> '[mensagem anonimizada]';
+  update public.webchat_visitor_sessions set revoked_at = now()
+   where organization_id = new.organization_id and contact_id = new.id and revoked_at is null;
+  update public.webchat_handoffs set revoked_at = now()
+   where organization_id = new.organization_id and contact_id = new.id and revoked_at is null;
+  return new;
+end; $$;
+revoke all on function public.fn_webchat_redigir_contato() from public, anon, authenticated;
+grant execute on function public.fn_webchat_redigir_contato() to service_role;
+drop trigger if exists trg_webchat_redigir_contato on public.contacts;
+create trigger trg_webchat_redigir_contato after update of is_anonymized on public.contacts
+  for each row when (new.is_anonymized = true and old.is_anonymized is distinct from true)
+  execute function public.fn_webchat_redigir_contato();
+
+-- Link público: cria contato, conversa, sessão e primeira mensagem numa transação.
+create or replace function public.fn_iniciar_webchat_publico(
+  p_public_id uuid, p_origin text, p_name text, p_sector text, p_body text,
+  p_session_digest text, p_csrf_digest text, p_idempotency_key uuid
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_config public.webchat_channel_configs%rowtype;
+  v_channel_id uuid; v_contact_id uuid; v_conversation_id uuid;
+  v_visitor_id uuid; v_message_id uuid; v_created_at timestamptz;
+begin
+  select * into v_config from public.webchat_channel_configs
+    where public_id = p_public_id and enabled = true and p_origin = any(allowed_origins)
+      and p_sector = any(allowed_sectors) for update;
+  if not found then return jsonb_build_object('ok', false); end if;
+  if char_length(trim(p_name)) not between 2 and 80 or
+     char_length(trim(p_body)) not between 1 and 4000 or
+     p_session_digest !~ '^[0-9a-f]{64}$' or p_csrf_digest !~ '^[0-9a-f]{64}$' then
+    return jsonb_build_object('ok', false);
+  end if;
+  v_channel_id := v_config.channel_session_id;
+  if v_channel_id is null then
+    insert into public.channel_sessions
+      (organization_id, provider, waha_session_name, webhook_secret_encrypted,
+       status, display_name)
+    values (v_config.organization_id, 'webchat', null, extensions.gen_random_bytes(32),
+            'WORKING', 'Atendimento web') returning id into v_channel_id;
+    update public.webchat_channel_configs set channel_session_id = v_channel_id,
+      updated_at = now() where organization_id = v_config.organization_id;
+  end if;
+  insert into public.contacts
+    (organization_id, name, display_name, source, force_human)
+  values (v_config.organization_id, trim(p_name), trim(p_name), 'webchat', true)
+    returning id into v_contact_id;
+  insert into public.conversations
+    (organization_id, contact_id, channel_session_id, channel, status)
+  values (v_config.organization_id, v_contact_id, v_channel_id, 'webchat', 'open')
+    returning id into v_conversation_id;
+  insert into public.webchat_visitor_sessions
+    (organization_id, contact_id, source_conversation_id, sector,
+     session_digest, csrf_digest, expires_at)
+  values (v_config.organization_id, v_contact_id, v_conversation_id, p_sector,
+          p_session_digest, p_csrf_digest, now() + interval '7 days')
+    returning id into v_visitor_id;
+  insert into public.webchat_messages
+    (organization_id, visitor_session_id, source_conversation_id,
+     direction, body, idempotency_key)
+  values (v_config.organization_id, v_visitor_id, v_conversation_id,
+          'visitor', trim(p_body), p_idempotency_key)
+    returning id, created_at into v_message_id, v_created_at;
+  perform public.fn_mark_conversation_message(v_conversation_id, 'inbound', left(trim(p_body), 160), v_created_at);
+  return jsonb_build_object('ok', true, 'sector', p_sector,
+    'organization_id', v_config.organization_id, 'conversation_id', v_conversation_id,
+    'expires_at', now() + interval '7 days',
+    'message', jsonb_build_object('id', v_message_id, 'direction', 'visitor',
+      'body', trim(p_body), 'created_at', v_created_at));
+end; $$;
+revoke execute on function public.fn_iniciar_webchat_publico(uuid, text, text, text, text, text, text, uuid) from public, anon, authenticated;
+grant execute on function public.fn_iniciar_webchat_publico(uuid, text, text, text, text, text, text, uuid) to service_role;
+
+-- ---- as decisões do roteador do Jev (migration 0547, #2061) ----
+-- Uma decisão por mensagem do roteador, sem conteúdo da conversa. Mantém a
+-- distinção entre comparação integral e reserva acionada sob demanda.
+alter table public.jev_observacoes add column if not exists intencao_jev text;
+alter table public.jev_observacoes add column if not exists intencao_atual text;
+
+create table if not exists public.jev_router_decisions (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  router_id uuid not null,
+  conversation_id uuid,
+  message_id uuid,
+  job_id uuid,
+  modo text not null check (modo in ('tradicional_comparacao', 'jev_comparacao', 'jev_sob_demanda')),
+  context_message_count integer not null check (context_message_count between 0 and 16),
+  origem text not null check (origem in ('tradicional', 'jev', 'reserva')),
+  motivo_reserva text check (motivo_reserva in ('falha_jev', 'baixa_confianca', 'sem_intencao', 'intencao_invalida')),
+  intent_jev text,
+  intent_tradicional text,
+  intent_final text,
+  agent_id_final uuid,
+  confianca_final numeric,
+  modelo_jev text,
+  custo_jev_cents numeric,
+  custo_tradicional_cents numeric,
+  custo_incompleto boolean not null default false,
+  tempo_total_ms integer not null,
+  revisao text check (revisao in ('correto', 'incorreto')),
+  agent_id_esperado uuid,
+  revisado_por uuid,
+  revisado_em timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists jev_router_decisions_org_message_idx
+  on public.jev_router_decisions (organization_id, router_id, message_id)
+  where message_id is not null;
+create index if not exists jev_router_decisions_org_created_idx
+  on public.jev_router_decisions (organization_id, created_at desc);
+
+alter table public.jev_router_decisions enable row level security;
+drop policy if exists tenant_isolation_jev_router_decisions_select on public.jev_router_decisions;
+create policy tenant_isolation_jev_router_decisions_select on public.jev_router_decisions
+  for select using (organization_id in (select public.fn_user_org_ids()));
+revoke all on public.jev_router_decisions from public, anon, authenticated;
+grant select on public.jev_router_decisions to authenticated;
+grant all on public.jev_router_decisions to service_role;
+
+-- O mesmo horizonte das observações do Jev: 90 dias, piso de 30, com lote
+-- compartilhado. O cron existente já chama esta função diariamente.
+create or replace function public.fn_expurgar_observacoes_do_jev(
+  p_retencao_dias int default null,
+  p_limite int default null
+) returns int
+language plpgsql security definer set search_path = public, pg_temp
+as $$
+declare
+  v_dias int := greatest(coalesce(p_retencao_dias, 90), 30);
+  v_limite int := least(greatest(coalesce(p_limite, 1000), 1), 10000);
+  v_observacoes int;
+  v_decisoes int;
+begin
+  with vencidas as (
+    select id from public.jev_observacoes
+     where created_at < now() - make_interval(days => v_dias)
+     order by created_at limit v_limite
+  )
+  delete from public.jev_observacoes o using vencidas v where o.id = v.id;
+  get diagnostics v_observacoes = row_count;
+  with vencidas as (
+    select id from public.jev_router_decisions
+     where created_at < now() - make_interval(days => v_dias)
+     order by created_at limit (v_limite - v_observacoes)
+  )
+  delete from public.jev_router_decisions d using vencidas v where d.id = v.id;
+  get diagnostics v_decisoes = row_count;
+  return v_observacoes + v_decisoes;
+end;
+$$;
+revoke all on function public.fn_expurgar_observacoes_do_jev(int,int) from public;
+revoke execute on function public.fn_expurgar_observacoes_do_jev(int,int) from anon, authenticated;
+grant execute on function public.fn_expurgar_observacoes_do_jev(int,int) to service_role;
+
+notify pgrst, 'reload schema';
+
+-- ---- #2326: o aniversário e o compromisso alcançam a origem (migration 0551) ----
+-- O gatilho de aniversário (`contact.birthday`) e os seis `appointment.*` não estavam nem na
+-- resolução de origem (`fn_service_event_origin`) nem no carimbo do `emit_event`, e a ação de
+-- WhatsApp terminava em `service_boundary_stale`. As duas pontas passam a ler a MESMA tabela
+-- `(tipo, entidade) → contato` (`fn_service_event_contact`). Cabeçalho da 0551 para o racional inteiro.
+create or replace function public.fn_service_event_contact(p_org uuid,p_event_type text,p_entity_kind text,p_entity_id uuid)
+returns table(contact_id uuid,suportado boolean) language plpgsql stable security definer set search_path=public as $$
+begin
+ if p_event_type in ('lead.created','lead.stage_changed','lead.tag_added') and p_entity_kind='crm_lead' then
+   return query select (select l.contact_id from public.crm_leads l where l.organization_id=p_org and l.id=p_entity_id),true;
+ elsif p_event_type in ('contact.tag_added','contact.birthday') and p_entity_kind='contact' then
+   return query select (select c.id from public.contacts c where c.organization_id=p_org and c.id=p_entity_id),true;
+ elsif p_event_type in ('appointment.created','appointment.confirmed','appointment.rescheduled','appointment.cancelled','appointment.completed','appointment.no_show') and p_entity_kind='calendar_appointment' then
+   return query select (select a.contact_id from public.calendar_appointments a where a.organization_id=p_org and a.id=p_entity_id),true;
+ else
+   return query select null::uuid,false;
+ end if;
+end $$;
+revoke all on function public.fn_service_event_contact(uuid,text,text,uuid) from public,anon,authenticated;
+grant execute on function public.fn_service_event_contact(uuid,text,text,uuid) to service_role;
+
+create or replace function public.fn_service_event_origin(p_org uuid,p_event uuid,p_contact uuid,p_session uuid default null)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare e public.event_log; origin jsonb; boundary jsonb; current_boundary jsonb; entity_contact uuid; v_suportado boolean; cid uuid; sid uuid; observed jsonb; root_event uuid:=p_event; visited uuid[]:=array[]::uuid[];
+begin
+ -- O drain faz claim otimista em outra transação; não conserva row lock.
+ -- Não travar event_log: advisory contato antecede os locks de conversa/FKs.
+ perform public.fn_service_lock(p_org,p_contact);
+ loop
+ if root_event = any(visited) or cardinality(visited)>=32 then raise exception 'service_origin_cycle' using errcode='40001'; end if;
+ visited:=array_append(visited,root_event);
+ boundary:=null;
+ entity_contact:=null;
+ select * into e from public.event_log where organization_id=p_org and id=root_event;
+ if not found then raise exception 'service_event_not_found' using errcode='P0002'; end if;
+ if e.event_type='appointment.outcome_confirmed' and e.entity_kind='appointment' then
+   select contact_id into entity_contact from public.calendar_appointments where organization_id=p_org and id=e.entity_id and revision=(e.payload->>'appointment_revision')::bigint and status='no_show' and outcome_recorded_at is not null;
+ elsif e.event_type='message.received' and e.entity_kind='message' then
+   select contact_id,jsonb_build_object('organization_id',organization_id,'contact_id',contact_id,
+     'conversation_id',conversation_id,'service_revision',service_revision,'demanda_id',demanda_id,'demanda_revision',demanda_revision)
+     into entity_contact,boundary from public.messages where organization_id=p_org and id=e.entity_id and direction='inbound';
+ else
+   -- O par (tipo, entidade) -> contato vem da MESMA tabela que o carimbo
+   -- (`fn_service_event_contact`); se ela nao conhecer o par, segue sendo recusa.
+   select f.contact_id, f.suportado into entity_contact, v_suportado
+     from public.fn_service_event_contact(p_org,e.event_type,e.entity_kind,e.entity_id) f;
+   if not v_suportado then raise exception 'service_event_origin_unsupported' using errcode='40001'; end if;
+ end if;
+ if entity_contact is distinct from p_contact or not exists(select 1 from public.contacts where organization_id=p_org and id=p_contact and not is_anonymized and is_merged_into is null) then
+   raise exception 'service_scope_mismatch' using errcode='23503'; end if;
+ origin:=e.payload->'service_origin';
+ if origin->>'kind'='event' then
+   if origin->>'organization_id' is distinct from p_org::text or origin->>'contact_id' is distinct from p_contact::text then raise exception 'service_scope_mismatch' using errcode='23503'; end if;
+   root_event:=(origin->>'event_id')::uuid;
+   if root_event is null then raise exception 'service_stale' using errcode='40001'; end if;
+   continue;
+ end if;
+ exit;
+ end loop;
+ if boundary is not null or origin->>'kind'='continuation' then
+   boundary:=coalesce(boundary,origin->'boundary');
+   select channel_session_id into sid from public.conversations where organization_id=p_org and contact_id=p_contact and id=(boundary->>'conversation_id')::uuid;
+   if p_session is not null and p_session is distinct from sid then raise exception 'service_channel_mismatch' using errcode='23503'; end if;
+ elsif origin->>'kind'='command' then
+   observed:=origin->'observed';
+   if observed->>'organization_id' is distinct from p_org::text or observed->>'contact_id' is distinct from p_contact::text then raise exception 'service_scope_mismatch' using errcode='23503'; end if;
+   if jsonb_typeof(observed->'destinations')='array' then
+     sid:=coalesce(p_session,(observed->>'default_session_id')::uuid);
+     select item->'observed' into observed from jsonb_array_elements(observed->'destinations') item where item->>'channel_session_id'=sid::text;
+   else
+     -- Compatibilidade com snapshot anterior: prova somente sua conversa, nunca ausência de outro canal.
+     select channel_session_id into sid from public.conversations where organization_id=p_org and contact_id=p_contact and id=(observed->>'conversation_id')::uuid;
+     if p_session is not null and p_session is distinct from sid then raise exception 'service_channel_mismatch' using errcode='23503'; end if;
+   end if;
+ else raise exception 'service_stale' using errcode='40001'; end if;
+ if sid is null then raise exception 'service_stale' using errcode='40001'; end if;
+ if not exists(select 1 from public.channel_sessions where id=sid and organization_id=p_org and archived_at is null) then raise exception 'service_channel_mismatch' using errcode='23503'; end if;
+ if boundary is null and observed is null then raise exception 'service_stale' using errcode='40001'; end if;
+ select service_boundary into current_boundary from public.event_service_origins where organization_id=p_org and event_id=root_event and channel_session_id=sid;
+ if found then boundary:=current_boundary;
+ elsif boundary is null then
+   -- PARA UM EVENTO, `absent` E PROCEDENCIA — NAO REIVINDICACAO DE ESTADO.
+   --
+   -- O CAS de `fn_service_begin` existe para que dois ATORES com a mesma
+   -- observacao "ausente" nao ajam os dois: o segundo tem de perder, e o
+   -- invariante de `fn_service_begin` guarda isso. Um evento e outra coisa: o
+   -- retrato `absent` diz "quando este evento foi EMITIDO nao havia
+   -- atendimento", e a resolucao de cada evento ja e idempotente pelo memo
+   -- `event_service_origins` logo acima — nao ha corrida a arbitrar aqui.
+   --
+   -- Sem esta distincao o caminho ORDINARIO morria: um lead criado e depois
+   -- movido de etapa gera DOIS eventos, cada um com seu retrato `absent`;
+   -- resolver o primeiro cria a conversa e o segundo levantava 40001 — que
+   -- `serviceForEvent` engole como `stale_origin`, entao o follow-up de etapa
+   -- simplesmente nao nascia, sem erro em lugar nenhum.
+   --
+   -- Zerar `observed` so quando a conversa JA existe mantem o CAS de pe para o
+   -- retrato que descreve uma fronteira concreta (esse continua sendo conferido
+   -- contra a vigente) e para todo chamador direto de `fn_service_begin`.
+   if observed->>'absent' = 'true' and exists(
+        select 1 from public.conversations
+         where organization_id=p_org and contact_id=p_contact
+           and channel_session_id=sid and not is_group) then
+     observed:=null;
+   end if;
+   boundary:=public.fn_service_begin(p_org,p_contact,sid,observed) - 'status' - 'demanda_fechada_em' - 'service_started_at';
+ end if;
+ if boundary->>'organization_id' is distinct from p_org::text or boundary->>'contact_id' is distinct from p_contact::text then
+   raise exception 'service_scope_mismatch' using errcode='23503'; end if;
+ cid:=(boundary->>'conversation_id')::uuid;
+ if p_session is not null and not exists(select 1 from public.conversations where organization_id=p_org and id=cid and contact_id=p_contact and channel_session_id=p_session) then
+   raise exception 'service_channel_mismatch' using errcode='23503'; end if;
+ current_boundary:=public.fn_service_boundary(p_org,cid);
+ if current_boundary is null or current_boundary->>'status' in ('closed','resolved','archived')
+   or current_boundary->>'demanda_fechada_em' is not null
+   or (current_boundary - 'status' - 'demanda_fechada_em' - 'service_started_at') is distinct from boundary then
+   raise exception 'service_stale' using errcode='40001'; end if;
+ insert into public.event_service_origins(event_id,channel_session_id,organization_id,service_boundary) values(root_event,sid,p_org,boundary)
+ on conflict(event_id,channel_session_id) do nothing;
+ return boundary;
+end; $$;
+revoke all on function public.fn_service_event_origin(uuid,uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.fn_service_event_origin(uuid,uuid,uuid,uuid) to service_role;
+
+CREATE OR REPLACE FUNCTION public.emit_event(p_event_type text, p_entity_kind text, p_entity_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_metadata jsonb DEFAULT '{}'::jsonb, p_organization_id uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_org_id uuid;
+  v_event_id uuid;
+  v_contact uuid;
+  v_origin jsonb;
+begin
+  -- message.received nasce somente do INSERT inbound interno. Um chamador
+  -- público não pode reapresentar uma mensagem existente como evento novo.
+  -- `ai.case_opened`/`ai.case_closed` entram pela mesma razão (0279): o caso é
+  -- do motor, e um evento de caso forjado por login move o funil e acorda o
+  -- agente em nome de uma decisão que ninguém tomou.
+  -- `contact.birthday` entra pela 0551: só o cron (`contact-birthdays`, sem
+  -- sessão) o emite, e a partir desta migration ele alcança a origem e manda
+  -- WhatsApp de verdade — forjado por login, seria envio em nome de um
+  -- aniversário que ninguém fez.
+  if auth.uid() is not null and p_event_type in (
+    'message.received','appointment.outcome_confirmed',
+    'ai.case_opened','ai.case_closed','contact.birthday'
+  ) then
+    raise exception 'reserved_message_received' using errcode='42501';
+  end if;
+  -- Estes campos autorizam efeitos operacionais; não são payload público.
+  if auth.uid() is not null and (
+    coalesce(p_payload,'{}'::jsonb) ?| array['service_origin','service_boundary']
+    or coalesce(p_metadata,'{}'::jsonb) ?| array['service_origin','service_boundary']
+  ) then raise exception 'reserved_service_origin' using errcode='42501'; end if;
+  v_org_id := coalesce(p_organization_id, (public.fn_support_context()->>'organization_id')::uuid);
+  if v_org_id is null then
+    select organization_id into v_org_id
+      from public.user_organizations
+      where user_id = auth.uid() and revoked_at is null
+      limit 1;
+  end if;
+  if v_org_id is null then
+    raise exception 'emit_event: organization_id obrigatorio';
+  end if;
+
+  if auth.uid() is not null
+     and not public.fn_role_at_least(v_org_id, 'viewer') then
+    raise exception 'caller_not_authorized_for_org'
+      using hint = 'emit_event: caller must be an active member of the organization';
+  end if;
+
+  if not public.fn_support_write_allowed(v_org_id) then raise exception 'support_readonly' using errcode='42501'; end if;
+
+  -- A ORIGEM E RESERVADA AO SERVIDOR — ENTAO O SERVIDOR TEM DE ESCREVE-LA.
+  --
+  -- O bloco acima recusa `service_origin` vindo de chamador autenticado (42501,
+  -- e com razao: e o campo que AUTORIZA efeito operacional, nao payload
+  -- publico). So que ninguem o escrevia no lugar dele. Efeito medido: quem move
+  -- o negocio pela IA carimba a origem no servidor (`agent-stage-sync`,
+  -- `appointment-stage-move`, `handoff-stage-move`) e o follow-up nasce; quem
+  -- move PELO QUADRO — o operador, pela rota HTTP autenticada — emitia um
+  -- evento SEM origem, `fn_service_event_origin` caia no `service_stale` final
+  -- (40001), `serviceForEvent` engolia como `stale_origin` e o follow-up nunca
+  -- nascia. Sem erro em lugar nenhum: o gatilho de etapa era inalcancavel pelo
+  -- caminho que o produto oferece na tela.
+  --
+  -- O retrato e tirado AQUI, no instante da emissao, que e exatamente a
+  -- semantica de procedencia que a 0223 quer: "quando este evento nasceu, o
+  -- atendimento estava assim". A resolucao do contato vem da mesma tabela de
+  -- `fn_service_event_contact` — se ela nao souber resolver o tipo, nao ha o que
+  -- carimbar e o evento segue sem origem, como antes.
+  if not (coalesce(p_payload,'{}'::jsonb) ? 'service_origin')
+     and not (coalesce(p_metadata,'{}'::jsonb) ? 'service_origin') then
+    select f.contact_id into v_contact
+      from public.fn_service_event_contact(v_org_id, p_event_type, p_entity_kind, p_entity_id) f;
+    if v_contact is not null
+       and exists(select 1 from public.contacts
+                   where organization_id=v_org_id and id=v_contact
+                     and not is_anonymized and is_merged_into is null) then
+      v_origin := jsonb_build_object('kind','command',
+        'observed', public.fn_service_observe_command(v_org_id, v_contact));
+    end if;
+  end if;
+
+  insert into public.event_log
+    (organization_id, event_type, entity_kind, entity_id, payload, metadata)
+  values
+    (v_org_id, p_event_type, p_entity_kind, p_entity_id,
+     coalesce(p_payload, '{}'::jsonb)
+       || case when v_origin is null then '{}'::jsonb else jsonb_build_object('service_origin', v_origin) end,
+     coalesce(p_metadata, '{}'::jsonb)
+       || jsonb_build_object('emitted_at', extract(epoch from now())))
+  returning id into v_event_id;
+
+  return v_event_id;
+end $function$;
+revoke execute on function public.emit_event(text, text, uuid, jsonb, jsonb, uuid) from public, anon;
+grant  execute on function public.emit_event(text, text, uuid, jsonb, jsonb, uuid) to authenticated, service_role;
+
+notify pgrst,'reload schema';
+
+
+-- ---- #2394: o contato pessoal tira do RAG os trechos já ingeridos (migration 0564) ----
+-- Marcar um contato como pessoal zerava `usable_for_rag` (só ingestões futuras) e deixava os
+-- `ai_chunks` já gravados alcançáveis por `retrieve_top_k_chunks`. A função remove os trechos
+-- cujo `metadata.conversation_id` pertence às conversas do contato e devolve a contagem.
+-- Cabeçalho da 0564 para o racional inteiro.
+create or replace function public.fn_contato_pessoal_remove_trechos_do_rag(p_org uuid,p_contact uuid)
+returns integer language plpgsql security definer set search_path=public as $$
+declare removidos integer;
+begin
+ if auth.uid() is not null and not public.fn_role_at_least(p_org,'manager') then
+  raise exception 'caller_not_authorized_for_org'
+    using hint = 'fn_contato_pessoal_remove_trechos_do_rag: caller must be manager of the organization';
+ end if;
+ delete from public.ai_chunks c
+   using public.conversations v
+  where c.organization_id=p_org
+    and v.organization_id=p_org
+    and v.contact_id=p_contact
+    and c.metadata->>'conversation_id'=v.id::text;
+ get diagnostics removidos = row_count;
+ return removidos;
+end $$;
+revoke all on function public.fn_contato_pessoal_remove_trechos_do_rag(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.fn_contato_pessoal_remove_trechos_do_rag(uuid,uuid) to service_role;
+
+notify pgrst,'reload schema';
+
+-- ---- 0583: conexão segura com ERP/provedor (IXC primeiro adaptador) ----
+create table if not exists public.erp_integrations (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  provider text not null,
+  base_url text not null,
+  credential_encrypted bytea not null,
+  enabled boolean not null default true,
+  resources jsonb not null default '{"customers":true,"contracts":true,"receivables":true,"service_orders":true}'::jsonb,
+  last_tested_at timestamptz,
+  last_test_ok boolean,
+  last_test_error text,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint erp_integrations_provider_conhecido check (provider in ('ixc', 'bemobi')),
+  constraint erp_integrations_base_url_https check (base_url ~ '^https://[^/?#]+$'),
+  constraint erp_integrations_resources_objeto check (jsonb_typeof(resources) = 'object'),
+  constraint erp_integrations_org_provider_unico unique (organization_id, provider)
+);
+
+comment on table public.erp_integrations is
+  'Conexões server-side de ERP/provedor por organização. Credenciais nunca são servidas ao browser; adaptadores ativos: IXC e Bemobi/7AZ.';
+comment on column public.erp_integrations.resources is
+  'Grupos autorizados para uso futuro no atendimento/IA; não significa que já foram importados.';
+
+alter table public.erp_integrations enable row level security;
+revoke all on table public.erp_integrations from public, anon, authenticated;
+grant all on table public.erp_integrations to service_role;
+
+drop trigger if exists trg_erp_integrations_updated_at on public.erp_integrations;
+create trigger trg_erp_integrations_updated_at
+before update on public.erp_integrations
+for each row execute function public.fn_set_updated_at();
+
+notify pgrst, 'reload schema';
+
+-- ---- 0584: Bemobi/7AZ como segundo adaptador financeiro ----
+alter table public.erp_integrations
+  drop constraint if exists erp_integrations_provider_conhecido;
+
+alter table public.erp_integrations
+  add constraint erp_integrations_provider_conhecido
+  check (provider in ('ixc', 'bemobi'));
+
+comment on table public.erp_integrations is
+  'Conexões server-side de ERP/provedor por organização. Credenciais nunca são servidas ao browser; adaptadores ativos: IXC e Bemobi/7AZ.';
+
+notify pgrst, 'reload schema';
+
+-- ---- 0585: encerramento do webchat chega ao cliente ----
+-- manifest: O fechamento da conversa web encerra a sessao publica, grava um aviso visivel no fio e impede que uma mensagem tardia reabra o atendimento.
+
+alter table public.webchat_messages
+  drop constraint if exists webchat_messages_direction_check;
+
+alter table public.webchat_messages
+  add constraint webchat_messages_direction_check
+  check (direction in ('visitor', 'operator', 'system'));
+
+-- A sessao continua legivel depois do fechamento para o cliente conservar o
+-- historico. `active` governa somente novas escritas e a composicao da tela.
+create or replace function public.fn_webchat_sessao_visitante(
+  p_session_digest text,
+  p_origin text
+) returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    jsonb_build_object(
+      'ok', true,
+      'sector', s.sector,
+      'expires_at', s.expires_at,
+      'public_id', cfg.public_id,
+      'active', conv.status not in ('closed', 'resolved', 'archived'),
+      'closed_at', case
+        when conv.status in ('closed', 'resolved', 'archived')
+          then coalesce(conv.service_closed_at, conv.status_changed_at)
+        else null
+      end
+    ),
+    '{"ok":false}'::jsonb
+  )
+  from public.webchat_visitor_sessions s
+  join public.webchat_channel_configs cfg
+    on cfg.organization_id = s.organization_id
+  join public.conversations conv
+    on conv.id = s.source_conversation_id
+   and conv.organization_id = s.organization_id
+  where s.session_digest = p_session_digest
+    and s.expires_at > now()
+    and s.revoked_at is null
+    and cfg.enabled = true
+    and p_origin = any(cfg.allowed_origins)
+  limit 1;
+$$;
+
+-- Uma mensagem do visitante so pertence ao episodio ainda aberto. Antes, esta
+-- funcao reabria silenciosamente a conversa que o operador acabara de fechar.
+create or replace function public.fn_registrar_mensagem_webchat_visitante(
+  p_session_digest text,
+  p_csrf_digest text,
+  p_origin text,
+  p_body text,
+  p_idempotency_key uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_session public.webchat_visitor_sessions%rowtype;
+  v_message public.webchat_messages%rowtype;
+begin
+  select s.* into v_session
+  from public.webchat_visitor_sessions s
+  join public.webchat_channel_configs cfg
+    on cfg.organization_id = s.organization_id
+  join public.contacts ct
+    on ct.id = s.contact_id
+   and ct.organization_id = s.organization_id
+  join public.conversations conv
+    on conv.id = s.source_conversation_id
+   and conv.organization_id = s.organization_id
+  where s.session_digest = p_session_digest
+    and s.csrf_digest = p_csrf_digest
+    and s.expires_at > now()
+    and s.revoked_at is null
+    and cfg.enabled = true
+    and p_origin = any(cfg.allowed_origins)
+    and ct.is_blocked = false
+    and ct.is_anonymized = false
+    and conv.status not in ('closed', 'resolved', 'archived')
+  for update of s;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'reason', 'conversation_closed');
+  end if;
+
+  insert into public.webchat_messages (
+    organization_id, visitor_session_id, source_conversation_id,
+    direction, body, idempotency_key
+  ) values (
+    v_session.organization_id, v_session.id, v_session.source_conversation_id,
+    'visitor', trim(p_body), p_idempotency_key
+  )
+  on conflict (visitor_session_id, direction, idempotency_key) do nothing
+  returning * into v_message;
+
+  if found then
+    perform public.fn_mark_conversation_message(
+      v_session.source_conversation_id,
+      'inbound',
+      left(v_message.body, 160),
+      v_message.created_at
+    );
+  else
+    select * into v_message
+    from public.webchat_messages
+    where visitor_session_id = v_session.id
+      and direction = 'visitor'
+      and idempotency_key = p_idempotency_key;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', jsonb_build_object(
+      'id', v_message.id,
+      'direction', v_message.direction,
+      'body', v_message.body,
+      'created_at', v_message.created_at
+    )
+  );
+end;
+$$;
+
+-- A Inbox tambem deixa de escrever numa sessao encerrada. Nota interna segue
+-- disponivel no painel porque nao usa esta RPC e nao chega ao cliente.
+create or replace function public.fn_enviar_mensagem_webchat_operador(
+  p_organization_id uuid,
+  p_source_conversation_id uuid,
+  p_visitor_session_id uuid,
+  p_body text,
+  p_idempotency_key uuid,
+  p_sent_by_user_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_session public.webchat_visitor_sessions%rowtype;
+  v_message public.webchat_messages%rowtype;
+begin
+  select s.* into v_session
+  from public.webchat_visitor_sessions s
+  join public.webchat_channel_configs cfg
+    on cfg.organization_id = s.organization_id
+  join public.conversations conv
+    on conv.id = s.source_conversation_id
+   and conv.organization_id = s.organization_id
+  where s.id = p_visitor_session_id
+    and s.organization_id = p_organization_id
+    and s.source_conversation_id = p_source_conversation_id
+    and s.expires_at > now()
+    and s.revoked_at is null
+    and cfg.enabled = true
+    and conv.status not in ('closed', 'resolved', 'archived')
+  for update of s;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'reason', 'conversation_closed');
+  end if;
+
+  insert into public.webchat_messages (
+    organization_id, visitor_session_id, source_conversation_id,
+    direction, body, idempotency_key, sent_by_user_id
+  ) values (
+    p_organization_id, v_session.id, p_source_conversation_id,
+    'operator', trim(p_body), p_idempotency_key, p_sent_by_user_id
+  )
+  on conflict (visitor_session_id, direction, idempotency_key) do nothing
+  returning * into v_message;
+
+  if found then
+    perform public.fn_mark_conversation_message(
+      p_source_conversation_id,
+      'outbound',
+      left(v_message.body, 160),
+      v_message.created_at
+    );
+  else
+    select * into v_message
+    from public.webchat_messages
+    where visitor_session_id = v_session.id
+      and direction = 'operator'
+      and idempotency_key = p_idempotency_key;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', jsonb_build_object(
+      'id', v_message.id,
+      'direction', v_message.direction,
+      'body', v_message.body,
+      'created_at', v_message.created_at
+    )
+  );
+end;
+$$;
+
+create or replace function public.fn_listar_sessoes_webchat_operador(
+  p_organization_id uuid,
+  p_source_conversation_id uuid
+) returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', s.id,
+        'sector', s.sector,
+        'expires_at', s.expires_at,
+        'active', cfg.enabled
+          and s.expires_at > now()
+          and s.revoked_at is null
+          and conv.status not in ('closed', 'resolved', 'archived')
+      ) order by s.created_at desc
+    ),
+    '[]'::jsonb
+  )
+  from public.webchat_visitor_sessions s
+  join public.webchat_channel_configs cfg
+    on cfg.organization_id = s.organization_id
+  join public.conversations conv
+    on conv.id = s.source_conversation_id
+   and conv.organization_id = s.organization_id
+  where s.organization_id = p_organization_id
+    and s.source_conversation_id = p_source_conversation_id;
+$$;
+
+-- O fechamento e o aviso formam uma unica transacao: nunca existe o estado em
+-- que a Inbox diz "fechada" e o visitante ainda nao recebeu o registro.
+create or replace function public.fn_webchat_avisar_encerramento()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.channel = 'webchat'
+     and new.status in ('closed', 'resolved', 'archived')
+     and old.status not in ('closed', 'resolved', 'archived') then
+    insert into public.webchat_messages (
+      organization_id, visitor_session_id, source_conversation_id,
+      direction, body, idempotency_key
+    )
+    select
+      s.organization_id,
+      s.id,
+      s.source_conversation_id,
+      'system',
+      'Atendimento encerrado pela equipe.',
+      gen_random_uuid()
+    from public.webchat_visitor_sessions s
+    where s.organization_id = new.organization_id
+      and s.source_conversation_id = new.id
+      and s.revoked_at is null
+      and s.expires_at > now();
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_webchat_avisar_encerramento()
+  from public, anon, authenticated;
+grant execute on function public.fn_webchat_avisar_encerramento()
+  to service_role;
+
+drop trigger if exists trg_webchat_avisar_encerramento on public.conversations;
+create trigger trg_webchat_avisar_encerramento
+after update of status on public.conversations
+for each row
+execute function public.fn_webchat_avisar_encerramento();
+
+-- Corrige sessoes que ja estavam abertas no navegador quando esta versao foi
+-- aplicada. Uma linha por sessao, somente quando ainda nao existe aviso.
+insert into public.webchat_messages (
+  organization_id, visitor_session_id, source_conversation_id,
+  direction, body, idempotency_key
+)
+select
+  s.organization_id,
+  s.id,
+  s.source_conversation_id,
+  'system',
+  'Atendimento encerrado pela equipe.',
+  gen_random_uuid()
+from public.webchat_visitor_sessions s
+join public.conversations conv
+  on conv.id = s.source_conversation_id
+ and conv.organization_id = s.organization_id
+where conv.channel = 'webchat'
+  and conv.status in ('closed', 'resolved', 'archived')
+  and s.revoked_at is null
+  and s.expires_at > now()
+  and not exists (
+    select 1
+    from public.webchat_messages m
+    where m.visitor_session_id = s.id
+      and m.direction = 'system'
+      and m.body = 'Atendimento encerrado pela equipe.'
+  );
+
+revoke all on function
+  public.fn_webchat_sessao_visitante(text, text),
+  public.fn_registrar_mensagem_webchat_visitante(text, text, text, text, uuid),
+  public.fn_enviar_mensagem_webchat_operador(uuid, uuid, uuid, text, uuid, uuid),
+  public.fn_listar_sessoes_webchat_operador(uuid, uuid)
+from public, anon, authenticated;
+
+grant execute on function
+  public.fn_webchat_sessao_visitante(text, text),
+  public.fn_registrar_mensagem_webchat_visitante(text, text, text, text, uuid),
+  public.fn_enviar_mensagem_webchat_operador(uuid, uuid, uuid, text, uuid, uuid),
+  public.fn_listar_sessoes_webchat_operador(uuid, uuid)
+to service_role;
+
+notify pgrst, 'reload schema';
 
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
@@ -46819,3 +47889,72 @@ comment on column public.ai_router_members.pipeline_id is
   'Funil de DESTINO quando esta intenção casa (#2155). NULL = só roteia o agente, como antes.';
 comment on column public.ai_router_members.stage_id is
   'Etapa de destino dentro de pipeline_id (#2155). NULL = a primeira etapa aberta do funil.';
+
+-- ---- conexão de banco externo: coluna que identifica o cliente (migration 0558) ----
+-- Duas colunas nulas e sempre juntas; na conversa, a consulta do agente é
+-- filtrada por elas com o dado do contato do turno. Recria a view segura com as
+-- colunas novas (depois do bloco da 0373). Cabeçalho da 0558 para o racional.
+alter table public.external_db_connections
+  add column if not exists customer_key_column text,
+  add column if not exists customer_key_kind text;
+
+alter table public.external_db_connections
+  drop constraint if exists external_db_connections_customer_key_kind_conhecido,
+  drop constraint if exists external_db_connections_customer_key_par;
+
+alter table public.external_db_connections
+  add constraint external_db_connections_customer_key_kind_conhecido
+    check (customer_key_kind is null or customer_key_kind in ('phone', 'email')),
+  add constraint external_db_connections_customer_key_par
+    check (
+      (customer_key_column is null and customer_key_kind is null)
+      or (customer_key_column is not null and customer_key_kind is not null
+          and length(btrim(customer_key_column)) between 1 and 128)
+    );
+
+comment on column public.external_db_connections.customer_key_column is
+  'Coluna das tabelas externas que guarda o telefone ou o e-mail do cliente. Na conversa, a consulta do agente é filtrada por ela com o dado do contato do turno. NULL = não configurada: a consulta segue sem esse filtro, e a tela avisa.';
+comment on column public.external_db_connections.customer_key_kind is
+  'O que customer_key_column guarda: phone (contacts.phone_number) ou email (contacts.email). Anda junto com customer_key_column.';
+
+drop view if exists public.external_db_connections_safe;
+create view public.external_db_connections_safe
+  with (security_invoker = true)
+  as
+  select id, organization_id, label, host, port, database_name, username,
+         ssl_mode, enabled, max_rows, max_filters, max_response_bytes,
+         customer_key_column, customer_key_kind,
+         last_tested_at, last_test_ok, last_test_error,
+         created_by, created_at, updated_at
+  from public.external_db_connections;
+
+revoke all on public.external_db_connections_safe from anon;
+grant select on public.external_db_connections_safe to authenticated;
+
+-- ---- 0563: contato pessoal — a coluna e a saída de campanha (spec 21, fatia 1) ----
+-- Espelho idempotente da migration 0563. É este apêndice que chega a todo
+-- self-host: o install.sh aplica o baseline num banco novo e o update.sh o
+-- re-aplica num banco existente; nenhum dos dois roda as migrations.
+-- `is_personal` nasce desligado: contato novo é operacional até alguém marcar.
+-- O status `personal` é saída própria de campanha — nunca `opted_out`, para
+-- não inflar "pediu para parar".
+alter table public.contacts
+  add column if not exists is_personal boolean default false not null;
+
+comment on column public.contacts.is_personal is
+  'Contato de vida pessoal (spec 21): escondido da operação e inutilizado para envio. Só gerente/dono marca e desmarca, pela rota personal; quem/quando fica em auditoria + timeline, nunca aqui.';
+
+create index if not exists idx_contacts_org_personal
+  on public.contacts (organization_id)
+  where (is_personal = true);
+
+alter table public.campaign_recipients
+  drop constraint if exists campaign_recipients_status_check;
+
+alter table public.campaign_recipients
+  add constraint campaign_recipients_status_check check (status in (
+    'pending','queued','sending','sent','delivered','read','replied',
+    'failed','skipped','cancelled','opted_out','personal'
+  ));
+
+notify pgrst, 'reload schema';

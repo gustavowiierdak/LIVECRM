@@ -299,6 +299,18 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
       "chave de localStorage do modo de depuração das citações da IA — irmã de `deskcomm-theme` em lib/theme.tsx. Não é texto de interface: renomear só faz quem já tinha o modo ligado perdê-lo, e o par leitura/escrita teria de mudar junto",
     marcas: ["deskcomm.show_ai_citations"],
   },
+  "app/api/v1/settings/webchat/route.ts": {
+    categoria: "INFRA",
+    motivo:
+      "o nome da variável técnica gerada pelo instalador local distingue testes na rede privada de uma instalação pública; não é texto exibido ao cliente nem a marca da empresa",
+    marcas: ["process.env.deskcomm_env_mode"],
+  },
+  "app/api/v1/settings/webchat/route.test.ts": {
+    categoria: "DEV",
+    motivo:
+      "a fixture cobre os dois valores da variável técnica do instalador local para impedir que HTTP público seja aceito por engano; nenhuma string chega à interface",
+    marcas: ["deskcomm_env_mode", "deskcomm_env_mode"],
+  },
 
   // ─── DIVIDA — vazamento real. Cada linha declara a fase que a apaga. ───
   "lib/email/templates/ai-budget-alarm.tsx": {
@@ -799,11 +811,22 @@ type CategoriaDeHost =
   /** Host de plataforma ACEITO na entrada (validação), não destino de chamada. */
   | "PLATAFORMA"
   /** Identificador de fio que gravamos; quem reconhece é código de fora. */
-  | "PROTOCOLO";
+  | "PROTOCOLO"
+  /**
+   * Autoridade de controlo citada ao TITULAR num documento legal (alínea f) do
+   * art. 15.º, n.º 1 do RGPD). O código não fala com ela; quem a visita é a
+   * pessoa que vai reclamar. Uma por país com lei revisada — fechada por nome.
+   */
+  | "AUTORIDADE";
 
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
 const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
+  "api.7az.com.br": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint oficial da Bemobi/7AZ usado para consultar faturas e meios de pagamento com a chave da própria organização; aparece também na tela para identificar o destino, não é domínio do revendedor",
+  },
   "datamanager.googleapis.com": {
     categoria: "FORNECEDOR",
     motivo: "endpoint oficial da Google Data Manager API: recebe conversões e consulta o processamento na conta autorizada pela própria organização. O destino pertence ao fornecedor e não à instalação do CRM.",
@@ -843,6 +866,16 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "FORNECEDOR",
     motivo:
       "endpoint da API da OpenAI (embeddings da busca e transcrição de áudio). É o destino do request: trocar pelo domínio do revendedor faria a chamada não chegar a lugar nenhum.",
+  },
+  "auth.openai.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint de autorização OAuth da OpenAI usado pelo login por PKCE da assinatura (`lib/ai/pontos/pkce-da-assinatura.ts`): é onde o fluxo troca o code pelo token e renova o acesso. É o destino do request, iniciado pelo próprio usuário na tela de Sistema — trocar pelo domínio do revendedor faria o login não chegar a lugar nenhum.",
+  },
+  "chatgpt.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "backend do Codex (`OPENAI_CODEX_ENDPOINT` em `lib/agent-engine/edge/llm/providers.ts`): é para lá que a chamada da ASSINATURA do ChatGPT vai, com o access_token do login por PKCE, e o mesmo host é o painel que a lista de Credenciais aponta em `ondePegarAChave` (`lib/ai/pontos/provedores.ts`). Não é contrato público da OpenAI e a Openai pode mudá-lo sem aviso — é por isto que a queda para a chave da organização existe: muda o destino, não a conversa.",
   },
   "api.typesafe.ai": {
     categoria: "FORNECEDOR",
@@ -984,6 +1017,12 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "host do Google Meet aceito na validação do link de reunião (`meetVideoUrl`): é entrada que o produto CONFERE, não endereço que ele busca. Sem a linha, qualquer host passaria por link de reunião.",
   },
+  // ── autoridade de controlo: a quem o titular reclama (art. 15.º, n.º 1, f) ──
+  "www.cnpd.pt": {
+    categoria: "AUTORIDADE",
+    motivo:
+      "site oficial da Comissão Nacional de Proteção de Dados, a autoridade de controlo portuguesa (`autoridadeDeSupervisao` do perfil PT em lib/legal/perfil-do-pais.ts). Sai impresso no relatório de acesso do titular, alínea f) do art. 15.º, n.º 1 (#2354). O código nunca chama o host — quem o visita é o titular que vai reclamar —, e trocá-lo pelo domínio do revendedor mandaria a reclamação para quem é reclamado.",
+  },
   "deskcomm.app": {
     categoria: "PROTOCOLO",
     motivo:
@@ -1108,6 +1147,7 @@ describe("catraca de host de terceiro no código que embarca", () => {
       "AMOSTRA",
       "PLATAFORMA",
       "PROTOCOLO",
+      "AUTORIDADE",
     ];
     for (const [host, entrada] of Object.entries(HOSTS_DECLARADOS)) {
       expect(categorias, `${host}: categoria desconhecida`).toContain(entrada.categoria);
@@ -1164,6 +1204,11 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // aqui, e não em FORNECEDOR, porque o produto NÃO fala com esse host: quem
       // abre o link é o visitante do site. Crescimento escrito, como a regra pede.
       "wa.me",
+      // Decisão escrita (#2354): a CNPD, autoridade de controlo citada na
+      // alínea f) do relatório de acesso de Portugal. Categoria própria,
+      // AUTORIDADE, porque não é painel, amostra nem plataforma: é o endereço
+      // a que a lei manda o titular ir. País novo com lei revisada traz a sua.
+      "www.cnpd.pt",
     ]);
   });
 

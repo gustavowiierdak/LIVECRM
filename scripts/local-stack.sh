@@ -7,6 +7,23 @@ cd "$ROOT_DIR"
 ENV_FILE="${LOCAL_ENV_FILE:-.env.local}"
 COMPOSE=(docker compose -f docker-compose.local.yml --env-file "$ENV_FILE")
 
+db_url_for_container() {
+  local db_url="$1"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    db_url="${db_url/127.0.0.1/host.docker.internal}"
+    db_url="${db_url/localhost/host.docker.internal}"
+  fi
+  printf '%s' "$db_url"
+}
+
+postgres_container() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    docker run --rm --add-host=host.docker.internal:host-gateway "$@"
+  else
+    docker run --rm --network host "$@"
+  fi
+}
+
 usage() {
   printf 'Uso: %s {up|down|restart|status|logs|supabase-status|reset}\n' "$0"
 }
@@ -25,7 +42,7 @@ ensure_supabase() {
 }
 
 ensure_encryption_key() {
-  local key db_url
+  local key db_url container_db_url
   key="$(awk -F= '$1 == "NUVEMSHOP_OAUTH_ENCRYPTION_KEY" { sub(/^[^=]*=/, ""); print; exit }' "$ENV_FILE")"
   if [[ -z "$key" ]]; then
     key="$(openssl rand -hex 32)"
@@ -33,7 +50,8 @@ ensure_encryption_key() {
   fi
   db_url="$(./scripts/local-supabase.sh status | node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => process.stdout.write(JSON.parse(s).DB_URL || ""))')"
   [[ -n "$db_url" ]] || { printf 'Erro: Supabase local não retornou DB_URL.\n' >&2; exit 1; }
-  docker run --rm --network host postgres:15-alpine psql "$db_url" -v ON_ERROR_STOP=1 -c \
+  container_db_url="$(db_url_for_container "$db_url")"
+  postgres_container postgres:15-alpine psql "$container_db_url" -v ON_ERROR_STOP=1 -c \
     "insert into private.app_secrets (name, value) values ('nuvemshop_oauth_key', '$key') on conflict (name) do update set value = excluded.value, updated_at = now();" \
     >/dev/null
 }
