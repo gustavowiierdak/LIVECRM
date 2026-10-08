@@ -123,6 +123,13 @@ export async function encerrarConversaAposFatura(
                    and nova_entrada.sent_at > m.sent_at
                    and nova_entrada.sent_at < $4
               )
+              and not exists (
+                select 1 from agent_cases ac
+                 where ac.organization_id = $1
+                   and ac.conversation_id = $2
+                   and ac.status in ('awaiting_human', 'awaiting_lead', 'escalated')
+                   and ac.opened_at >= m.sent_at
+              )
          ) as fatura_enviada`,
       [input.organizationId, input.conversationId, input.replyMessageId, mensagem.sent_at, conversa.service_started_at],
     );

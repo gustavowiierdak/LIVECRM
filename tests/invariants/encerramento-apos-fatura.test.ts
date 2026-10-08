@@ -107,9 +107,10 @@ describe('encerramento automático depois da fatura', () => {
   it('fecha a conversa sem marcar fatura como paga nem dar desfecho à demanda', async () => {
     const cenario = await criarCenario();
     await pool.query(
-      `insert into agent_cases(organization_id,conversation_id,title,summary,blocker)
-       values($1,$2,'Teste','Caso anterior','Pessoa ainda pode acompanhar a demanda')`,
-      [GOV_ORG, cenario.conversationId],
+      `insert into agent_cases(organization_id,conversation_id,title,summary,blocker,opened_at)
+       values($1,$2,'Teste','Caso anterior','Pessoa ainda pode acompanhar a demanda',
+         (select sent_at - interval '10 seconds' from messages where id=$3))`,
+      [GOV_ORG, cenario.conversationId, cenario.paymentMessageId],
     );
     expect(await tentar(cenario)).toBe(true);
     expect(await status(cenario.conversationId)).toBe('closed');
@@ -145,6 +146,17 @@ describe('encerramento automático depois da fatura', () => {
     await pool.query(`update conversations set status='claimed',assignee_kind='user',assigned_to_user_id=$3
       where organization_id=$1 and id=$2`, [GOV_ORG, assumida.conversationId, GOV_AGENT_A]);
     expect(await tentar(assumida)).toBe(false);
+  });
+
+  it('não fecha quando surgiu um caso humano novo depois da entrega', async () => {
+    const cenario = await criarCenario();
+    await pool.query(
+      `insert into agent_cases(organization_id,conversation_id,title,summary,blocker)
+       values($1,$2,'Teste','Caso novo','Pessoa precisa acompanhar')`,
+      [GOV_ORG, cenario.conversationId],
+    );
+    expect(await tentar(cenario)).toBe(false);
+    expect(await status(cenario.conversationId)).toBe('open');
   });
 
   it('não atribui a uma fatura antiga um agradecimento de outro assunto', async () => {
