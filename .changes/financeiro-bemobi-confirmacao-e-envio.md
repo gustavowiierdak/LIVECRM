@@ -1,6 +1,6 @@
 ---
-impacto: correcao
-secao: alterado
+impacto: nada_mudou
+secao: corrigido
 titulo: Confirmação segura e envio financeiro pela Bemobi
 ---
 
