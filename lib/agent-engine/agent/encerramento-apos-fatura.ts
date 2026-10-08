@@ -70,7 +70,8 @@ export async function encerrarConversaAposFatura(
     if (
       !conversa || conversa.contact_id !== inicial.rows[0].contact_id ||
       !['open', 'pending', 'ai_handling'].includes(conversa.status) ||
-      conversa.assignee_kind !== 'ai' || conversa.assigned_to_user_id !== null ||
+      (conversa.assignee_kind !== null && conversa.assignee_kind !== 'ai') ||
+      conversa.assigned_to_user_id !== null ||
       conversa.force_human || conversa.service_started_at === null
     ) return await naoEncerrar();
 
@@ -93,7 +94,7 @@ export async function encerrarConversaAposFatura(
       !despedidaSimples(mensagem.body ?? '')
     ) return await naoEncerrar();
 
-    const comprovacoes = await client.query<{ reply_ok: boolean; fatura_enviada: boolean; caso_aberto: boolean }>(
+    const comprovacoes = await client.query<{ reply_ok: boolean; fatura_enviada: boolean }>(
       `select
          exists (
            select 1 from messages r
@@ -122,16 +123,11 @@ export async function encerrarConversaAposFatura(
                    and nova_entrada.sent_at > m.sent_at
                    and nova_entrada.sent_at < $4
               )
-         ) as fatura_enviada,
-         exists (
-           select 1 from agent_cases ac
-            where ac.organization_id = $1 and ac.conversation_id = $2
-              and ac.status in ('awaiting_human', 'awaiting_lead', 'escalated')
-         ) as caso_aberto`,
+         ) as fatura_enviada`,
       [input.organizationId, input.conversationId, input.replyMessageId, mensagem.sent_at, conversa.service_started_at],
     );
     const prova = comprovacoes.rows[0];
-    if (!prova?.reply_ok || !prova.fatura_enviada || prova.caso_aberto) return await naoEncerrar();
+    if (!prova?.reply_ok || !prova.fatura_enviada) return await naoEncerrar();
 
     await client.query(`select public.fn_service_status($1,$2,'closed',$3)`, [
       input.organizationId, input.conversationId, conversa.service_revision,

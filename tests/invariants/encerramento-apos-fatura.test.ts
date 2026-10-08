@@ -49,7 +49,7 @@ async function criarCenario(input: { recibo?: boolean; statusPagamento?: string;
   const inicio = new Date(Date.now() - 120_000);
   await mensagem(referencia, { direction: 'inbound', body: 'quero minha fatura', status: 'received', sentAt: inicio });
   await pool.query(
-    `update conversations set status='ai_handling', assignee_kind='ai'
+    `update conversations set status='open', assignee_kind=null
       where organization_id=$1 and id=$2`,
     [GOV_ORG, conversationId],
   );
@@ -106,12 +106,19 @@ afterAll(async () => { await pool.end(); });
 describe('encerramento automático depois da fatura', () => {
   it('fecha a conversa sem marcar fatura como paga nem dar desfecho à demanda', async () => {
     const cenario = await criarCenario();
+    await pool.query(
+      `insert into agent_cases(organization_id,conversation_id,title,summary,blocker)
+       values($1,$2,'Teste','Caso anterior','Pessoa ainda pode acompanhar a demanda')`,
+      [GOV_ORG, cenario.conversationId],
+    );
     expect(await tentar(cenario)).toBe(true);
     expect(await status(cenario.conversationId)).toBe('closed');
     const demanda = await pool.query<{ fechada_em: Date | null }>('select fechada_em from demandas where organization_id=$1 and id=$2', [GOV_ORG, cenario.demandId]);
     expect(demanda.rows[0]!.fechada_em).toBeNull();
     const pagamento = await pool.query<{ status: string }>('select status from messages where organization_id=$1 and id=$2', [GOV_ORG, cenario.paymentMessageId]);
     expect(pagamento.rows[0]!.status).toBe('sent');
+    const caso = await pool.query<{ status: string }>('select status from agent_cases where organization_id=$1 and conversation_id=$2', [GOV_ORG, cenario.conversationId]);
+    expect(caso.rows[0]!.status).toBe('awaiting_human');
     expect(await tentar(cenario)).toBe(false);
   });
 
@@ -121,20 +128,19 @@ describe('encerramento automático depois da fatura', () => {
     ]) {
       const cenario = await criarCenario(variante);
       expect(await tentar(cenario)).toBe(false);
-      expect(await status(cenario.conversationId)).toBe('ai_handling');
+      expect(await status(cenario.conversationId)).toBe('open');
     }
   });
 
-  it('não fecha uma pergunta, um caso humano ou uma conversa assumida', async () => {
+  it('não fecha uma pergunta, um handoff humano ativo ou uma conversa assumida', async () => {
     const pergunta = await criarCenario({ agradecimento: 'obrigado, mas o PIX falhou' });
     expect(await tentar(pergunta)).toBe(false);
-    const caso = await criarCenario();
+    const handoff = await criarCenario();
     await pool.query(
-      `insert into agent_cases(organization_id,conversation_id,title,summary,blocker)
-       values($1,$2,'Teste','Pendente','Pessoa precisa revisar')`,
-      [GOV_ORG, caso.conversationId],
+      `update contacts set force_human=true where id=(select contact_id from conversations where organization_id=$1 and id=$2)`,
+      [GOV_ORG, handoff.conversationId],
     );
-    expect(await tentar(caso)).toBe(false);
+    expect(await tentar(handoff)).toBe(false);
     const assumida = await criarCenario();
     await pool.query(`update conversations set status='claimed',assignee_kind='user',assigned_to_user_id=$3
       where organization_id=$1 and id=$2`, [GOV_ORG, assumida.conversationId, GOV_AGENT_A]);
@@ -144,7 +150,7 @@ describe('encerramento automático depois da fatura', () => {
   it('não atribui a uma fatura antiga um agradecimento de outro assunto', async () => {
     const cenario = await criarCenario({ outroAssunto: true });
     expect(await tentar(cenario)).toBe(false);
-    expect(await status(cenario.conversationId)).toBe('ai_handling');
+    expect(await status(cenario.conversationId)).toBe('open');
   });
 
   it('não fecha se entrou outra mensagem depois do obrigado ou se o atendimento mudou', async () => {
