@@ -29,6 +29,7 @@ import {
 import { crmGetPipelineForecast, crmListPipelines } from "./pipelines";
 import { crmSendWhatsappMessage } from "./messages";
 import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
+import { crmGetIxcCustomer, crmListIxcContracts } from "./ixc";
 import { crmStartConversationAndSend } from "./start-conversation";
 import {
   crmAssignConversation,
@@ -111,6 +112,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmGetConversation,
   crmGetConversationHistory,
   crmListBemobiInvoices,
+  crmGetIxcCustomer,
+  crmListIxcContracts,
   crmGetQueueStatus,
   crmListLeads,
   crmGetLead,

@@ -25,42 +25,90 @@ const COMUNS = [
   "crm_request_human_handoff",
 ];
 
+/** Só acrescenta ferramentas em rascunhos intactos do blueprint anterior. */
+const FERRAMENTAS_ANTERIORES: Record<string, readonly string[]> = {
+  financeiro: [...COMUNS, "crm_list_bemobi_invoices"],
+  suporte_tecnico: [...COMUNS, "crm_describe_external_data", "crm_query_external_data"],
+  relacionamento_contratos: [...COMUNS, "crm_schedule_followup", "crm_update_lead"],
+};
+
+function rascunhoIntacto(toolIds: unknown, anteriores: readonly string[]): boolean {
+  return (
+    Array.isArray(toolIds) &&
+    toolIds.length === anteriores.length &&
+    new Set(toolIds).size === anteriores.length &&
+    toolIds.every((id) => typeof id === "string" && anteriores.includes(id))
+  );
+}
+
 const BLUEPRINTS: Blueprint[] = [
   {
     key: "recepcao_triagem",
     name: "Recepção e Triagem",
-    description: "Entende a mensagem livre, separa demandas e direciona para o especialista correto.",
+    description:
+      "Entende a mensagem livre, separa demandas e direciona para o especialista correto.",
     priority: 100,
     prompt:
       "Você faz a recepção de um provedor de internet. Entenda texto livre e identifique todos os assuntos da mensagem, sem obrigar o cliente a escolher menu. Faça uma pergunta curta somente quando faltar dado essencial. Se houver mais de uma demanda, reconheça cada uma e preserve as pendentes. Não invente informação de contrato, rede ou cobrança. Encaminhe para o especialista adequado e entregue um resumo objetivo do que o cliente pediu, do que já foi confirmado e do próximo passo.",
     tools: COMUNS,
     intent: "triagem",
-    intentDescription: "Saudação, mensagem ambígua, vários assuntos ou pedido ainda sem categoria clara.",
-    examples: ["oi", "preciso de ajuda", "tenho dois problemas", "quero falar sobre minha internet"],
+    intentDescription:
+      "Saudação, mensagem ambígua, vários assuntos ou pedido ainda sem categoria clara.",
+    examples: [
+      "oi",
+      "preciso de ajuda",
+      "tenho dois problemas",
+      "quero falar sobre minha internet",
+    ],
   },
   {
     key: "financeiro",
     name: "Financeiro",
-    description: "Consulta faturas na Bemobi e conduz segunda via, PIX, boleto e dúvidas financeiras.",
+    description:
+      "Consulta faturas na Bemobi e conduz segunda via, PIX, boleto e dúvidas financeiras.",
     priority: 90,
     prompt:
       "Você cuida do financeiro de um provedor de internet. Use a Bemobi como fonte de faturas e meios de pagamento; use o IXC apenas para cliente, contrato, bloqueio e situação operacional quando houver ferramenta disponível. Nunca invente valor, vencimento, baixa, PIX ou linha digitável. Antes de consultar faturas, confirme que o CPF informado coincide com o documento cadastrado. Não peça o documento novamente se ele já foi confirmado neste atendimento. O envio de pagamento só pode ocorrer pela ferramenta determinística autorizada. Se a ferramenta não estiver habilitada, explique o próximo passo e transfira com resumo.",
-    tools: [...COMUNS, "crm_list_bemobi_invoices"],
+    tools: [
+      ...COMUNS,
+      "crm_get_ixc_customer",
+      "crm_list_ixc_contracts",
+      "crm_list_bemobi_invoices",
+    ],
     intent: "financeiro",
-    intentDescription: "Fatura, pagamento, PIX, boleto, segunda via, vencimento, negociação ou bloqueio financeiro.",
-    examples: ["manda o pix", "quero a segunda via", "minha fatura venceu", "já paguei e continuo bloqueado"],
+    intentDescription:
+      "Fatura, pagamento, PIX, boleto, segunda via, vencimento, negociação ou bloqueio financeiro.",
+    examples: [
+      "manda o pix",
+      "quero a segunda via",
+      "minha fatura venceu",
+      "já paguei e continuo bloqueado",
+    ],
   },
   {
     key: "suporte_tecnico",
     name: "Suporte Técnico",
-    description: "Diagnostica conexão, orienta testes e decide quando abrir ou escalar atendimento técnico.",
+    description:
+      "Diagnostica conexão, orienta testes e decide quando abrir ou escalar atendimento técnico.",
     priority: 80,
     prompt:
       "Você faz suporte técnico de um provedor de internet. Primeiro confirme o sintoma, o alcance e quando começou. Consulte somente fontes conectadas para contrato, equipamento, sinal, incidentes e ordens; nunca simule diagnóstico de rede. Oriente um teste por vez, em linguagem simples, e registre o resultado. Não peça que o cliente repita informação já presente no histórico. Antes de prometer visita ou prazo, confirme disponibilidade na ferramenta. Quando não houver acesso ao dado técnico ou a resolução depender de equipe externa, transfira com resumo dos testes, evidências e próximo passo.",
-    tools: [...COMUNS, "crm_describe_external_data", "crm_query_external_data"],
+    tools: [
+      ...COMUNS,
+      "crm_get_ixc_customer",
+      "crm_list_ixc_contracts",
+      "crm_describe_external_data",
+      "crm_query_external_data",
+    ],
     intent: "suporte_tecnico",
-    intentDescription: "Sem internet, lentidão, queda, Wi-Fi, roteador, cabo, sinal, visita ou ordem de serviço.",
-    examples: ["estou sem internet", "wifi muito lento", "a luz do modem está vermelha", "preciso de visita técnica"],
+    intentDescription:
+      "Sem internet, lentidão, queda, Wi-Fi, roteador, cabo, sinal, visita ou ordem de serviço.",
+    examples: [
+      "estou sem internet",
+      "wifi muito lento",
+      "a luz do modem está vermelha",
+      "preciso de visita técnica",
+    ],
   },
   {
     key: "comercial",
@@ -77,8 +125,14 @@ const BLUEPRINTS: Blueprint[] = [
       "crm_move_lead_stage",
     ],
     intent: "comercial",
-    intentDescription: "Cobertura, plano, preço, contratação, upgrade, indicação ou novo endereço ainda sem contrato.",
-    examples: ["tem cobertura no meu endereço", "quais planos vocês têm", "quero contratar", "quanto custa 500 mega"],
+    intentDescription:
+      "Cobertura, plano, preço, contratação, upgrade, indicação ou novo endereço ainda sem contrato.",
+    examples: [
+      "tem cobertura no meu endereço",
+      "quais planos vocês têm",
+      "quero contratar",
+      "quanto custa 500 mega",
+    ],
   },
   {
     key: "relacionamento_contratos",
@@ -87,19 +141,28 @@ const BLUEPRINTS: Blueprint[] = [
     priority: 60,
     prompt:
       "Você cuida de relacionamento e contratos de um provedor de internet. Atenda mudança de endereço, alteração cadastral, fidelidade, indicação, cancelamento e retenção. Consulte a fonte oficial antes de afirmar regra contratual. Cancelamento, concessão, desconto e mudança de titularidade exigem confirmação ou intervenção humana; nunca execute por improviso. Registre o motivo real e entregue ao humano um resumo com dados confirmados, pedido, risco e próximo passo. Acompanhe promessas com retorno quando houver prazo.",
-    tools: [...COMUNS, "crm_schedule_followup", "crm_update_lead"],
+    tools: [
+      ...COMUNS,
+      "crm_get_ixc_customer",
+      "crm_list_ixc_contracts",
+      "crm_schedule_followup",
+      "crm_update_lead",
+    ],
     intent: "relacionamento_contratos",
-    intentDescription: "Cancelamento, mudança de endereço ou titular, fidelidade, cadastro, retenção e acompanhamento.",
-    examples: ["quero cancelar", "vou mudar de endereço", "trocar o titular", "qual minha fidelidade"],
+    intentDescription:
+      "Cancelamento, mudança de endereço ou titular, fidelidade, cadastro, retenção e acompanhamento.",
+    examples: [
+      "quero cancelar",
+      "vou mudar de endereço",
+      "trocar o titular",
+      "qual minha fidelidade",
+    ],
   },
 ];
 
 function providerDaOrganizacao(settings: unknown): string {
   const provider = (settings as { llm?: { provider?: unknown } } | null)?.llm?.provider;
-  if (
-    typeof provider === "string" &&
-    (IDS_DE_PROVEDOR as readonly string[]).includes(provider)
-  ) {
+  if (typeof provider === "string" && (IDS_DE_PROVEDOR as readonly string[]).includes(provider)) {
     return provider;
   }
   return "anthropic";
@@ -143,7 +206,10 @@ export async function provisionarEquipeProvedor(
     .eq("organization_id", input.organizationId);
   const porChave = new Map<string, { id: string; name: string }>();
   for (const agente of existentes ?? []) {
-    const config = agente.config as { provisioning_origin?: unknown; blueprint_key?: unknown } | null;
+    const config = agente.config as {
+      provisioning_origin?: unknown;
+      blueprint_key?: unknown;
+    } | null;
     if (config?.provisioning_origin === ORIGEM && typeof config.blueprint_key === "string") {
       porChave.set(config.blueprint_key, { id: agente.id, name: agente.name });
     }
@@ -157,12 +223,29 @@ export async function provisionarEquipeProvedor(
     if (existente) {
       const { data: versaoExistente } = await admin
         .from("ai_agent_versions")
-        .select("id")
+        .select("id,status,tool_ids")
         .eq("organization_id", input.organizationId)
         .eq("agent_id", existente.id)
+        .order("version_number", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (versaoExistente) {
+        const anteriores = FERRAMENTAS_ANTERIORES[blueprint.key];
+        if (
+          versaoExistente.status === "draft" &&
+          anteriores &&
+          rascunhoIntacto(versaoExistente.tool_ids, anteriores)
+        ) {
+          const { error: toolsError } = await admin
+            .from("ai_agent_versions")
+            .update({ tool_ids: blueprint.tools })
+            .eq("organization_id", input.organizationId)
+            .eq("agent_id", existente.id)
+            .eq("id", versaoExistente.id)
+            .eq("status", "draft");
+          if (toolsError)
+            throw new Error(`agent_tools_update_failed:${blueprint.key}:${toolsError.code}`);
+        }
         await admin
           .from("ai_agents")
           .update({ archived_at: null, is_active: true })

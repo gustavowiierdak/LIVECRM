@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { IxcConnectionError, normalizarBaseIxc, testarConexaoIxc } from "./client";
+import {
+  buscarClienteIxc,
+  IxcConnectionError,
+  listarContratosIxc,
+  normalizarBaseIxc,
+  testarConexaoIxc,
+} from "./client";
 
 describe("cliente IXC", () => {
   it("normaliza a origem e recusa caminho, HTTP e credencial embutida", () => {
@@ -19,7 +25,9 @@ describe("cliente IXC", () => {
 
   it("testa o endpoint de clientes com apenas um registro", async () => {
     const transportar = vi.fn().mockResolvedValue('{"page":"1","total":"12","registros":[]}');
-    await expect(testarConexaoIxc("https://ixc.example", "6:segredo", transportar)).resolves.toEqual({
+    await expect(
+      testarConexaoIxc("https://ixc.example", "6:segredo", transportar),
+    ).resolves.toEqual({
       total: 12,
     });
     const chamada = transportar.mock.calls[0]?.[0];
@@ -30,6 +38,69 @@ describe("cliente IXC", () => {
   it("recusa uma resposta que não é a API do IXC", async () => {
     await expect(
       testarConexaoIxc("https://ixc.example", "6:segredo", async () => "<html>login</html>"),
+    ).rejects.toMatchObject({ code: "unexpected_response" });
+  });
+
+  it("confere o CPF retornado e projeta só os dados do cliente", async () => {
+    const transportar = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        total: "1",
+        registros: [
+          {
+            id: "42",
+            cnpj_cpf: "123.456.789-09",
+            razao: "Cliente",
+            ativo: "S",
+            segredo: "não expor",
+          },
+        ],
+      }),
+    );
+    await expect(
+      buscarClienteIxc("https://ixc.example", "token", "12345678909", transportar),
+    ).resolves.toEqual({
+      id: "42",
+      razao: "Cliente",
+      fantasia: undefined,
+      ativo: "S",
+    });
+    const chamada = transportar.mock.calls[0]?.[0];
+    expect(JSON.parse(chamada.body)).toMatchObject({
+      qtype: "cliente.cnpj_cpf",
+      query: "12345678909",
+      oper: "=",
+    });
+  });
+
+  it("não devolve cliente de outro CPF mesmo que o IXC o retorne", async () => {
+    const transportar = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        total: "1",
+        registros: [{ id: "42", cnpj_cpf: "99999999999", razao: "Outro" }],
+      }),
+    );
+    await expect(
+      buscarClienteIxc("https://ixc.example", "token", "12345678909", transportar),
+    ).resolves.toBeNull();
+    expect(transportar).toHaveBeenCalledTimes(2);
+  });
+
+  it("recusa contrato associado a outro cliente", async () => {
+    const transportar = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        total: "1",
+        registros: [{ id: "7", id_cliente: "99", contrato: "Plano" }],
+      }),
+    );
+    await expect(
+      listarContratosIxc("https://ixc.example", "token", "42", transportar),
+    ).rejects.toMatchObject({ code: "unexpected_response" });
+  });
+
+  it("recusa consulta paginada que poderia ocultar contratos", async () => {
+    const transportar = vi.fn().mockResolvedValue(JSON.stringify({ total: "101", registros: [] }));
+    await expect(
+      listarContratosIxc("https://ixc.example", "token", "42", transportar),
     ).rejects.toMatchObject({ code: "unexpected_response" });
   });
 });

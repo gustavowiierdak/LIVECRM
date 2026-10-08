@@ -12,7 +12,6 @@ import { z } from "zod";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { idDePagamentoBemobi, listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
-import { hashCpf, normalizeCpf } from "@/lib/contacts/cpf";
 import {
   depsDoRitmo,
   registrarEnvioPorToken,
@@ -20,8 +19,9 @@ import {
 } from "@/lib/messaging/ritmo-do-envio-por-token";
 import { sendMessageSchema } from "@/lib/schemas/messaging";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
-import type { McpContext, McpToolDefinition } from "../types";
+import type { McpToolDefinition } from "../types";
 
 const ENDPOINT_ENVIO = "mcp:crm_send_bemobi_payment";
 
@@ -40,58 +40,6 @@ function mensagemIntegracao(reason: string) {
     default:
       return "as credenciais da Bemobi não estão disponíveis; um administrador precisa salvá-las novamente.";
   }
-}
-
-type DocumentoConfirmado =
-  | { ok: true; document: string }
-  | { ok: false; resposta: { erro: string; mensagem: string } };
-
-async function confirmarDocumentoDoTurno(
-  ctx: McpContext,
-  informado: string,
-): Promise<DocumentoConfirmado> {
-  if (!ctx.contatoDoTurno) {
-    return {
-      ok: false,
-      resposta: {
-        erro: "sem_contato_do_turno",
-        mensagem: "esta operação só pode ser feita dentro da conversa do próprio cliente.",
-      },
-    };
-  }
-  const documento = normalizeCpf(informado);
-  if (documento.length !== 11) {
-    return {
-      ok: false,
-      resposta: { erro: "documento_invalido", mensagem: "informe um CPF válido para esta consulta." },
-    };
-  }
-  const { data: contato } = await ctx.supabase
-    .from("contacts")
-    .select("cpf_hash")
-    .eq("organization_id", ctx.organizationId)
-    .eq("id", ctx.contatoDoTurno)
-    .maybeSingle<{ cpf_hash: string | null }>();
-  if (!contato?.cpf_hash) {
-    return {
-      ok: false,
-      resposta: {
-        erro: "cpf_nao_confirmado",
-        mensagem:
-          "o CPF ainda não foi confirmado no cadastro deste contato. Confirme e salve o documento antes de consultar faturas.",
-      },
-    };
-  }
-  if (hashCpf(documento) !== contato.cpf_hash) {
-    return {
-      ok: false,
-      resposta: {
-        erro: "cpf_nao_confere",
-        mensagem: "o CPF informado não coincide com o documento confirmado deste contato.",
-      },
-    };
-  }
-  return { ok: true, document: documento };
 }
 
 const listarInputShape = {

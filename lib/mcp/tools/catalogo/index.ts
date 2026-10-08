@@ -25,6 +25,7 @@ import { TOOLS_ESCALACAO } from "./escalacao";
 import { TOOLS_FUNIL } from "./funil";
 import { TOOLS_GOVERNANCA } from "./governanca";
 import { TOOLS_HONORARIOS } from "./honorarios";
+import { TOOLS_IXC } from "./ixc";
 import { TOOLS_OPERACAO } from "./operacao";
 import { TOOLS_RETENCAO } from "./retencao";
 import type { McpToolCatalogEntry } from "./tipos";
@@ -36,6 +37,7 @@ export const TOOL_CATALOG: ReadonlyArray<McpToolCatalogEntry> = [
   ...TOOLS_AGENDAMENTO,
   ...TOOLS_ATENDIMENTO,
   ...TOOLS_BEMOBI,
+  ...TOOLS_IXC,
   ...TOOLS_ESCALACAO,
   ...TOOLS_FUNIL,
   ...TOOLS_GOVERNANCA,

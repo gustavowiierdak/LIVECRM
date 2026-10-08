@@ -3305,3 +3305,12 @@ Spec: `tests/e2e/mapas-em-provedores.spec.ts`.
 |---|---|---|---|
 | J42.1 | Testar com um CPF/CNPJ quando a Bemobi devolve JSON fora do contrato | a tela diz a estrutura recebida (tipos e campos conhecidos), não o documento, chave nem valores da fatura | **PASS unitário** — `lib/bemobi/client.test.ts`; resposta real diagnosticada na VPS com `uniqueId=nulo` (2026-10-08) |
 | J42.2 | Corrigir a interpretação a partir da estrutura real | aceita `uniqueId` nulo e usa `erpInvoiceId` nas APIs de PDF e pagamento, após conferir a fatura na lista do CPF | **PASS unitário** — `lib/bemobi/client.test.ts`; reteste pela tela com o mesmo documento ainda pendente |
+
+## J43 — Atendimento financeiro: IXC + Bemobi sem cruzar clientes `[P0]` (2026-10-08)
+
+| # | Caso | Expectativa | Resultado |
+|---|---|---|---|
+| J43.1 | Cliente informa CPF já confirmado no contato desta conversa | consulta cadastro e contratos no IXC; aceita somente CPF e ID de cliente que coincidam na resposta | **PASS unitário** — `lib/ixc/client.test.ts`, `lib/mcp/tools/ixc.test.ts`; prova ao vivo pela tela ainda pendente |
+| J43.2 | CPF divergente, não confirmado ou chamada fora do turno | nenhuma consulta ao IXC nem dado de outro cliente | **PASS unitário** — `lib/mcp/tools/ixc.test.ts` |
+| J43.3 | Consulta de faturas e PIX/boleto | valores e meios de pagamento vêm da Bemobi, nunca dos recebíveis do IXC; envio crítico segue desligado no blueprint | **PASS de contrato em código** — `lib/ai/agents/provisionar-equipe-provedor.ts`; teste de envio real com conversa controlada pendente |
+| J43.4 | Reprovisionar os agentes existentes | só rascunho intacto do blueprint anterior recebe ferramentas novas; edições manuais, versões publicadas e roteador ativo não são alterados | **PENDENTE** — validar pela tela na VPS antes de publicar |

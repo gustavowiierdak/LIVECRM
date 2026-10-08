@@ -62,7 +62,7 @@ export default async function IxcSettingsPage() {
       <header className="max-w-3xl">
         <h1 className="text-2xl font-semibold tracking-tight">{t("IXC Provedor")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {t("Conecte o IXC para preparar consultas de clientes, contratos, financeiro e ordens de serviço no atendimento e para os agentes de IA.")}
+          {t("Conecte o IXC para consultas de clientes e contratos no atendimento e nos agentes de IA. Faturas, PIX e boletos continuam na Bemobi.")}
         </p>
       </header>
 
@@ -75,7 +75,7 @@ export default async function IxcSettingsPage() {
       <IxcConnectionForm initial={conexao} />
 
       <p className="max-w-3xl text-xs text-muted-foreground">
-        {t("Esta primeira etapa configura e testa a conexão. Nenhum cadastro é importado ainda; a escolha acima prepara quais grupos poderão ser liberados para a Inbox e para a IA na próxima etapa.")}
+        {t("Nenhum cadastro é importado. As consultas de cliente e contrato são feitas somente no momento do atendimento, com CPF confirmado. Ordens de serviço e recebíveis do IXC ainda não estão disponíveis para a IA.")}
       </p>
     </div>
   );
