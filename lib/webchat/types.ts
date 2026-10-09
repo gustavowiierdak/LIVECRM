@@ -1,6 +1,7 @@
 export type MensagemWebchat = Readonly<{
   id: string;
   direction: "visitor" | "operator" | "system";
+  sender_kind?: "ai" | "human" | null;
   body: string;
   created_at: string;
 }>;

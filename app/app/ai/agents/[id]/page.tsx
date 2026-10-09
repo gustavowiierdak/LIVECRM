@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
-import { listSelectableChannels } from "@/lib/channels/selectable";
+import { listSelectableAgentChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
@@ -113,7 +113,7 @@ export default async function AgentEditorPage({ params }: { params: Promise<{ id
         .from("ai_provider_credentials_safe")
         .select(CREDENTIAL_COLUMNS)
         .eq("organization_id", activeOrg.orgId),
-      listSelectableChannels(supabase, activeOrg.orgId),
+      listSelectableAgentChannels(supabase, activeOrg.orgId),
       supabase
         .from("ai_router_members")
         .select("router_id, ai_routers(name)")

@@ -9,12 +9,13 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   eq: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock("@/lib/audit", () => ({ audit: mocks.audit }));
 vi.mock("@/lib/auth/require-role", () => ({ requireRole: mocks.requireRole }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: mocks.requireSupportWrite }));
-vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from }) }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: mocks.from, rpc: mocks.rpc }) }));
 
 import { GET, PATCH } from "./route";
 
@@ -46,6 +47,7 @@ describe("configuração do canal web por organização", () => {
     mocks.eq.mockReturnValue({ maybeSingle: mocks.maybeSingle });
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
     mocks.upsert.mockResolvedValue({ error: null });
+    mocks.rpc.mockResolvedValue({ data: "05440000-7777-4000-8000-000000000002", error: null });
   });
 
   it("mostra desligado quando a empresa ainda não tem linha de configuração", async () => {
@@ -126,5 +128,6 @@ describe("configuração do canal web por organização", () => {
         metadata: expect.objectContaining({ enabled: true, origins_count: 1 }),
       }),
     );
+    expect(mocks.rpc).toHaveBeenCalledWith("fn_assegurar_sessao_webchat", { p_org: org });
   });
 });

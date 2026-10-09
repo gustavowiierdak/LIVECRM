@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
+import { DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels";
 import { depsDoRitmo, registrarEnvioPorToken, segurarEnvioPorToken } from "@/lib/messaging/ritmo-do-envio-por-token";
 
 import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
@@ -33,7 +34,7 @@ const INPUT = {
   method: "pix" as const,
 };
 
-function contexto() {
+function contexto(provider: string = DEFAULT_CHANNEL_PROVIDER) {
   let reservado: { key: string; request_hash: string; response_body: Record<string, unknown> | null } | null = null;
   const avisoInsert = vi.fn(async () => ({ error: null }));
   const insert = vi.fn(async (row: { key: string; request_hash: string }) => {
@@ -71,11 +72,21 @@ function contexto() {
       const conversa = {
         select: vi.fn(),
         eq: vi.fn(),
-        maybeSingle: vi.fn(async () => ({ data: { contact_id: "contato-1" } })),
+        maybeSingle: vi.fn(async () => ({ data: { contact_id: "contato-1", channel_session_id: "sessao-1" } })),
       };
       conversa.select.mockReturnValue(conversa);
       conversa.eq.mockReturnValue(conversa);
       return conversa;
+    }
+    if (table === "channel_sessions") {
+      const sessao = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        maybeSingle: vi.fn(async () => ({ data: { provider } })),
+      };
+      sessao.select.mockReturnValue(sessao);
+      sessao.eq.mockReturnValue(sessao);
+      return sessao;
     }
     throw new Error(`tabela inesperada: ${table}`);
   });
@@ -153,6 +164,20 @@ describe("envio financeiro Bemobi", () => {
       message_id: "mensagem-1", deduplicated: true,
     });
     expect(sendMessageHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("entrega PDF como link de texto na sessão web", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "pdf" }, ctx);
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]?.[2]).toMatchObject({
+      type: "text",
+      body: expect.stringContaining("https://faturas.example/segunda-via.pdf"),
+    });
   });
 
   it("reserva pendente falha fechada, sem segundo envio", async () => {

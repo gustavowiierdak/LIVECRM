@@ -32,6 +32,7 @@ import {
   CHANNEL_SESSION_REF_COLUMNS,
   DEFAULT_CHANNEL_PROVIDER,
   canalConhecidoSemMensagem,
+  ehSessaoDeAtendimentoWeb,
   getAdapter,
   resolveSessionRef,
   type ChannelSessionRef,
@@ -56,6 +57,7 @@ import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
+import { enviarMensagemWebchatAgente } from "@/lib/webchat/envio-agente";
 
 type SB = SupabaseClient;
 
@@ -506,8 +508,20 @@ export async function sendMessageHandler(
   };
   const c = conv as unknown as Joined;
 
-  // Sessões com transporte próprio (ou sem texto) nunca entram no dispatcher
-  // genérico. O webchat responde pela rota da sessão visitante na Inbox.
+  // A sessão HTTP usa o mesmo ledger, histórico e guardas do agente, mas
+  // entrega pelo seu próprio endpoint. Nunca tenta resolver um telefone.
+  if (ehSessaoDeAtendimentoWeb(c.channel_sessions?.provider)) {
+    if (c.contacts?.is_blocked || c.contacts?.is_personal) {
+      throw new ApiError(403, "forbidden", undefined, ctx.requestId,
+        "Contato indisponível para mensagens.");
+    }
+    const message = await enviarMensagemWebchatAgente(supabase, ctx, input, MSG_COLS);
+    await audit({ action: "message.sent", organizationId: c.organization_id,
+      resourceType: "message", resourceId: message.id, requestId: ctx.requestId,
+      metadata: { status: message.status, type: message.type, channel: "webchat" } });
+    return message;
+  }
+  // Outros canais sem mensagem continuam fora do dispatcher genérico.
   if (canalConhecidoSemMensagem(c.channel_sessions?.provider)) {
     throw new ApiError(422, "validation_failed", undefined, ctx.requestId,
       traduzir("Use o atendimento próprio deste canal para responder.", ctx.idioma ?? "pt-BR"));

@@ -141,6 +141,20 @@ describe("confirmação de documento no turno", () => {
     });
   });
 
+  it("aceita CPF confirmado no IXC no atendimento web, sem identidade telefônica", async () => {
+    const { ctx } = contexto({ waIdentity: "sem-numero", sessionProvider: "webchat" });
+    vi.mocked(buscarClienteIxc).mockResolvedValue({
+      id: "42", razao: "Titular", fantasia: null, ativo: "S",
+      telefone_celular: null, whatsapp: null,
+    });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF, "fatura")).resolves.toEqual({
+      ok: true, document: CPF,
+    });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF, "cadastro")).resolves.toMatchObject({
+      resposta: { erro: "cpf_nao_confirmado" },
+    });
+  });
+
   it("não aceita CPF ausente no IXC nem para fatura", async () => {
     const { ctx } = contexto();
     vi.mocked(buscarClienteIxc).mockResolvedValue(null);

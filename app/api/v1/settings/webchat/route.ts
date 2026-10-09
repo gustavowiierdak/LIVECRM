@@ -120,6 +120,12 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   );
   if (error)
     return fail("internal_error", "Não foi possível salvar o atendimento web.", 500, { requestId });
+  if (config.enabled) {
+    const { error: sessionError } = await createAdminClient()
+      .rpc("fn_assegurar_sessao_webchat", { p_org: authz.org.orgId });
+    if (sessionError)
+      return fail("internal_error", "Atendimento salvo, mas o canal web não pôde ser preparado.", 500, { requestId });
+  }
   const { data: saved, error: readError } = await tabela()
     .select("public_id")
     .eq("organization_id", authz.org.orgId)

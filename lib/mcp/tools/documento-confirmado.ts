@@ -1,6 +1,7 @@
 import { hashCpf, normalizeCpf } from "@/lib/contacts/cpf";
 import { samePhone } from "@/lib/channels/phone-variants";
 import { sessaoTransportaWhatsapp } from "@/lib/channels/sessao-transporta-whatsapp";
+import { ehSessaoDeAtendimentoWeb } from "@/lib/channels";
 import { buscarClienteIxc } from "@/lib/ixc/client";
 import { carregarIntegracaoIxc } from "@/lib/ixc/integration";
 
@@ -75,7 +76,7 @@ export async function confirmarDocumentoDoTurno(
   if (!contato.cpf_hash) {
     // Só o contexto real de turno pode acionar a confirmação via IXC;
     // um caller MCP externo não escolhe a identidade do atendimento.
-    if (!ctx.sourceJobId || !ctx.conversationIdDoTurno || !contato.wa_identity?.startsWith("phone:")) {
+    if (!ctx.sourceJobId || !ctx.conversationIdDoTurno) {
       return RECUSA_IDENTIDADE;
     }
     // `contacts.source` registra o primeiro cadastro: um contato importado
@@ -96,21 +97,24 @@ export async function confirmarDocumentoDoTurno(
       .eq("organization_id", ctx.organizationId)
       .eq("id", conversa.channel_session_id)
       .maybeSingle<{ provider: string }>();
-    if (!sessaoTransportaWhatsapp(sessao?.provider)) return RECUSA_IDENTIDADE;
-    const numeroDaConversa = telefoneBrasileiro(contato.wa_identity.slice("phone:".length));
-    if (!numeroDaConversa) return RECUSA_IDENTIDADE;
+    const conversaWeb = ehSessaoDeAtendimentoWeb(sessao?.provider);
+    if (!conversaWeb && !sessaoTransportaWhatsapp(sessao?.provider)) return RECUSA_IDENTIDADE;
+    if (conversaWeb && finalidade !== "fatura") return RECUSA_IDENTIDADE;
+    const numeroDaConversa = contato.wa_identity?.startsWith("phone:")
+      ? telefoneBrasileiro(contato.wa_identity.slice("phone:".length)) : null;
+    if (!conversaWeb && !numeroDaConversa) return RECUSA_IDENTIDADE;
     const integracao = await carregarIntegracaoIxc(ctx.supabase, ctx.organizationId, "customers");
     if (!integracao.ok) return RECUSA_IDENTIDADE;
     try {
       const cliente = await buscarClienteIxc(integracao.baseUrl, integracao.token, documento);
       if (!cliente) return RECUSA_IDENTIDADE;
-      // Política da fatura: o CPF informado neste turno WhatsApp basta quando
+      // Política da fatura: o CPF informado neste turno basta quando
       // o IXC confirma o cadastro. Não estender às consultas operacionais.
       if (finalidade === "fatura") return { ok: true, document: documento };
       const telefones = [cliente.whatsapp, cliente.telefone_celular]
         .map(telefoneBrasileiro)
         .filter((numero): numero is string => !!numero);
-      if (!telefones.some((numero) => samePhone(numero, numeroDaConversa))) return RECUSA_IDENTIDADE;
+      if (!numeroDaConversa || !telefones.some((numero) => samePhone(numero, numeroDaConversa))) return RECUSA_IDENTIDADE;
     } catch {
       return RECUSA_IDENTIDADE;
     }

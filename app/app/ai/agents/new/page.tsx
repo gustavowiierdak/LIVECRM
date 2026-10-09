@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
-import { listSelectableChannels } from "@/lib/channels/selectable";
+import { listSelectableAgentChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { CredentialRow } from "@/hooks/ai/useCredentials";
 
@@ -49,7 +49,7 @@ export default async function NewAgentPage() {
       .from("ai_provider_credentials_safe")
       .select(CREDENTIAL_COLUMNS)
       .eq("organization_id", activeOrg.orgId),
-    listSelectableChannels(supabase, activeOrg.orgId),
+    listSelectableAgentChannels(supabase, activeOrg.orgId),
   ]);
 
   const credentials = (credentialsRes.data ?? []) as CredentialRow[];

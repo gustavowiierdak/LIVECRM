@@ -473,6 +473,12 @@ describe("despacho do agente", () => {
     expect(sequencia).not.toContain("rpc:ai_agent.dispatch_requested");
   });
 
+  it("webchat sem agente mantém os efeitos da entrada, mas não desperta o genérico", async () => {
+    await rodar({ origem: "webchat", canal: "webchat", despacharAgente: false });
+    expect(garantirLeadDaConversa).toHaveBeenCalled();
+    expect(sequencia).not.toContain("rpc:ai_agent.dispatch_requested");
+  });
+
   it("falha do emit não derruba a ingestão", async () => {
     rpcErro = { message: "rpc fora do ar" };
     await expect(rodar()).resolves.toBeUndefined();

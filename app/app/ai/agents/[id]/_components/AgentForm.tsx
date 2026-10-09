@@ -528,10 +528,10 @@ export function AgentForm(props: Props) {
         return `${t("Credencial")} ${motivo.provedor} ${motivo.estado === "invalid" ? t("inválida") : t("ainda não validada")}.`;
       case "sem_numero":
         return t(
-          "Escolha por qual número de WhatsApp ele atende. O rascunho está salvo; conecte um número em Conexões e volte aqui para publicar.",
+          "Escolha o canal em que ele atende. O rascunho está salvo; habilite um canal em Conexões e volte aqui para publicar.",
         );
       case "numero_desconectado":
-        return `${t("Número WhatsApp não está conectado (status:")} ${motivo.estado}).`;
+        return `${t("Canal não está conectado (status:")} ${motivo.estado}).`;
     }
   }, [isEdit, props, isValid, dirty, credSt, form.provider, form.credential_id, channelSession, t]);
 
@@ -937,14 +937,14 @@ export function AgentForm(props: Props) {
               </div>
             )}
             <div className="space-y-1">
-              <Label htmlFor="channel_session_id">{t("Número conectado")}</Label>
+              <Label htmlFor="channel_session_id">{t("Canal de atendimento")}</Label>
               <Select
                 value={form.channel_session_id || undefined}
                 onValueChange={(v) => patch({ channel_session_id: v })}
                 disabled={disabled}
               >
                 <SelectTrigger id="channel_session_id">
-                  <SelectValue placeholder={t("Selecione um número")} />
+                  <SelectValue placeholder={t("Selecione um canal")} />
                 </SelectTrigger>
                 <SelectContent>
                   {props.channelSessions.map((s) => (
@@ -963,7 +963,7 @@ export function AgentForm(props: Props) {
                   ))}
                   {props.channelSessions.length === 0 ? (
                     <SelectItem value="__none__" disabled>
-                      {t("Nenhum número conectado")}
+                      {t("Nenhum canal conectado")}
                     </SelectItem>
                   ) : null}
                 </SelectContent>
@@ -978,17 +978,17 @@ export function AgentForm(props: Props) {
                 <p className="text-xs text-muted-foreground">
                   {props.channelSessions.length === 0 ? (
                     <>
-                      {t("Nenhum número conectado ainda — o rascunho salva sem ele.")}{" "}
+                      {t("Nenhum canal conectado ainda — o rascunho salva sem ele.")}{" "}
                       <Link
                         href="/app/connections"
                         className="font-medium text-foreground underline underline-offset-4"
                       >
-                        {t("Conectar WhatsApp")}
+                        {t("Habilitar um canal")}
                       </Link>{" "}
                       {t("para poder publicar.")}
                     </>
                   ) : (
-                    t("Escolha o número para poder publicar. Sem ele, o rascunho salva mas não atende.")
+                    t("Escolha o canal para poder publicar. Sem ele, o rascunho salva mas não atende.")
                   )}
                 </p>
               ) : null}

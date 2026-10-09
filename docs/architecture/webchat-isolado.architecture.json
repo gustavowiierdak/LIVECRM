@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Atendimento web isolado por sessão",
-    "subtitle": "Link público por empresa, entrada autônoma na Inbox e histórico separado do WhatsApp",
+    "subtitle": "Link público por empresa, transporte web isolado e histórico canônico compartilhado com os agentes",
     "output": "webchat-isolado.html",
     "quality_profile": "standard"
   },
@@ -93,7 +93,28 @@
       "lane": "db",
       "col": 7,
       "type": "database",
-      "label": "webchat_messages por sessão; sem timeline WhatsApp"
+      "label": "webchat_messages por sessão; sem transporte WhatsApp"
+    },
+    {
+      "id": "canonical",
+      "lane": "db",
+      "col": 8,
+      "type": "database",
+      "label": "messages com mesmo ID para demanda, IA e recibo financeiro"
+    },
+    {
+      "id": "agent",
+      "lane": "app",
+      "col": 9,
+      "type": "process",
+      "label": "Agente publicado ou roteador da sessão web"
+    },
+    {
+      "id": "agent-send",
+      "lane": "app",
+      "col": 10,
+      "type": "api",
+      "label": "Envio da IA com idempotência e veto à posse humana"
     },
     {
       "id": "closure",
@@ -196,6 +217,10 @@
       "from": "session",
       "to": "portal",
       "label": "Bloqueia envio e oferece novo atendimento"
-    }
+    },
+    { "id": "e26", "from": "messages", "to": "canonical", "label": "Espelho só da conversa web própria" },
+    { "id": "e27", "from": "canonical", "to": "agent", "label": "Despacha mensagem nova" },
+    { "id": "e28", "from": "agent", "to": "agent-send", "label": "Resposta e ferramentas" },
+    { "id": "e29", "from": "agent-send", "to": "messages", "label": "Entrega na sessão web" }
   ]
 }

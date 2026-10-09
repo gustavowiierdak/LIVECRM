@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   cookies: vi.fn(),
   rpc: vi.fn(),
   rateLimit: vi.fn(),
+  processarEntrada: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
@@ -13,6 +14,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/ai/dispatcher/rate-limit", () => ({ checkRateLimit: mocks.rateLimit }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/webchat/entrada-agente", () => ({ processarEntradaWebchat: mocks.processarEntrada }));
 
 import { POST as consumir } from "./consume/route";
 import { GET as lerMensagens, POST as enviarMensagem } from "./messages/route";
@@ -34,6 +36,7 @@ describe("rotas públicas de webchat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.rateLimit.mockResolvedValue({ allowed: true });
+    mocks.processarEntrada.mockResolvedValue(undefined);
     mocks.cookies.mockResolvedValue({
       get: (name: string) =>
         name === "webchat_visitante" ? { value: "sessao-segura" } : { value: "csrf-seguro" },
@@ -158,6 +161,26 @@ describe("rotas públicas de webchat", () => {
       "fn_registrar_mensagem_webchat_visitante",
       expect.objectContaining({ p_idempotency_key: key, p_origin: "https://portal.local" }),
     );
+    expect(mocks.processarEntrada).not.toHaveBeenCalled();
+  });
+
+  it("despacha só a mensagem nova para o agente da conversa validada pelo banco", async () => {
+    const organizationId = "05440000-0000-4000-8000-00000000000a";
+    const conversationId = "05440000-4444-4000-8000-00000000000a";
+    mocks.rpc.mockResolvedValue({ data: {
+      ok: true, new_message: true, organization_id: organizationId,
+      conversation_id: conversationId,
+      message: { id: "mensagem-1", direction: "visitor", body: "oi", created_at: "2026-10-08T12:00:00Z" },
+    }, error: null });
+    const response = await enviarMensagem(request(
+      "/api/public/webchat/messages",
+      { origin: "https://portal.local", "x-webchat-csrf": "csrf-seguro" },
+      { body: "oi", idempotency_key: key },
+    ));
+    expect(response.status).toBe(201);
+    expect(mocks.processarEntrada).toHaveBeenCalledWith(expect.anything(), {
+      organizationId, conversationId, messageId: "mensagem-1", requestId: expect.any(String),
+    });
   });
 
   it("informa que a conversa foi encerrada sem transformar o fechamento em sessão expirada", async () => {

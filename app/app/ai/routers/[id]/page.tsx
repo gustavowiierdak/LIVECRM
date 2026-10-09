@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { listClassifierModels } from "@/lib/ai/classifier-models";
-import { listSelectableChannels } from "@/lib/channels/selectable";
+import { listSelectableAgentChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { RouterDetailState } from "@/hooks/ai/useRouters";
 import { RouterEditorClient } from "./_client";
@@ -45,7 +45,7 @@ export default async function RouterEditorPage({ params }: { params: Promise<{ i
         .eq("organization_id", activeOrg.orgId)
         .is("archived_at", null)
         .order("name", { ascending: true }),
-      listSelectableChannels(supabase, activeOrg.orgId),
+      listSelectableAgentChannels(supabase, activeOrg.orgId),
     ]);
 
   if (!routerRow) notFound();

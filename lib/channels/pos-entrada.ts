@@ -124,6 +124,8 @@ export interface EntradaDeMensagem {
    * nascia com `source = 'whatsapp'`.
    */
   canal?: string;
+  /** Webchat sem agente/roteador explícito conserva a demanda humana. */
+  despacharAgente?: boolean;
 }
 
 /**
@@ -180,7 +182,7 @@ export async function aplicarEfeitosPosEntrada(
     messageId: entrada.messageId,
     texto: entrada.texto,
   });
-  await pedirDespachoDoAgente(admin, entrada);
+  if (entrada.despacharAgente !== false) await pedirDespachoDoAgente(admin, entrada);
 }
 
 /**

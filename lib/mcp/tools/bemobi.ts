@@ -20,6 +20,7 @@ import {
 } from "@/lib/messaging/ritmo-do-envio-por-token";
 import { sendMessageSchema } from "@/lib/schemas/messaging";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ehSessaoDeAtendimentoWeb } from "@/lib/channels";
 import { logger } from "@/lib/logger";
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
@@ -186,16 +187,22 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     if (!confirmado.ok) return confirmado.resposta;
     const { data: conversa } = await ctx.supabase
       .from("conversations")
-      .select("contact_id")
+      .select("contact_id,channel_session_id")
       .eq("organization_id", ctx.organizationId)
       .eq("id", input.conversation_id)
-      .maybeSingle<{ contact_id: string }>();
+      .maybeSingle<{ contact_id: string; channel_session_id: string }>();
     if (!conversa || conversa.contact_id !== ctx.contatoDoTurno) {
       return {
         erro: "conversa_fora_do_turno",
         mensagem: "a conversa informada não pertence ao cliente deste turno.",
       };
     }
+    const { data: sessao } = await ctx.supabase.from("channel_sessions")
+      .select("provider")
+      .eq("organization_id", ctx.organizationId)
+      .eq("id", conversa.channel_session_id)
+      .maybeSingle<{ provider: string }>();
+    const entregaTextual = ehSessaoDeAtendimentoWeb(sessao?.provider);
 
     const consulta = await carregarIntegracaoBemobi(ctx.supabase, ctx.organizationId, "invoices");
     if (!consulta.ok) {
@@ -247,12 +254,10 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         body: `Segue a linha digitável do boleto${valor ? ` (${valor})` : ""}:\n\n${dados.billetDigitableLine}`,
       };
     } else if (input.method === "pdf" && dados.invoicePDFURL) {
-      envio = {
-        type: "document",
-        body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
-        media_url: dados.invoicePDFURL,
-        media_mime: "application/pdf",
-      };
+      envio = entregaTextual
+        ? { type: "text", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}:\n${dados.invoicePDFURL}` }
+        : { type: "document", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
+            media_url: dados.invoicePDFURL, media_mime: "application/pdf" };
     } else if (input.method === "link" && (dados.paymentLink || dados.negotiationLink || dados.invoicePDFURL)) {
       const link = dados.paymentLink || dados.negotiationLink || dados.invoicePDFURL;
       envio = { type: "text", body: `Acesse seu pagamento por este link seguro:\n${link}` };

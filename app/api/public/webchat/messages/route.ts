@@ -14,6 +14,7 @@ import {
 } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat } from "@/lib/webchat/types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { processarEntradaWebchat } from "@/lib/webchat/entrada-agente";
 
 type ClienteRpc = {
   rpc: (
@@ -96,6 +97,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const resultado = data as {
     ok?: boolean;
     reason?: "conversation_closed";
+    new_message?: boolean;
+    organization_id?: string;
+    conversation_id?: string;
     message?: MensagemWebchat;
   } | null;
   if (error)
@@ -104,5 +108,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     return fail("conflict", "Este atendimento foi encerrado.", 409, { requestId });
   if (!resultado?.ok || !resultado.message)
     return fail("unauthenticated", "Sessão expirada.", 401, { requestId });
+  if (resultado.new_message && resultado.organization_id && resultado.conversation_id) {
+    await processarEntradaWebchat(createAdminClient(), {
+      organizationId: resultado.organization_id,
+      conversationId: resultado.conversation_id,
+      messageId: resultado.message.id,
+      requestId,
+    });
+  }
   return ok(resultado.message, { requestId, status: 201 });
 }

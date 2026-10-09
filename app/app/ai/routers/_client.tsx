@@ -43,7 +43,7 @@ function channelLabel(
   t: (texto: string) => string = (texto) => texto,
 ): string {
   const s = sessions.find((c) => c.id === id);
-  if (!s) return t("Número removido");
+  if (!s) return t("Canal removido");
   return s.phone_number ? `${s.display_name} · ${s.phone_number}` : s.display_name;
 }
 
@@ -174,7 +174,7 @@ function CreateRouterDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="router-channel">{t("Número de WhatsApp")}</Label>
+            <Label htmlFor="router-channel">{t("Canal de atendimento")}</Label>
             <Select value={channelSessionId || undefined} onValueChange={setChannelSessionId}>
               <SelectTrigger id="router-channel">
                 <SelectValue placeholder={t("Selecione um número")} />
@@ -191,7 +191,7 @@ function CreateRouterDialog({
                 ))}
                 {channelSessions.length === 0 ? (
                   <SelectItem value="__none__" disabled>
-                    {t("Nenhum número conectado")}
+                    {t("Nenhum canal conectado")}
                   </SelectItem>
                 ) : null}
               </SelectContent>
