@@ -8993,5 +8993,20 @@
   "Remova opções repetidas.": "Remove repeated options.",
   "O formulário pode ter até 20 perguntas.": "The form can have up to 20 questions.",
   "Cada pergunta precisa ter uma chave diferente.": "Each question needs a different key.",
-  "Revise os campos do formulário.": "Review the form fields."
+  "Revise os campos do formulário.": "Review the form fields.",
+  "Cadastro IXC": "IXC account",
+  "Os dados completos permanecem no IXC. Quando um CPF é confirmado no atendimento, o CRM guarda somente o ID, o nome do cadastro e o CPF cifrado para reconhecer esse vínculo nas próximas conversas.": "The complete data remains in IXC. When a CPF is confirmed during a conversation, the CRM stores only the account ID and name plus the encrypted CPF so it can recognize the link in future conversations.",
+  "Vinculado automaticamente pelo CPF informado no atendimento.": "Linked automatically from the CPF provided during the conversation.",
+  "Vinculado por um atendente.": "Linked by an agent.",
+  "Nenhum cadastro do IXC vinculado.": "No IXC account linked.",
+  "Alterar vínculo": "Change link",
+  "Vincular cadastro do IXC": "Link IXC account",
+  "Alterar cadastro do IXC": "Change IXC account",
+  "Informe o CPF do titular. O cadastro encontrado no IXC ficará visível neste contato.": "Enter the account holder's CPF. The IXC account found will be shown on this contact.",
+  "CPF do titular": "Account holder CPF",
+  "A busca é exata e não altera o nome recebido pelo canal.": "The search is exact and does not change the name received from the channel.",
+  "Consultar e vincular": "Search and link",
+  "Consultando…": "Searching…",
+  "Cadastro do IXC vinculado ao contato.": "IXC account linked to the contact.",
+  "Não foi possível vincular o cadastro. Confira o CPF e tente novamente.": "The account could not be linked. Check the CPF and try again."
 }

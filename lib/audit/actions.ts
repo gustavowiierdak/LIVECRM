@@ -57,6 +57,8 @@ export const AUDIT_ACTIONS = [
   "lead.imported",
   "contact.created",
   "contact.updated",
+  /** Cadastro operacional do IXC associado ao contato, automático ou manual. */
+  "contact.ixc_linked",
   "contacts.imported",
   "contact.anonymized",
   "contact.merge_pending",

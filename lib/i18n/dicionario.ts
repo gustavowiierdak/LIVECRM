@@ -257,6 +257,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: "No se importa ningún registro. Las consultas de clientes y contratos se realizan solo durante la atención, con el CPF confirmado. Las órdenes de servicio y cuentas por cobrar de IXC aún no están disponibles para la IA.",
     },
+  "Os dados completos permanecem no IXC. Quando um CPF é confirmado no atendimento, o CRM guarda somente o ID, o nome do cadastro e o CPF cifrado para reconhecer esse vínculo nas próximas conversas.": {
+    es: "Los datos completos permanecen en IXC. Cuando se confirma un CPF durante la atención, el CRM guarda solo el ID, el nombre del registro y el CPF cifrado para reconocer ese vínculo en próximas conversaciones.",
+  },
   "Dados de acesso": { es: "Datos de acceso" },
   "URL do seu IXC": { es: "URL de tu IXC" },
   "Informe só o endereço principal, sem": { es: "Informa solo la dirección principal, sin" },
@@ -19347,6 +19350,29 @@ export const DICIONARIO: Traducoes = {
   "Máximo de {n} caracteres.": { es: "Máximo de {n} caracteres." },
   "Salvar alíneas": { es: "Guardar las letras" },
   "Alíneas do art. 15.º salvas.": { es: "Las letras del art. 15.º quedaron guardadas." },
+
+  // ─── Vínculo do contato com o cadastro operacional do IXC ───
+  "Cadastro IXC": { es: "Registro IXC" },
+  "Vinculado automaticamente pelo CPF informado no atendimento.": {
+    es: "Vinculado automáticamente por el CPF informado en la atención.",
+  },
+  "Vinculado por um atendente.": { es: "Vinculado por un agente." },
+  "Nenhum cadastro do IXC vinculado.": { es: "No hay ningún registro IXC vinculado." },
+  "Alterar vínculo": { es: "Cambiar vínculo" },
+  "Vincular cadastro do IXC": { es: "Vincular registro IXC" },
+  "Alterar cadastro do IXC": { es: "Cambiar registro IXC" },
+  "Informe o CPF do titular. O cadastro encontrado no IXC ficará visível neste contato.": {
+    es: "Informa el CPF del titular. El registro encontrado en IXC quedará visible en este contacto.",
+  },
+  "CPF do titular": { es: "CPF del titular" },
+  "A busca é exata e não altera o nome recebido pelo canal.": {
+    es: "La búsqueda es exacta y no cambia el nombre recibido por el canal.",
+  },
+  "Consultar e vincular": { es: "Consultar y vincular" },
+  "Cadastro do IXC vinculado ao contato.": { es: "Registro IXC vinculado al contacto." },
+  "Não foi possível vincular o cadastro. Confira o CPF e tente novamente.": {
+    es: "No fue posible vincular el registro. Revisa el CPF e inténtalo de nuevo.",
+  },
 };
 
 /**

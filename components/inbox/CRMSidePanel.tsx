@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { PROXIMO_PASSO_DA_MENSAGEM_NOVA } from "@/lib/atendimento/proximo-passo-padrao";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { VinculoIxcDoContato } from "./VinculoIxcDoContato";
 
 interface Props {
   conversation: ConversationWithContact | null;
@@ -649,6 +650,18 @@ export function CRMSidePanel({ conversation }: Props) {
 
   const tags = contact?.tags ?? [];
   const displayName = rotuloDoContato(contact, t);
+  const vinculoIxc =
+    contact?.ixc_customer_id &&
+    contact.ixc_customer_name &&
+    contact.ixc_linked_at &&
+    (contact.ixc_linked_by === "automatico" || contact.ixc_linked_by === "atendente")
+      ? {
+          customer_id: contact.ixc_customer_id,
+          customer_name: contact.ixc_customer_name,
+          linked_at: contact.ixc_linked_at,
+          linked_by: contact.ixc_linked_by,
+        }
+      : null;
 
   // `erro` PRIMEIRO, e não é detalhe: as três listas voltam a `null` quando a
   // leitura falha, e este derivado lê `null` como "ainda não chegou". Sem esta
@@ -681,6 +694,9 @@ export function CRMSidePanel({ conversation }: Props) {
           {contact?.phone_number && (
             <div className="text-xs text-muted-foreground">{phoneForDisplay(contact.phone_number)}</div>
           )}
+          {contactId && !contact?.is_anonymized ? (
+            <VinculoIxcDoContato contactId={contactId} readonly={readonly} initialLink={vinculoIxc} />
+          ) : null}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {tags.map((t) => (
