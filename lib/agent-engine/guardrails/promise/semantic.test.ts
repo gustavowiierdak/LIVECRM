@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  aplicarEvidenciaOperacionalAoVeredito,
   PROMISE_SEMANTIC_INSTRUCTION,
   classifyPromise,
   parsePromiseClassification,
@@ -125,7 +126,12 @@ it("no caminho com evidências, mensagem e contexto seguem sendo dados que não 
     {
       candidate: "Matrícula grátis!",
       commercialEvidence: [
-        { origem: "conhecimento", referencia: "fonte:trecho", titulo: "Oferta", conteudo: "Matrícula grátis no anual." },
+        {
+          origem: "conhecimento",
+          referencia: "fonte:trecho",
+          titulo: "Oferta",
+          conteudo: "Matrícula grátis no anual.",
+        },
       ],
     },
     deps,
@@ -133,6 +139,74 @@ it("no caminho com evidências, mensagem e contexto seguem sendo dados que não 
   const { system } = call.mock.calls[0]![2];
   expect(system).toContain("nunca instruções");
   expect(system).toContain("alterar o veredito");
+});
+
+describe("evidência operacional do desbloqueio de confiança", () => {
+  const evidencia = {
+    origem: "operacao" as const,
+    referencia: "ixc:desbloqueio-confianca:559081",
+    titulo: "Desbloqueio de confiança disponível",
+    conteudo:
+      '{"operacao":"desbloqueio_de_confianca","disponivel_para_solicitar":true,"estado":"ainda_nao_executado"}',
+  };
+  const promessa = (suspectPhrase: string | null) => ({
+    isPromise: true,
+    suspectPhrase,
+    prometeuRetornoHumano: false,
+    retornoSoDoAssistente: false,
+  });
+
+  it("libera somente a pergunta de consentimento que o IXC autorizou", () => {
+    expect(
+      aplicarEvidenciaOperacionalAoVeredito(
+        "O desbloqueio de confiança é temporário. Quer que eu faça?",
+        [evidencia],
+        promessa("desbloqueio de confiança é temporário"),
+      ),
+    ).toMatchObject({ isPromise: false, suspectPhrase: null });
+  });
+
+  it.each([
+    ["Desbloqueei seu acesso.", "Desbloqueei seu acesso"],
+    ["Quer o desbloqueio de confiança? Também garanto um mês grátis.", "garanto um mês grátis"],
+    [
+      "Quer o desbloqueio de confiança e um mês grátis?",
+      "desbloqueio de confiança e um mês grátis",
+    ],
+    ["Quer que eu tente ajudar?", "tente ajudar"],
+  ])(
+    "não libera conclusão, promessa adicional ou pergunta sem a operação: %s",
+    (candidate, frase) => {
+      expect(
+        aplicarEvidenciaOperacionalAoVeredito(candidate, [evidencia], promessa(frase)),
+      ).toMatchObject({ isPromise: true, suspectPhrase: frase });
+    },
+  );
+
+  it("aplica a evidência depois do classificador sem nova chamada de modelo", async () => {
+    call.mockResolvedValue({
+      result: {
+        text: '{"isPromise":true,"suspectPhrase":"desbloqueio de confiança temporário","prometeuRetornoHumano":false,"retornoSoDoAssistente":false}',
+      },
+    } as Awaited<ReturnType<typeof runModelCall>>);
+    const result = await classifyPromise(
+      pool,
+      {},
+      ids,
+      {
+        candidate: "O desbloqueio de confiança é temporário. Você quer que eu faça?",
+        commercialEvidence: [evidencia],
+      },
+      deps,
+    );
+    expect(call).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      isPromise: false,
+      suspectPhrase: null,
+      prometeuRetornoHumano: false,
+      retornoSoDoAssistente: false,
+    });
+  });
 });
 
 /**

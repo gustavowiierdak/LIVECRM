@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   carregarFontesQueProvamOferta,
   criarEvidenciasComerciaisDoTurno,
@@ -78,6 +80,49 @@ describe("evidências comerciais do turno", () => {
     expect(criarEvidenciasComerciaisDoTurno(["fonte-a"]).ler()).toEqual([]);
   });
 
+  it("aceita desbloqueio de confiança só com diagnóstico e elegibilidade calculados pelo IXC", () => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarDesbloqueioConfiancaIxc({
+      encontrado: true,
+      bloqueio_financeiro: true,
+      diagnostico: "bloqueio_financeiro_confirmado",
+      contratos: [
+        {
+          id: "559081",
+          bloqueio_financeiro: true,
+          desbloqueio_confianca: { disponivel_para_solicitar: true, motivo: "disponivel" },
+        },
+      ],
+      aviso: "texto livre não concede autorização",
+    });
+    expect(e.ler("Quer o desbloqueio de confiança?")).toEqual([
+      expect.objectContaining({
+        origem: "operacao",
+        referencia: "ixc:desbloqueio-confianca:559081",
+        titulo: "Desbloqueio de confiança disponível",
+      }),
+    ]);
+    expect(e.ler()[0]!.conteudo).toContain('"estado":"ainda_nao_executado"');
+  });
+
+  it.each([
+    { encontrado: true, bloqueio_financeiro: false, diagnostico: "sem_bloqueio_financeiro_no_ixc" },
+    { encontrado: true, bloqueio_financeiro: true, diagnostico: "bloqueio_financeiro_confirmado" },
+  ])("não inventa autorização operacional a partir de resposta incompleta", (parcial) => {
+    const e = criarEvidenciasComerciaisDoTurno([]);
+    e.registrarDesbloqueioConfiancaIxc({
+      ...parcial,
+      contratos: [
+        {
+          id: "559081",
+          bloqueio_financeiro: true,
+          desbloqueio_confianca: { disponivel_para_solicitar: false, motivo: "restricao_ativa" },
+        },
+      ],
+    });
+    expect(e.ler()).toEqual([]);
+  });
+
   it("buscas amplas de catálogo não expulsam a política já consultada", () => {
     const e = criarEvidenciasComerciaisDoTurno(["fonte-a"]);
     const politica =
@@ -152,6 +197,18 @@ describe("evidências comerciais do turno", () => {
     expect(e.ler().length).toBeLessThanOrEqual(20);
     expect(JSON.stringify(e.ler()).length).toBeLessThanOrEqual(16_000);
     expect(e.ler().every((item) => item.conteudo.includes("Não inclui matrícula."))).toBe(true);
+  });
+});
+
+describe("fiação da evidência operacional no turno", () => {
+  it("registra o retorno real de crm_list_ixc_contracts antes do próximo envio", () => {
+    const fonte = readFileSync(
+      join(process.cwd(), "lib/agent-engine/agent/inbound-turn.ts"),
+      "utf8",
+    );
+    expect(fonte).toMatch(
+      /name === "crm_list_ixc_contracts"[\s\S]*registrarDesbloqueioConfiancaIxc\(resultado\)/,
+    );
   });
 });
 

@@ -4397,7 +4397,9 @@ async function executarTurnoDoAgente(
               continue;
             }
             if (
-              (name === "crm_search_products" || name === "crm_search_knowledge") &&
+              (name === "crm_search_products" ||
+                name === "crm_search_knowledge" ||
+                name === "crm_list_ixc_contracts") &&
               typeof mcpTool.execute === "function"
             ) {
               const executeOriginal = mcpTool.execute.bind(mcpTool);
@@ -4409,7 +4411,9 @@ async function executarTurnoDoAgente(
                   // A ponte MCP já aplica organização, papel e escopo de leitura.
                   if (name === "crm_search_products")
                     evidenciasComerciais.registrarCatalogo(resultado);
-                  else evidenciasComerciais.registrarConhecimento(resultado);
+                  else if (name === "crm_search_knowledge")
+                    evidenciasComerciais.registrarConhecimento(resultado);
+                  else evidenciasComerciais.registrarDesbloqueioConfiancaIxc(resultado);
                   return resultado;
                 }) as typeof mcpTool.execute,
               };

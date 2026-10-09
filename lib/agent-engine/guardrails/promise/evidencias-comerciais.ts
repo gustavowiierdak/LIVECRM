@@ -4,7 +4,7 @@
  * Não recebe histórico, notas do contato, prompt do agente ou argumentos de tool.
  */
 export interface EvidenciaComercial {
-  origem: "catalogo" | "conhecimento";
+  origem: "catalogo" | "conhecimento" | "operacao";
   referencia: string;
   titulo: string;
   conteudo: string;
@@ -147,9 +147,56 @@ export function criarEvidenciasComerciaisDoTurno(fontesHabilitadas: readonly str
     }
   }
 
+  /**
+   * Registra só a autorização operacional já calculada pelo servidor a partir do IXC.
+   * O argumento escolhido pelo modelo e o texto livre da ferramenta não viram evidência:
+   * entram apenas os campos estruturados que provam bloqueio financeiro e elegibilidade.
+   */
+  function registrarDesbloqueioConfiancaIxc(resultado: unknown) {
+    const r = objeto(resultado);
+    if (
+      !r ||
+      r.error ||
+      r.erro ||
+      r.encontrado !== true ||
+      r.bloqueio_financeiro !== true ||
+      r.diagnostico !== "bloqueio_financeiro_confirmado" ||
+      !Array.isArray(r.contratos)
+    )
+      return;
+    for (const item of r.contratos) {
+      const contrato = objeto(item);
+      const desbloqueio = objeto(contrato?.desbloqueio_confianca);
+      const id = texto(contrato?.id);
+      if (
+        !contrato ||
+        !desbloqueio ||
+        !id ||
+        contrato.bloqueio_financeiro !== true ||
+        desbloqueio.disponivel_para_solicitar !== true ||
+        desbloqueio.motivo !== "disponivel"
+      )
+        continue;
+      guardar({
+        origem: "operacao",
+        referencia: `ixc:desbloqueio-confianca:${id}`,
+        titulo: "Desbloqueio de confiança disponível",
+        conteudo: JSON.stringify({
+          operacao: "desbloqueio_de_confianca",
+          contrato_id: id,
+          bloqueio_financeiro_confirmado: true,
+          disponivel_para_solicitar: true,
+          exige_confirmacao_explicita_do_cliente: true,
+          estado: "ainda_nao_executado",
+        }),
+      });
+    }
+  }
+
   return {
     registrarConhecimento,
     registrarCatalogo,
+    registrarDesbloqueioConfiancaIxc,
     // Relevância escolhe o CONTEXTO, nunca concede autorização. O classificador
     // recebe os trechos completos, inclusive condições/negações, e decide.
     ler: (candidata = ""): EvidenciaComercial[] => {
@@ -183,7 +230,7 @@ export function criarEvidenciasComerciaisDoTurno(fontesHabilitadas: readonly str
       // Reserva mínima para cada origem: política e produto complementam-se.
       // O restante segue a relevância global, sem duplicar ou truncar itens.
       for (let i = 0; i < 3; i++)
-        for (const origem of ["conhecimento", "catalogo"] as const) {
+        for (const origem of ["conhecimento", "catalogo", "operacao"] as const) {
           const item = ordenadas.filter(({ e }) => e.origem === origem)[i];
           if (item) adicionar(item.e);
         }
