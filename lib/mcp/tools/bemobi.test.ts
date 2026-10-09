@@ -180,6 +180,101 @@ describe("envio financeiro Bemobi", () => {
     });
   });
 
+  it("entrega a segunda via em PDF quando o boleto não tem linha digitável no webchat", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      billetDigitableLine: null,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx)).resolves.toMatchObject({
+      status: "sent",
+      method: "pdf",
+      requested_method: "boleto",
+    });
+    expect(sendMessageHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        type: "text",
+        body: expect.stringContaining("https://faturas.example/segunda-via.pdf"),
+      }),
+    );
+  });
+
+  it("entrega o PDF como documento no WhatsApp quando não há linha digitável", async () => {
+    const { ctx } = contexto();
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx);
+    expect(sendMessageHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        type: "document",
+        media_url: "https://faturas.example/segunda-via.pdf",
+      }),
+    );
+  });
+
+  it("não usa o PDF quando a segunda via não foi autorizada e informa alternativas", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(carregarIntegracaoBemobi).mockResolvedValue({
+      ok: true,
+      apiKey: "chave",
+      resources: {
+        invoices: true,
+        payment_data: true,
+        invoice_pdf: false,
+        secure_portal: false,
+        negotiation: false,
+        recurrence: false,
+        checkout: false,
+      },
+    });
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      pixCode: "pix-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx)).resolves.toMatchObject({
+      erro: "meio_indisponivel",
+      available_methods: ["pix"],
+    });
+    expect(insert).not.toHaveBeenCalled();
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+  });
+
+  it("mantém a passagem humana quando a Bemobi não fornece boleto nem alternativa", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      billetDigitableLine: null,
+      invoicePDFURL: null,
+      pixCode: null,
+    } as never);
+
+    await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx)).resolves.toMatchObject({
+      erro: "meio_indisponivel",
+      available_methods: [],
+    });
+    expect(insert).not.toHaveBeenCalled();
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+  });
+
+  it("registra recusa do meio solicitado como falha, não sucesso", () => {
+    expect(crmSendBemobiPayment.motivoDoVazio?.({ erro: "meio_indisponivel" })).toBe("meio_indisponivel");
+  });
+
   it("reserva pendente falha fechada, sem segundo envio", async () => {
     const { ctx, avisoInsert } = contexto();
     vi.mocked(sendMessageHandler).mockRejectedValueOnce(new Error("falha após reserva"));

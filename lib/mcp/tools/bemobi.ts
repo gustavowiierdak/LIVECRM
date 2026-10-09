@@ -162,12 +162,19 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
   name: "crm_send_bemobi_payment",
   description:
     "Busca na Bemobi e envia diretamente ao cliente atual o PIX, a linha do boleto, o PDF ou o link de pagamento de uma fatura já consultada. " +
+    "Se a linha digitável não existir, boleto pode ser entregue como segunda via em PDF quando autorizada. " +
+    "Se nenhum envio for possível, available_methods indica alternativas reais; ofereça-as antes de chamar uma pessoa. " +
     "O código financeiro não é devolvido ao modelo. O sistema gera a chave de idempotência do turno para não duplicar o envio.",
   inputSchema: enviarInputShape,
   category: "write",
   requiresRole: "agent",
   requiresScope: "mcp:write",
   redigirParaAuditoria: (args) => ({ ...args, document: "[redigido]", idempotency_key: "[redigido]" }),
+  motivoDoVazio: (resultado) => {
+    if (!resultado || typeof resultado !== "object") return null;
+    const erro = (resultado as { erro?: unknown }).erro;
+    return typeof erro === "string" ? erro : null;
+  },
   handler: async (input, ctx) => {
     const chaveIdempotencia = ctx.sourceJobId
       ? `bemobi:${hashRequest({
@@ -242,7 +249,15 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     }
 
     const valor = valorFormatado(dados.finalAmount ?? dados.amount);
+    const pdfAutorizado = integracao.resources.invoice_pdf;
+    const urlDoPdf = pdfAutorizado ? dados.invoicePDFURL : null;
+    const envioPdf = (url: string): { type: "text" | "document"; body: string; media_url?: string; media_mime?: string } =>
+      entregaTextual
+        ? { type: "text", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}:\n${url}` }
+        : { type: "document", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
+            media_url: url, media_mime: "application/pdf" };
     let envio: { type: "text" | "document"; body: string; media_url?: string; media_mime?: string };
+    let metodoEnviado: "pix" | "boleto" | "pdf" | "link" = input.method;
     if (input.method === "pix" && dados.pixCode) {
       envio = {
         type: "text",
@@ -253,18 +268,28 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         type: "text",
         body: `Segue a linha digitável do boleto${valor ? ` (${valor})` : ""}:\n\n${dados.billetDigitableLine}`,
       };
-    } else if (input.method === "pdf" && dados.invoicePDFURL) {
-      envio = entregaTextual
-        ? { type: "text", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}:\n${dados.invoicePDFURL}` }
-        : { type: "document", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
-            media_url: dados.invoicePDFURL, media_mime: "application/pdf" };
-    } else if (input.method === "link" && (dados.paymentLink || dados.negotiationLink || dados.invoicePDFURL)) {
-      const link = dados.paymentLink || dados.negotiationLink || dados.invoicePDFURL;
+    } else if (input.method === "boleto" && urlDoPdf) {
+      envio = envioPdf(urlDoPdf);
+      metodoEnviado = "pdf";
+    } else if (input.method === "pdf" && urlDoPdf) {
+      envio = envioPdf(urlDoPdf);
+    } else if (input.method === "link" && (dados.paymentLink || dados.negotiationLink || urlDoPdf)) {
+      const link = dados.paymentLink || dados.negotiationLink || urlDoPdf;
       envio = { type: "text", body: `Acesse seu pagamento por este link seguro:\n${link}` };
     } else {
+      const availableMethods = [
+        ...(integracao.resources.payment_data && dados.pixCode ? ["pix"] : []),
+        ...(integracao.resources.payment_data && dados.billetDigitableLine ? ["boleto"] : []),
+        ...(urlDoPdf ? ["pdf"] : []),
+        ...(integracao.resources.payment_data && (dados.paymentLink || dados.negotiationLink)
+          ? ["link"] : []),
+      ];
       return {
         erro: "meio_indisponivel",
-        mensagem: "essa fatura não possui o meio de pagamento escolhido; ofereça outra opção disponível.",
+        mensagem: availableMethods.length > 0
+          ? "O formato solicitado não está disponível nesta fatura. Ofereça uma das alternativas disponíveis ao cliente; não diga que já enviou."
+          : "Nenhum meio de pagamento autorizado está disponível nesta fatura; peça ajuda a uma pessoa.",
+        available_methods: availableMethods,
       };
     }
 
@@ -331,7 +356,8 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     const response = {
       message_id: message.id,
       status: message.status,
-      method: input.method,
+      method: metodoEnviado,
+      ...(metodoEnviado !== input.method ? { requested_method: input.method } : {}),
       sent_at: message.sent_at,
     };
     const { error: reciboErro } = await ctx.supabase.from("idempotency_keys")
