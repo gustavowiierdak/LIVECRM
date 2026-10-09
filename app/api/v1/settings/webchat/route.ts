@@ -45,6 +45,7 @@ const configSchema = z
     allowed_sectors: z.array(setorWebchatSchema).max(3),
     allowed_origins: z.array(origemSchema).max(10),
     handoff_ttl_seconds: z.number().int().min(60).max(3600),
+    ai_replies_24h: z.boolean().optional(),
   })
   .strict()
   .refine(
@@ -54,6 +55,7 @@ const configSchema = z
   );
 
 type Config = z.infer<typeof configSchema> & ConfiguracaoWebchat;
+type StoredConfig = ConfiguracaoWebchat & { channel_session_id?: string | null };
 const DEFAULT_CONFIG: Config = {
   enabled: false,
   allowed_sectors: [],
@@ -66,13 +68,13 @@ type Query = {
     column: string,
     value: string,
   ) => {
-    maybeSingle: () => Promise<{ data: Config | null; error: { message: string } | null }>;
+    maybeSingle: () => Promise<{ data: StoredConfig | null; error: { message: string } | null }>;
   };
 };
 type ConfigTable = {
   select: (columns: string) => Query;
   upsert: (
-    row: Config & { organization_id: string },
+    row: ConfiguracaoWebchat & { organization_id: string },
     options: { onConflict: string },
   ) => Promise<{ error: { message: string } | null }>;
 };
@@ -89,12 +91,24 @@ export async function GET(): Promise<Response> {
   const authz = await requireRole("manager", { requestId, resource: "settings_webchat" });
   if (!authz.ok) return authz.response;
   const { data, error } = await tabela()
-    .select("enabled,allowed_sectors,allowed_origins,handoff_ttl_seconds,public_id")
+    .select("enabled,allowed_sectors,allowed_origins,handoff_ttl_seconds,public_id,channel_session_id")
     .eq("organization_id", authz.org.orgId)
     .maybeSingle();
   if (error)
     return fail("internal_error", "Não foi possível ler o atendimento web.", 500, { requestId });
-  return ok(data ?? DEFAULT_CONFIG, { requestId });
+  if (!data?.channel_session_id) return ok({ ...(data ?? DEFAULT_CONFIG), ai_replies_24h: false }, { requestId });
+  const { data: knobs, error: knobsError } = await createAdminClient()
+    .from("channel_knobs")
+    .select("resposta_start_hour,resposta_end_hour")
+    .eq("organization_id", authz.org.orgId)
+    .eq("channel_session_id", data.channel_session_id)
+    .maybeSingle();
+  if (knobsError)
+    return fail("internal_error", "Não foi possível ler o horário de resposta da IA.", 500, { requestId });
+  return ok({
+    ...data,
+    ai_replies_24h: knobs?.resposta_start_hour === 0 && knobs?.resposta_end_hour === 24,
+  }, { requestId });
 }
 
 export async function PATCH(request: NextRequest): Promise<Response> {
@@ -109,8 +123,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       requestId,
       details: parsed.error.flatten().fieldErrors,
     });
+  const { ai_replies_24h, ...settings } = parsed.data;
   const config = {
-    ...parsed.data,
+    ...settings,
     allowed_sectors: [...new Set(parsed.data.allowed_sectors)],
     allowed_origins: [...new Set(parsed.data.allowed_origins)],
   };
@@ -120,14 +135,16 @@ export async function PATCH(request: NextRequest): Promise<Response> {
   );
   if (error)
     return fail("internal_error", "Não foi possível salvar o atendimento web.", 500, { requestId });
+  let sessionId: string | null = null;
   if (config.enabled) {
-    const { error: sessionError } = await createAdminClient()
+    const { data: ensuredSessionId, error: sessionError } = await createAdminClient()
       .rpc("fn_assegurar_sessao_webchat", { p_org: authz.org.orgId });
     if (sessionError)
       return fail("internal_error", "Atendimento salvo, mas o canal web não pôde ser preparado.", 500, { requestId });
+    sessionId = ensuredSessionId;
   }
   const { data: saved, error: readError } = await tabela()
-    .select("public_id")
+    .select("public_id,channel_session_id")
     .eq("organization_id", authz.org.orgId)
     .maybeSingle();
   if (readError || !saved?.public_id)
@@ -146,5 +163,30 @@ export async function PATCH(request: NextRequest): Promise<Response> {
       handoff_ttl_seconds: config.handoff_ttl_seconds,
     },
   });
-  return ok({ ...config, public_id: saved.public_id }, { requestId });
+  if (ai_replies_24h !== undefined) {
+    const channelSessionId = sessionId ?? saved.channel_session_id;
+    if (!channelSessionId)
+      return fail("session_not_found", "Ative o atendimento web antes de configurar o horário da IA.", 422, { requestId });
+    const { error: pacingError } = await createAdminClient().from("channel_knobs").upsert(
+        {
+          organization_id: authz.org.orgId,
+          channel_session_id: channelSessionId,
+          resposta_start_hour: ai_replies_24h ? 0 : null,
+          resposta_end_hour: ai_replies_24h ? 24 : null,
+        },
+        { onConflict: "organization_id,channel_session_id" },
+    );
+    if (pacingError)
+      return fail("internal_error", "Atendimento salvo, mas o horário da IA não pôde ser atualizado.", 500, { requestId });
+    void audit({
+        action: "webchat.config_updated",
+        actorUserId: authz.user.id,
+        organizationId: authz.org.orgId,
+        resourceType: "channel_session",
+        resourceId: channelSessionId,
+        requestId,
+        metadata: { ai_replies_24h },
+    });
+  }
+  return ok({ ...config, public_id: saved.public_id, ...(ai_replies_24h !== undefined ? { ai_replies_24h } : {}) }, { requestId });
 }

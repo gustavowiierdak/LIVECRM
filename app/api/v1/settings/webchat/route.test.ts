@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   requireRole: vi.fn(),
   requireSupportWrite: vi.fn(),
   maybeSingle: vi.fn(),
+  knobsMaybeSingle: vi.fn(),
   upsert: vi.fn(),
+  knobsUpsert: vi.fn(),
   eq: vi.fn(),
   from: vi.fn(),
   rpc: vi.fn(),
@@ -43,10 +45,21 @@ describe("configuração do canal web por organização", () => {
     vi.clearAllMocks();
     mocks.requireSupportWrite.mockResolvedValue(undefined);
     mocks.requireRole.mockResolvedValue({ ok: true, org: { orgId: org }, user: { id: user } });
-    mocks.from.mockReturnValue({ select: () => ({ eq: mocks.eq }), upsert: mocks.upsert });
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "channel_knobs") {
+        const chain = {
+          eq: () => chain,
+          maybeSingle: mocks.knobsMaybeSingle,
+        };
+        return { select: () => chain, upsert: mocks.knobsUpsert };
+      }
+      return { select: () => ({ eq: mocks.eq }), upsert: mocks.upsert };
+    });
     mocks.eq.mockReturnValue({ maybeSingle: mocks.maybeSingle });
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
+    mocks.knobsMaybeSingle.mockResolvedValue({ data: null, error: null });
     mocks.upsert.mockResolvedValue({ error: null });
+    mocks.knobsUpsert.mockResolvedValue({ error: null });
     mocks.rpc.mockResolvedValue({ data: "05440000-7777-4000-8000-000000000002", error: null });
   });
 
@@ -129,5 +142,48 @@ describe("configuração do canal web por organização", () => {
       }),
     );
     expect(mocks.rpc).toHaveBeenCalledWith("fn_assegurar_sessao_webchat", { p_org: org });
+  });
+
+  it("mostra se apenas a resposta da IA web está configurada para 24 horas", async () => {
+    mocks.maybeSingle.mockResolvedValue({
+      data: { ...valid, channel_session_id: "05440000-7777-4000-8000-000000000002" }, error: null,
+    });
+    mocks.knobsMaybeSingle.mockResolvedValue({
+      data: { resposta_start_hour: 0, resposta_end_hour: 24 }, error: null,
+    });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { ai_replies_24h: true } });
+    expect(mocks.from).toHaveBeenCalledWith("channel_knobs");
+  });
+
+  it("grava a janela 0–24 somente para a sessão web, sem tocar a janela de disparo", async () => {
+    const sessionId = "05440000-7777-4000-8000-000000000002";
+    mocks.maybeSingle.mockResolvedValue({ data: { public_id: "05440000-7777-4000-8000-000000000001", channel_session_id: sessionId }, error: null });
+    const response = await PATCH(request({ ...valid, ai_replies_24h: true }));
+    expect(response.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(
+      { ...valid, organization_id: org },
+      { onConflict: "organization_id" },
+    );
+    expect(mocks.knobsUpsert).toHaveBeenCalledWith(
+      {
+        organization_id: org,
+        channel_session_id: sessionId,
+        resposta_start_hour: 0,
+        resposta_end_hour: 24,
+      },
+      { onConflict: "organization_id,channel_session_id" },
+    );
+    expect(await response.json()).toMatchObject({ data: { ai_replies_24h: true } });
+  });
+
+  it("não anuncia sucesso quando o horário de resposta não pôde ser gravado", async () => {
+    mocks.maybeSingle.mockResolvedValue({ data: { public_id: "05440000-7777-4000-8000-000000000001" }, error: null });
+    mocks.knobsUpsert.mockResolvedValue({ error: { message: "db failed" } });
+    const response = await PATCH(request({ ...valid, ai_replies_24h: true }));
+    expect(response.status).toBe(500);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "webchat.config_updated" }));
+    expect(mocks.audit).toHaveBeenCalledTimes(1);
   });
 });
