@@ -47,7 +47,7 @@ describe("entrada web no mesmo fluxo de agente", () => {
       contactId: "contato-1",
       channelSessionId: "sessao-web",
       texto: "me manda o boleto",
-      nomeDoContato: "Cliente",
+      nomeDoContato: "Nome antigo",
       requestId: entrada.requestId,
       origem: "webchat",
       canal: "webchat",

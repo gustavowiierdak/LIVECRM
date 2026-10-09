@@ -1,6 +1,6 @@
 ---
 impacto: capacidade_nova
-secao: novo
+secao: adicionado
 titulo: Atendimento web usa os mesmos agentes de IA do WhatsApp
 ---
 

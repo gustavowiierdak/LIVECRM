@@ -1,4 +1,5 @@
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
+import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -53,7 +54,7 @@ export async function processarEntradaWebchat(
     messageId: mensagem.id,
     channelSessionId: mensagem.channel_session_id,
     texto: mensagem.body,
-    nomeDoContato: contato?.display_name ?? contato?.name ?? null,
+    nomeDoContato: nomeDoContato(contato),
     requestId: entrada.requestId,
     origem: "webchat",
     canal: conversa.channel,

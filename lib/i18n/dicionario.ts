@@ -37,6 +37,18 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Escolha o canal em que ele atende. O rascunho está salvo; habilite um canal em Conexões e volte aqui para publicar.": { es: "Elige el canal en el que atiende. El borrador está guardado; habilita un canal en Conexiones y vuelve aquí para publicarlo." },
+  "Canal não está conectado (status:": { es: "El canal no está conectado (estado:" },
+  "Canal de atendimento": { es: "Canal de atención" },
+  "Selecione um canal": { es: "Selecciona un canal" },
+  "Nenhum canal conectado": { es: "Ningún canal conectado" },
+  "Nenhum canal conectado ainda — o rascunho salva sem ele.": { es: "Aún no hay ningún canal conectado; el borrador se guarda sin él." },
+  "Habilitar um canal": { es: "Habilitar un canal" },
+  "Escolha o canal para poder publicar. Sem ele, o rascunho salva mas não atende.": { es: "Elige un canal para poder publicarlo. Sin él, el borrador se guarda, pero no atiende." },
+  "Configure o comportamento dos agents que respondem nos canais conectados.": { es: "Configura el comportamiento de los agentes que responden en los canales conectados." },
+  "Canal removido": { es: "Canal eliminado" },
+  "O canal não pode ser trocado depois de criado — crie outro roteador para um canal diferente.": { es: "No se puede cambiar el canal después de crear el enrutador; crea otro para un canal diferente." },
+  "Um roteador entende o que o cliente quer e entrega a conversa para o agente certo — vinculado a um canal de atendimento.": { es: "Un enrutador entiende lo que necesita el cliente y entrega la conversación al agente adecuado, vinculado a un canal de atención." },
   // Atendimento web isolado: portal público, operação e configuração.
   "A identificação segura habilitará o envio de mensagens.": { es: "La identificación segura habilitará el envío de mensajes." },
   "Aguardando identificação": { es: "Esperando identificación" },
