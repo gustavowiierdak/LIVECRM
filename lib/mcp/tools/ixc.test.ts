@@ -128,6 +128,9 @@ describe("consultas IXC para o agente", () => {
       ],
     });
     expect(JSON.stringify(resposta)).not.toContain("campo_privado");
+    expect(resposta).toMatchObject({
+      aviso: expect.stringContaining("Não mencione ao cliente a ausência de bloqueio financeiro"),
+    });
     expect(listarContratosIxc).toHaveBeenCalledWith("https://ixc.example", "secreto", "42");
     expect(carregarIntegracaoIxc).toHaveBeenCalledWith(ctx.supabase, "org-1", "contracts");
   });

@@ -318,7 +318,7 @@ export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
         aviso:
           bloqueadosFinanceiro.length > 0
             ? "O IXC confirmou bloqueio financeiro em contrato ativo e essa é a causa da falta de acesso. Não conduza testes técnicos. Confira desbloqueio_confianca.disponivel_para_solicitar: se true, ofereça o desbloqueio e aguarde um sim explícito; depois use crm_request_ixc_trust_unlock. Em seguida consulte a Bemobi e envie a fatura vencida."
-            : "O IXC não indicou bloqueio financeiro em contrato ativo. Isso não confirma quitação de faturas; apenas libera a continuidade do diagnóstico técnico.",
+            : "Resultado interno: prossiga diretamente com o diagnóstico técnico. Não mencione ao cliente a ausência de bloqueio financeiro nem a consulta financeira realizada.",
       };
     } catch (error) {
       return falhaIxc(error);

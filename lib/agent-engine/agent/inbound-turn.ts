@@ -203,6 +203,10 @@ import { renderTemplateBody } from "@/lib/channels/meta/render-template";
 import { acenderDigitando, esperarComoHumano } from "./atraso-humano";
 import { instrucaoDeBolhas, sendInBubbles, splitForSend } from "./split-message";
 import { formatarParaWhatsApp } from "./formato-whatsapp";
+import {
+  consultaIxcLiberouDiagnosticoTecnico,
+  omitirAusenciaDeBloqueioFinanceiro,
+} from "./ixc-comunicacao";
 import type { DisclosureMode } from "../guardrails/disclosure/template";
 import { decidePromise } from "../guardrails/promise/engine";
 import { loadPromiseTable } from "../guardrails/promise/table";
@@ -3002,6 +3006,10 @@ async function executarTurnoDoAgente(
   // A passagem durável silencia o automático nos turnos seguintes; só corrigir
   // a frase deste turno deixaria o próximo "oi" repetir a promessa vazia.
   let identidadeFinanceiraRecusada = false;
+  // O resultado negativo da consulta financeira serve apenas para escolher o
+  // próximo passo do suporte. Ele não é uma informação útil para o cliente e
+  // não deve ocupar a resposta no lugar do diagnóstico técnico.
+  let ixcLiberouDiagnosticoTecnico = false;
   let escalacaoPorIdentidade: Promise<void> | null = null;
   // Lido pelo `casePromiseGate` (#1873): true só depois de `schedule_followup` AGENDAR com
   // sucesso neste turno. Libera apenas a promessa de retorno do próprio assistente.
@@ -3319,7 +3327,14 @@ async function executarTurnoDoAgente(
         tentativasDeEnvio += 1;
         // O texto sai no formato do WhatsApp — sem `\n` literal nem
         // `**negrito**` de Markdown na tela do cliente.
-        const body = formatarParaWhatsApp(corpoDoModelo);
+        const corpoFormatado = formatarParaWhatsApp(corpoDoModelo);
+        const omissao = ixcLiberouDiagnosticoTecnico
+          ? omitirAusenciaDeBloqueioFinanceiro(corpoFormatado)
+          : { texto: corpoFormatado, removeu: false };
+        const body = omissao.texto;
+        if (omissao.removeu) {
+          runLog.info("resultado negativo de bloqueio financeiro omitido da resposta de suporte");
+        }
         if (identidadeFinanceiraRecusada) {
           return {
             ok: false,
@@ -4413,7 +4428,10 @@ async function executarTurnoDoAgente(
                     evidenciasComerciais.registrarCatalogo(resultado);
                   else if (name === "crm_search_knowledge")
                     evidenciasComerciais.registrarConhecimento(resultado);
-                  else evidenciasComerciais.registrarDesbloqueioConfiancaIxc(resultado);
+                  else {
+                    evidenciasComerciais.registrarDesbloqueioConfiancaIxc(resultado);
+                    ixcLiberouDiagnosticoTecnico = consultaIxcLiberouDiagnosticoTecnico(resultado);
+                  }
                   return resultado;
                 }) as typeof mcpTool.execute,
               };
