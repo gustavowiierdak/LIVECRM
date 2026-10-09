@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@4e25fcaedc5c -->
+<!-- traduzido-de: docs/white-label.md@291b348b0ecc -->
 
 [🇧🇷 Português](white-label.md) · [🇺🇸 English](white-label.en.md) · 🇪🇸 Español
 
@@ -87,12 +87,12 @@ La frontera, que es deliberada:
 
 | Dónde | Qué marca aparece |
 |---|---|
-| `/login`, registro, recuperación de contraseña, verificación en dos pasos | Con **una organización activa**, su logo de marca y el nombre de exhibición de la organización; con dos o más, la marca de la instalación |
+| `/login`, registro, recuperación de contraseña, verificación en dos pasos | Con **una organización activa**, su logo, color de marca y el nombre de exhibición de la organización; con dos o más, la marca de la instalación |
 | Dentro del sistema (`/app/...`), después de entrar | La de la **organización**, si la tiene; si no, la de la instalación |
 | Correos de acceso (confirmación de cuenta, recuperación de contraseña) | La de la **instalación** |
 | Invitación de equipo, correos de LGPD | La de la **organización** que los envió |
 
-Una instalación dedicada no tiene ambigüedad: cuando existe **una única organización activa**, la fachada usa el logo guardado en Configuraciones → Marca y el nombre de exhibición guardado en Configuraciones → Organización. El color sigue siendo el de la instalación. Con dos o más organizaciones activas, antes de que la persona entre el sistema no sabe a cuál pertenece; por eso vuelve a la marca de la instalación en vez de elegir una a ciegas.
+Una instalación dedicada no tiene ambigüedad: cuando existe **una única organización activa**, la fachada usa el logo y el color guardados en Configuraciones → Marca y el nombre de exhibición guardado en Configuraciones → Organización. Los botones, el foco de los campos y los demás destacados usan la paleta derivada de ese color en los temas claro y oscuro. Con dos o más organizaciones activas, antes de que la persona entre el sistema no sabe a cuál pertenece; por eso vuelve a la marca de la instalación en vez de elegir una a ciegas.
 
 Esto no vuelve obsoleta la instalación dedicada — ver la comparación de abajo, que sigue valiendo por infraestructura, aislamiento y discurso de venta.
 

@@ -33,7 +33,7 @@ export default async function LoginPage({
     <div className="space-y-6">
       <div className="space-y-1.5 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">{t("Entrar")}</h1>
-        <p className="text-sm text-muted-foreground">{marca.nome}</p>
+        <p className="text-sm text-muted-foreground">{marca.name}</p>
       </div>
       {reset === "success" && (
         <div

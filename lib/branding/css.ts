@@ -28,13 +28,14 @@
  *
  * ── Por que o ESCOPO é parâmetro, e por que ele é uma união de literais ───────
  *
- * A partir da marca por organização há DOIS emissores: a instalação, que pinta o
- * documento inteiro pela raiz, e a organização, que pinta só o que está dentro
- * de `/app`. O que muda entre eles é o seletor — a serialização, a allowlist e a
- * rede de segurança são as mesmas, e duplicar a função para trocar duas strings
- * criaria duas cópias que divergem na primeira correção de segurança.
+ * A partir da marca por organização há TRÊS emissores: a instalação, que pinta o
+ * documento inteiro pela raiz; a organização autenticada, que pinta `/app`; e a
+ * fachada pública, que numa instalação dedicada pinta as telas de acesso. O que
+ * muda entre eles é o seletor — a serialização, a allowlist e a rede de segurança
+ * são as mesmas, e duplicar a função para trocar duas strings criaria cópias que
+ * divergiriam na primeira correção de segurança.
  *
- * O tipo é a UNIÃO DOS DOIS LITERAIS, jamais `string`: o seletor entra direto em
+ * O tipo é a UNIÃO DOS TRÊS LITERAIS, jamais `string`: o seletor entra direto em
  * `montarBloco` sem passar por validação nenhuma — a allowlist abaixo cobre nome
  * de token e forma de VALOR, e a rede de segurança do fim só pega `<` e `;}`,
  * não pega um `}` sozinho. Aceitar `string` abriria a única porta deste módulo
@@ -220,7 +221,16 @@ export const ESCOPO_DA_ORGANIZACAO = [
   ['[data-theme="dark"] body:has([data-marca-org])', "escuro"],
 ] as const;
 
-export type EscopoDaMarca = typeof ESCOPO_DA_INSTALACAO | typeof ESCOPO_DA_ORGANIZACAO;
+/** O escopo das rotas públicas, desmontado junto com o layout `(public)`. */
+export const ESCOPO_DA_FACHADA = [
+  ["body:has([data-marca-fachada])", "claro"],
+  ['[data-theme="dark"] body:has([data-marca-fachada])', "escuro"],
+] as const;
+
+export type EscopoDaMarca =
+  | typeof ESCOPO_DA_INSTALACAO
+  | typeof ESCOPO_DA_ORGANIZACAO
+  | typeof ESCOPO_DA_FACHADA;
 
 function montarBloco(seletor: string, decls: readonly Declaracao[]): string {
   const linhas = decls.map(([nome, valor]) => `  ${nome}: ${valor};`);

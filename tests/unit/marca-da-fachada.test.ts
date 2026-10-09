@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MarcaDeSaida } from "@/lib/branding/saida";
+import { derivarMarca } from "@/lib/branding/contraste";
+import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
+import type { MarcaResolvida } from "@/lib/branding/resolve";
 
 const dublês = vi.hoisted(() => ({
   resposta: { data: [] as unknown[], error: null as null | { code?: string; message: string } },
@@ -10,7 +12,7 @@ const dublês = vi.hoisted(() => ({
   eq: vi.fn(),
   order: vi.fn(),
   limit: vi.fn(),
-  marcaDaSaida: vi.fn(),
+  marcaResolvidaDaSaida: vi.fn(),
   warn: vi.fn(),
 }));
 
@@ -19,7 +21,9 @@ vi.mock("react", () => ({
   cache: <T extends (...args: never[]) => unknown>(funcao: T) => funcao,
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: dublês.warn } }));
-vi.mock("@/lib/branding/saida", () => ({ marcaDaSaida: dublês.marcaDaSaida }));
+vi.mock("@/lib/branding/saida", () => ({
+  marcaResolvidaDaSaida: dublês.marcaResolvidaDaSaida,
+}));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => {
     if (dublês.explodir) throw new Error("banco indisponível");
@@ -27,22 +31,33 @@ vi.mock("@/lib/supabase/admin", () => ({
   },
 }));
 
-const marcaDaInstalacao: MarcaDeSaida = {
-  nome: "DeskcommCRM",
+const marcaDaInstalacao: MarcaResolvida = {
+  name: "DeskcommCRM",
+  initial: "D",
   logoUrl: "https://storage.test/platform/logo.png",
   logoDarkUrl: null,
-  accent: "#506d48",
-  accentFg: "#ffffff",
-  origens: { nome: "banco", cor: "banco" },
+  cor: null,
+  origens: { nome: "banco", logoUrl: "banco", cor: "padrao" },
+  motivos: [],
 };
 
-const marcaDaOrganizacao: MarcaDeSaida = {
-  nome: "Nome antigo da marca",
+const marcaDaOrganizacao: MarcaResolvida = {
+  name: "Nome antigo da marca",
+  initial: "N",
   logoUrl: "https://storage.test/org/logo.png",
   logoDarkUrl: "https://storage.test/org/logo-dark.png",
-  accent: "#123456",
-  accentFg: "#ffffff",
-  origens: { nome: "organizacao", cor: "organizacao" },
+  cor: {
+    semente: "#123456",
+    papel: "accent",
+    derivada: derivarMarca("#123456", REGUA_DO_PRODUTO),
+  },
+  origens: {
+    nome: "organizacao",
+    logoUrl: "organizacao",
+    logoDarkUrl: "organizacao",
+    cor: "organizacao",
+  },
+  motivos: [],
 };
 
 async function carregar() {
@@ -60,7 +75,7 @@ beforeEach(() => {
   dublês.eq.mockReturnValue({ order: dublês.order });
   dublês.order.mockReturnValue({ limit: dublês.limit });
   dublês.limit.mockImplementation(async () => dublês.resposta);
-  dublês.marcaDaSaida.mockImplementation(async (organizationId: string | null) =>
+  dublês.marcaResolvidaDaSaida.mockImplementation(async (organizationId: string | null) =>
     organizationId ? marcaDaOrganizacao : marcaDaInstalacao,
   );
 });
@@ -76,11 +91,16 @@ describe("marcaDaFachada", () => {
 
     expect(marca).toEqual({
       ...marcaDaOrganizacao,
-      nome: "Live Internet",
-      origens: { nome: "organizacao.display_name", cor: "organizacao" },
+      name: "Live Internet",
+      initial: "L",
+      origens: { ...marcaDaOrganizacao.origens, nome: "organizacao.display_name" },
     });
-    expect(dublês.marcaDaSaida).toHaveBeenNthCalledWith(1, null);
-    expect(dublês.marcaDaSaida).toHaveBeenNthCalledWith(2, "11111111-1111-4111-8111-111111111111");
+    expect(marca.cor).toBe(marcaDaOrganizacao.cor);
+    expect(dublês.marcaResolvidaDaSaida).toHaveBeenNthCalledWith(1, null);
+    expect(dublês.marcaResolvidaDaSaida).toHaveBeenNthCalledWith(
+      2,
+      "11111111-1111-4111-8111-111111111111",
+    );
   });
 
   it("com duas organizações não escolhe uma identidade antes do login", async () => {
@@ -91,8 +111,8 @@ describe("marcaDaFachada", () => {
     const { marcaDaFachada } = await carregar();
 
     await expect(marcaDaFachada()).resolves.toEqual(marcaDaInstalacao);
-    expect(dublês.marcaDaSaida).toHaveBeenCalledTimes(1);
-    expect(dublês.marcaDaSaida).toHaveBeenCalledWith(null);
+    expect(dublês.marcaResolvidaDaSaida).toHaveBeenCalledTimes(1);
+    expect(dublês.marcaResolvidaDaSaida).toHaveBeenCalledWith(null);
   });
 
   it("degrada para a instalação quando a leitura das organizações falha", async () => {

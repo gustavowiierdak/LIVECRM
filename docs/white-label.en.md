@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@4e25fcaedc5c -->
+<!-- traduzido-de: docs/white-label.md@291b348b0ecc -->
 
 [🇧🇷 Português](white-label.md) · 🇺🇸 English · [🇪🇸 Español](white-label.es.md)
 
@@ -87,12 +87,12 @@ The boundary, which is deliberate:
 
 | Where | Which brand shows up |
 |---|---|
-| `/login`, sign-up, password recovery, two-step verification | With **one active organization**, its brand logo and organization display name; with two or more, the installation brand |
+| `/login`, sign-up, password recovery, two-step verification | With **one active organization**, its brand logo, color and organization display name; with two or more, the installation brand |
 | Inside the system (`/app/...`), after signing in | The **organization's**, if it has one; otherwise the installation's |
 | Access e-mails (account confirmation, password recovery) | The **installation's** |
 | Team invite, LGPD e-mails | The **organization's** that sent them |
 
-A dedicated installation is unambiguous: when there is **one active organization**, the facade uses the logo saved under Settings → Brand and the display name saved under Settings → Organization. The color remains the installation color. With two or more active organizations, the system does not know which one the person belongs to before sign-in, so it falls back to the installation brand instead of picking one in the dark.
+A dedicated installation is unambiguous: when there is **one active organization**, the facade uses the logo and color saved under Settings → Brand and the display name saved under Settings → Organization. Buttons, field focus and other highlights use the palette derived from that color in both light and dark themes. With two or more active organizations, the system does not know which one the person belongs to before sign-in, so it falls back to the installation brand instead of picking one in the dark.
 
 This does not make the dedicated installation obsolete — see the comparison below, which still holds on infrastructure, isolation and sales pitch.
 

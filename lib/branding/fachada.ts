@@ -2,10 +2,12 @@ import "server-only";
 
 import { cache } from "react";
 
+import { resolveBranding } from "@/lib/branding";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { marcaDaSaida, type MarcaDeSaida } from "./saida";
+import type { MarcaResolvida } from "./resolve";
+import { marcaResolvidaDaSaida } from "./saida";
 
 type OrganizacaoDaFachada = {
   readonly id: string;
@@ -33,12 +35,13 @@ function avisarUmaVez(chave: string, contexto: Record<string, unknown>): void {
  * fachada conserva a marca da instalação.
  *
  * Só `id` e `display_name` são lidos na varredura global. O restante da marca é
- * resolvido por `marcaDaSaida(id)`, que busca apenas a organização escolhida e
- * degrada sem lançar. O limite de duas linhas é suficiente para distinguir
+ * resolvido por `marcaResolvidaDaSaida(id)`, que busca apenas a organização
+ * escolhida e devolve também a rampa dos dois temas para o CSS. O limite de duas
+ * linhas é suficiente para distinguir
  * "única" de "ambígua" sem varrer todos os tenants.
  */
-async function resolverMarcaDaFachada(): Promise<MarcaDeSaida> {
-  const marcaDaInstalacao = marcaDaSaida(null);
+async function resolverMarcaDaFachada(): Promise<MarcaResolvida> {
+  const marcaDaInstalacao = marcaResolvidaDaSaida(null);
 
   try {
     const consulta = createAdminClient()
@@ -61,13 +64,13 @@ async function resolverMarcaDaFachada(): Promise<MarcaDeSaida> {
     if (organizacoes.length !== 1) return fallback;
 
     const organizacao = organizacoes[0]!;
-    const marca = await marcaDaSaida(organizacao.id);
+    const marca = await marcaResolvidaDaSaida(organizacao.id);
     const nomeDeExibicao = organizacao.display_name.trim();
     if (!nomeDeExibicao) return marca;
 
     return {
       ...marca,
-      nome: nomeDeExibicao,
+      ...resolveBranding(nomeDeExibicao, marca.logoUrl),
       origens: { ...marca.origens, nome: "organizacao.display_name" },
     };
   } catch (erro) {

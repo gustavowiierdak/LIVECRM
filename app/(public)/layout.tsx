@@ -1,5 +1,6 @@
 import { LogotipoDoProduto } from "@/components/branding/MarcaDoProduto";
 import { marcaEhADoProduto } from "@/lib/branding";
+import { cssDaMarca, ESCOPO_DA_FACHADA } from "@/lib/branding/css";
 import { marcaDaFachada } from "@/lib/branding/fachada";
 import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
@@ -40,6 +41,12 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  */
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const marca = await marcaDaFachada();
+  // A raiz já emite a cor da instalação. Só sombreia no <body> quando a
+  // organização única configurou uma cor própria — a mesma regra de `/app`.
+  const cssDaFachada =
+    marca.origens.cor === "organizacao"
+      ? cssDaMarca(marca.cor, ESCOPO_DA_FACHADA).css
+      : null;
   // A maioria destas telas roda ANTES do login (não há usuário nenhum), mas
   // duas — `/login/mfa` e, em parte, `/login/recovery` — rodam com uma sessão
   // parcial já criada (primeiro fator verificado, segundo pendente). Onde há
@@ -53,7 +60,13 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     <IdiomaProvider locale={locale}>
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div
+        data-marca-fachada=""
+        className="flex min-h-screen items-center justify-center bg-background p-6"
+      >
+        {cssDaFachada ? (
+          <style id="marca-fachada" dangerouslySetInnerHTML={{ __html: cssDaFachada }} />
+        ) : null}
         <div className="w-full max-w-sm space-y-6">
           {marca.logoUrl || marca.logoDarkUrl ? (
             <div className="flex justify-center">
@@ -64,7 +77,7 @@ export default async function PublicLayout({ children }: { children: React.React
                 domínio do operador. Altura máxima de 80 px e largura máxima de 192 px, sem distorcer
                 arte de proporção desconhecida nem ampliar arquivos pequenos.
 
-                O `alt` é o nome DESTA resolução (`marca.nome`), e não o de
+                O `alt` é o nome DESTA resolução (`marca.name`), e não o de
                 `branding()`: é a legenda da imagem que está ali, e nomeá-la com a
                 marca de outra fonte descreveria uma marca que não é a do logo.
 
@@ -84,7 +97,7 @@ export default async function PublicLayout({ children }: { children: React.React
                   <img
                     data-testid="logo-da-fachada"
                     src={marca.logoUrl}
-                    alt={marca.nome}
+                    alt={marca.name}
                     className={
                       marca.logoDarkUrl
                         ? "h-auto max-h-20 w-auto max-w-[12rem] object-contain dark:hidden"
@@ -92,22 +105,22 @@ export default async function PublicLayout({ children }: { children: React.React
                     }
                   />
                 ) : (
-                  <span className="dark:hidden">{marca.nome}</span>
+                  <span className="dark:hidden">{marca.name}</span>
                 )}
                 {marca.logoDarkUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     data-testid="logo-escuro-da-fachada"
                     src={marca.logoDarkUrl}
-                    alt={marca.nome}
+                    alt={marca.name}
                     className="hidden h-auto max-h-20 w-auto max-w-[12rem] object-contain dark:block"
                   />
                 ) : null}
               </div>
             </div>
-          ) : marcaEhADoProduto({ name: marca.nome, logoUrl: null }) ? (
+          ) : marcaEhADoProduto({ name: marca.name, logoUrl: null }) ? (
             <div className="flex justify-center">
-              <LogotipoDoProduto nome={marca.nome} className="h-12 w-auto" />
+              <LogotipoDoProduto nome={marca.name} className="h-12 w-auto" />
             </div>
           ) : null}
           {children}

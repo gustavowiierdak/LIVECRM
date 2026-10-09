@@ -85,12 +85,12 @@ A fronteira, que é deliberada:
 
 | Onde | Qual marca aparece |
 |---|---|
-| `/login`, cadastro, recuperação de senha, verificação em duas etapas | Com **uma organização ativa**, logo da marca dela e nome de exibição da organização; com duas ou mais, a marca da instalação |
+| `/login`, cadastro, recuperação de senha, verificação em duas etapas | Com **uma organização ativa**, logo, cor da marca e nome de exibição da organização; com duas ou mais, a marca da instalação |
 | Dentro do sistema (`/app/...`), depois de entrar | A da **organização**, se ela tiver; senão, a da instalação |
 | E-mails de acesso (confirmação de conta, recuperação de senha) | A da **instalação** |
 | Convite de time, e-mails de LGPD | A da **organização** que enviou |
 
-Uma instalação dedicada não tem ambiguidade: quando existe **uma única organização ativa**, a fachada usa o logo salvo em Configurações → Marca e o nome de exibição salvo em Configurações → Organização. A cor continua sendo a da instalação. Com duas ou mais organizações ativas, antes de a pessoa entrar o sistema não sabe de qual delas ela é; por isso volta à marca da instalação em vez de escolher uma no escuro.
+Uma instalação dedicada não tem ambiguidade: quando existe **uma única organização ativa**, a fachada usa o logo e a cor salvos em Configurações → Marca e o nome de exibição salvo em Configurações → Organização. Botões, foco dos campos e demais destaques usam a paleta derivada dessa cor nos temas claro e escuro. Com duas ou mais organizações ativas, antes de a pessoa entrar o sistema não sabe de qual delas ela é; por isso volta à marca da instalação em vez de escolher uma no escuro.
 
 Isso não torna a instalação dedicada obsoleta — ver a comparação abaixo, que continua valendo por infra, isolamento e discurso de venda.
 
