@@ -4012,6 +4012,25 @@ async function executarTurnoDoAgente(
     request_human_handoff: tool({
       ...AGENT_TOOL_DEFS.request_human_handoff,
       execute: async (raw) => {
+        // Uma consulta sem bloqueio financeiro não é falha nem motivo para
+        // abandonar o diagnóstico. O modelo já tentou transformar esse
+        // resultado interno em passagem humana; além de desnecessário, isso
+        // silencia o automático justamente quando ele deve seguir investigando
+        // a conexão. Recusar aqui mantém a conversa viva e ensina o próximo
+        // passo ao mesmo turno.
+        if (ixcLiberouDiagnosticoTecnico) {
+          runLog.info(
+            "handoff humano recusado — consulta sem bloqueio deve seguir no diagnóstico técnico",
+          );
+          return {
+            ok: false,
+            error: {
+              code: "diagnostico_tecnico_pendente",
+              message:
+                "Não passe para uma pessoa: a consulta liberou o diagnóstico técnico. Continue atendendo e use send_message para fazer a próxima pergunta técnica, sem mencionar a consulta financeira nem a ausência de bloqueio.",
+            },
+          };
+        }
         passouParaAEquipe = true;
         try {
           // ═══ O PISO: se o modelo não falou, o sistema fala ═══
