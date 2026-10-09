@@ -204,6 +204,26 @@ describe("envio financeiro Bemobi", () => {
     );
   });
 
+  it("mostra o valor codificado na linha digitável quando a Bemobi devolve outro amount", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: INPUT.invoice_id, amount: 109.8 },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 99.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+    } as never);
+
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx);
+
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]?.[2]).toMatchObject({
+      type: "text",
+      body: expect.stringContaining("R$\u00a0109,80"),
+    });
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]?.[2]?.body).not.toContain("R$\u00a099,80");
+  });
+
   it("entrega o PDF como documento no WhatsApp quando não há linha digitável", async () => {
     const { ctx } = contexto();
     vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({

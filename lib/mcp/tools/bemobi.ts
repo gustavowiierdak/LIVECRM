@@ -12,6 +12,7 @@ import { z } from "zod";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { hashDaColuna, hashLido } from "@/lib/api/idempotency";
 import { idDePagamentoBemobi, listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
+import type { BemobiInvoice } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
 import {
   depsDoRitmo,
@@ -158,6 +159,19 @@ function valorFormatado(valor: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+/**
+ * No boleto bancário de 47 dígitos, os dez últimos dígitos representam o
+ * valor em centavos. Esse é o valor que será efetivamente pago e, portanto,
+ * vence quando a Bemobi devolve um `amount` divergente do próprio boleto.
+ */
+function valorDaLinhaDigitavel(linha: string | null | undefined): number | null {
+  const digitos = linha?.replace(/\D/g, "") ?? "";
+  if (digitos.length !== 47) return null;
+  const centavos = Number(digitos.slice(-10));
+  if (!Number.isSafeInteger(centavos) || centavos <= 0) return null;
+  return centavos / 100;
+}
+
 export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = {
   name: "crm_send_bemobi_payment",
   description:
@@ -215,17 +229,17 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     if (!consulta.ok) {
       return { erro: consulta.reason, mensagem: mensagemIntegracao(consulta.reason) };
     }
-    let faturaPertenceAoContato = false;
+    let faturaDoContato: BemobiInvoice | null = null;
     try {
       const faturas = await listarFaturasBemobi(consulta.apiKey, confirmado.document);
-      faturaPertenceAoContato = faturas.some((fatura) => idDePagamentoBemobi(fatura) === input.invoice_id);
+      faturaDoContato = faturas.find((fatura) => idDePagamentoBemobi(fatura) === input.invoice_id) ?? null;
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
         mensagem: error instanceof Error ? error.message : "não foi possível confirmar a fatura agora.",
       };
     }
-    if (!faturaPertenceAoContato) {
+    if (!faturaDoContato) {
       return {
         erro: "fatura_fora_do_contato",
         mensagem: "a fatura escolhida não pertence ao CPF confirmado deste cliente.",
@@ -248,7 +262,11 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       };
     }
 
-    const valor = valorFormatado(dados.finalAmount ?? dados.amount);
+    const valorDoPagamento = dados.finalAmount ?? dados.amount;
+    const valor = valorFormatado(valorDoPagamento);
+    const valorDoBoleto = valorFormatado(
+      valorDaLinhaDigitavel(dados.billetDigitableLine) ?? faturaDoContato.amount ?? valorDoPagamento,
+    );
     const pdfAutorizado = integracao.resources.invoice_pdf;
     const urlDoPdf = pdfAutorizado ? dados.invoicePDFURL : null;
     const envioPdf = (url: string): { type: "text" | "document"; body: string; media_url?: string; media_mime?: string } =>
@@ -266,7 +284,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     } else if (input.method === "boleto" && dados.billetDigitableLine) {
       envio = {
         type: "text",
-        body: `Segue a linha digitável do boleto${valor ? ` (${valor})` : ""}:\n\n${dados.billetDigitableLine}`,
+        body: `Segue a linha digitável do boleto${valorDoBoleto ? ` (${valorDoBoleto})` : ""}:\n\n${dados.billetDigitableLine}`,
       };
     } else if (input.method === "boleto" && urlDoPdf) {
       envio = envioPdf(urlDoPdf);
