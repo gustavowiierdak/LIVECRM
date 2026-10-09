@@ -23,7 +23,9 @@ vi.mock("@/lib/ai/runtime/mcp_token", () => ({
   revokeEphemeralToken: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/instalacao/modulos", () => ({ modulosLigados: vi.fn(async () => []) }));
-vi.mock("@/lib/organizacao/capacidades", () => ({ capacidadesDaOrganizacao: vi.fn(async () => []) }));
+vi.mock("@/lib/organizacao/capacidades", () => ({
+  capacidadesDaOrganizacao: vi.fn(async () => []),
+}));
 vi.mock("@/lib/atendimento/fronteira-server", () => ({
   currentExecutionJob: () => undefined,
   currentExecutionBoundary: () => undefined,
@@ -66,13 +68,13 @@ beforeEach(() => {
   finalizeRun.mockClear();
 });
 
-describe("motor: buildMcpTurnTools repassa o contato do turno", () => {
-  async function montar(contactId: string | null) {
+describe("motor: buildMcpTurnTools repassa o contexto confiável do turno", () => {
+  async function montar(contactId: string | null, conversationId?: string | null) {
     pickToolsFromMcp.mockImplementationOnce(() => ({}));
     const { buildMcpTurnTools } = await import("@/lib/agent-engine/edge/crm/mcp-tools");
     await buildMcpTurnTools(
       { supabase: {} as never },
-      { organizationId: "org-1", jobId: "job-1", contactId },
+      { organizationId: "org-1", jobId: "job-1", contactId, conversationId },
       { agentId: "agente-1", toolIds: ["crm_query_external_data"], pipelineIds: [] } as never,
       { warn: vi.fn() } as never,
     );
@@ -86,6 +88,14 @@ describe("motor: buildMcpTurnTools repassa o contato do turno", () => {
   it("ensaio sem cliente: nada é inventado", async () => {
     expect(await montar(null)).not.toHaveProperty("contatoDoTurno");
   });
+
+  it("leva a conversa explicitamente mesmo sem contexto ambiente", async () => {
+    const contexto = await montar(CONTATO, "conversa-web-1");
+    expect(contexto.ctx).toMatchObject({
+      sourceJobId: "job-1",
+      conversationIdDoTurno: "conversa-web-1",
+    });
+  });
 });
 
 describe("runtime antigo: runAgent repassa o contato do turno", () => {
@@ -95,7 +105,10 @@ describe("runtime antigo: runAgent repassa o contato do turno", () => {
     await import("@/lib/ai/runtime/agent");
   }, 120_000);
 
-  async function rodar(run: { contact_id: string | null; conversation_id: string | null }, conversa?: unknown) {
+  async function rodar(
+    run: { contact_id: string | null; conversation_id: string | null },
+    conversa?: unknown,
+  ) {
     linhas = {
       ai_agent_runs: {
         id: "run-1",
