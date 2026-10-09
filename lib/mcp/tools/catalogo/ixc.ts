@@ -16,7 +16,7 @@ export const TOOLS_IXC = declararTools([
     category: "read",
     rotulo: "Consultar contratos no IXC",
     explicacao:
-      "Confere contratos e situação operacional do cliente desta conversa no IXC após validar seu CPF confirmado.",
+      "Confere contratos, situação de acesso e bloqueio financeiro do cliente desta conversa no IXC após validar seu CPF confirmado.",
     oQueToca: "Contratos do assinante",
     risco: "seguro",
     pacotes: ["atender"],

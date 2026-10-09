@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { buscarClienteIxc, IxcConnectionError, listarContratosIxc } from "@/lib/ixc/client";
 import { carregarIntegracaoIxc } from "@/lib/ixc/integration";
+import { situacaoDoContratoIxc } from "@/lib/ixc/situacao-do-contrato";
 
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
@@ -91,7 +92,10 @@ export const crmGetIxcCustomer: McpToolDefinition<typeof inputShape> = {
 export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
   name: "crm_list_ixc_contracts",
   description:
-    "Consulta os contratos e situação operacional do cliente atual no IXC após CPF confirmado. " +
+    "Consulta os contratos e a situação de acesso do cliente atual no IXC após CPF confirmado. " +
+    "Sempre use antes do diagnóstico técnico quando o cliente disser que está sem internet, " +
+    "com acesso bloqueado ou suspenso. O campo bloqueio_financeiro já traduz o código do IXC: " +
+    "se for true em contrato ativo, a falta de acesso é financeira e não uma falha técnica. " +
     "Não informe valores nem gere cobranças por esta ferramenta; faturas e meios de pagamento vêm da Bemobi.",
   inputSchema: inputShape,
   category: "read",
@@ -116,20 +120,37 @@ export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
       );
       if (!cliente) return { encontrado: false, total: 0, contratos: [] };
       const encontrados = await listarContratosIxc(contratos.baseUrl, contratos.token, cliente.id);
+      const classificados = encontrados.map((contrato) => ({
+        contrato,
+        acesso: situacaoDoContratoIxc(contrato),
+      }));
+      const bloqueadosFinanceiro = classificados.filter(
+        ({ acesso }) => acesso.bloqueioFinanceiro,
+      );
       return {
         encontrado: true,
         cliente_id: cliente.id,
         total: encontrados.length,
-        contratos: encontrados.map((contrato) => ({
+        bloqueio_financeiro: bloqueadosFinanceiro.length > 0,
+        contratos_bloqueados_financeiro: bloqueadosFinanceiro.length,
+        diagnostico:
+          bloqueadosFinanceiro.length > 0
+            ? "bloqueio_financeiro_confirmado"
+            : "sem_bloqueio_financeiro_no_ixc",
+        contratos: classificados.map(({ contrato, acesso }) => ({
           id: contrato.id,
           descricao: contrato.contrato ?? null,
           status: contrato.status ?? null,
           status_internet: contrato.status_internet ?? null,
+          situacao_acesso: acesso.situacao,
+          bloqueio_financeiro: acesso.bloqueioFinanceiro,
           bloqueio_automatico: contrato.bloqueio_automatico ?? null,
           contrato_suspenso: contrato.contrato_suspenso ?? null,
         })),
         aviso:
-          "códigos operacionais do IXC; não conclua motivo de bloqueio nem baixa financeira sem confirmação na fonte competente.",
+          bloqueadosFinanceiro.length > 0
+            ? "O IXC confirmou bloqueio financeiro em contrato ativo. Informe que essa é a causa da falta de acesso e não conduza testes de falha técnica. Para valores, faturas, pagamento ou prazo de desbloqueio, consulte a Bemobi ou encaminhe ao financeiro."
+            : "O IXC não indicou bloqueio financeiro em contrato ativo. Isso não confirma quitação de faturas; apenas libera a continuidade do diagnóstico técnico.",
       };
     } catch (error) {
       return falhaIxc(error);
