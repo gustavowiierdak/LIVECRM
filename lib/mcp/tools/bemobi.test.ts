@@ -201,6 +201,44 @@ describe("envio financeiro Bemobi", () => {
     expect(chamadas[2]?.metadata?.idempotency_key).toBe(insert.mock.calls[0]?.[0].key);
   });
 
+  it("resolve pela data exibida quando o modelo não copia o invoice_id", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      {
+        erpInvoiceId: INPUT.invoice_id,
+        dueDate: "2026-10-13T00:00:00",
+        formatedDueDate: "13/10/2026",
+        amount: 109.8,
+      },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 109.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+      pixCode: "pix-copia-e-cola-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, invoice_id: "13/10/2026" }, ctx),
+    ).resolves.toMatchObject({ complete_package: true });
+    expect(obterDadosPagamentoBemobi).toHaveBeenCalledWith("chave", INPUT.invoice_id);
+  });
+
+  it("não adivinha a fatura quando duas cobranças têm a mesma data", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: "fatura-a", formatedDueDate: "13/10/2026" },
+      { erpInvoiceId: "fatura-b", dueDate: "2026-10-13" },
+    ] as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, invoice_id: "13/10/2026" }, ctx),
+    ).resolves.toMatchObject({ erro: "fatura_fora_do_contato" });
+    expect(obterDadosPagamentoBemobi).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
   it("entrega PDF como link de texto na sessão web", async () => {
     const { ctx } = contexto("webchat");
     vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({

@@ -148,7 +148,10 @@ const enviarInputShape = {
     .min(11)
     .max(18)
     .describe("O mesmo CPF confirmado usado para listar as faturas deste cliente."),
-  invoice_id: z.string().trim().min(1).max(100),
+  invoice_id: z.string().trim().min(1).max(100)
+    .describe(
+      "Copie o invoice_id devolvido por crm_list_bemobi_invoices. Se houver apenas a data escolhida pelo cliente, envie-a exatamente como foi devolvida; o sistema só aceita uma correspondência única.",
+    ),
   method: z.enum(["pix", "boleto", "pdf", "link"])
     .describe("Preferência original do cliente. O sistema envia todos os meios disponíveis em mensagens separadas."),
   idempotency_key: z.string().min(1).max(200).optional()
@@ -158,6 +161,37 @@ const enviarInputShape = {
 function valorFormatado(valor: number | null | undefined) {
   if (typeof valor !== "number") return null;
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
+}
+
+function dataCanonicaDaFatura(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  const texto = valor.trim();
+  const brasileira = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brasileira) return `${brasileira[3]}-${brasileira[2]}-${brasileira[1]}`;
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : null;
+}
+
+/**
+ * O modelo deve copiar `invoice_id`, mas clientes escolhem a cobrança pela data
+ * e modelos antigos às vezes repassam essa data no campo. Aceitar uma data só
+ * quando ela aponta para UMA fatura mantém a validação ligada ao CPF consultado
+ * e evita handoff por uma diferença puramente sintática.
+ */
+function localizarFaturaDoContato(
+  faturas: readonly BemobiInvoice[],
+  seletor: string,
+): BemobiInvoice | null {
+  const porId = faturas.find((fatura) => idDePagamentoBemobi(fatura) === seletor);
+  if (porId) return porId;
+
+  const dataEscolhida = dataCanonicaDaFatura(seletor);
+  if (!dataEscolhida) return null;
+  const porData = faturas.filter((fatura) =>
+    [fatura.dueDate, fatura.formatedDueDate]
+      .some((data) => dataCanonicaDaFatura(data) === dataEscolhida),
+  );
+  return porData.length === 1 ? porData[0]! : null;
 }
 
 /**
@@ -232,7 +266,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     let faturaDoContato: BemobiInvoice | null = null;
     try {
       const faturas = await listarFaturasBemobi(consulta.apiKey, confirmado.document);
-      faturaDoContato = faturas.find((fatura) => idDePagamentoBemobi(fatura) === input.invoice_id) ?? null;
+      faturaDoContato = localizarFaturaDoContato(faturas, input.invoice_id);
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
@@ -247,10 +281,11 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     }
 
     const integracao = consulta;
+    const invoiceId = idDePagamentoBemobi(faturaDoContato);
 
     let dados;
     try {
-      dados = await obterDadosPagamentoBemobi(integracao.apiKey, input.invoice_id);
+      dados = await obterDadosPagamentoBemobi(integracao.apiKey, invoiceId);
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
@@ -326,7 +361,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
 
     const requestHash = hashRequest({
       conversation_id: input.conversation_id,
-      invoice_id: input.invoice_id,
+      invoice_id: invoiceId,
     });
     // Um veto de ritmo acontece ANTES da reserva: ainda não houve envio e a
     // próxima tentativa precisa continuar livre para executar.
