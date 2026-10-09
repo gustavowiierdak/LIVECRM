@@ -259,8 +259,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     }
 
     const valorDoPagamento = dados.finalAmount ?? dados.amount;
-    const valor = valorFormatado(valorDoPagamento);
-    const valorDoBoleto = valorFormatado(
+    const valor = valorFormatado(
       valorDaLinhaDigitavel(dados.billetDigitableLine) ?? faturaDoContato.amount ?? valorDoPagamento,
     );
     const pdfAutorizado = integracao.resources.invoice_pdf;
@@ -281,7 +280,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         method: "boleto",
         payload: {
           type: "text",
-          body: `Linha digitável do boleto${valorDoBoleto ? ` (${valorDoBoleto})` : ""}:\n\n${dados.billetDigitableLine}`,
+          body: `Linha digitável do boleto${valor ? ` (${valor})` : ""}:\n\n${dados.billetDigitableLine}`,
         },
       });
     }
