@@ -149,7 +149,8 @@ const enviarInputShape = {
     .max(18)
     .describe("O mesmo CPF confirmado usado para listar as faturas deste cliente."),
   invoice_id: z.string().trim().min(1).max(100),
-  method: z.enum(["pix", "boleto", "pdf", "link"]),
+  method: z.enum(["pix", "boleto", "pdf", "link"])
+    .describe("Preferência original do cliente. O sistema envia todos os meios disponíveis em mensagens separadas."),
   idempotency_key: z.string().min(1).max(200).optional()
     .describe("Só para chamadas externas; no turno de IA a chave é gerada pelo sistema."),
 };
@@ -175,10 +176,10 @@ function valorDaLinhaDigitavel(linha: string | null | undefined): number | null 
 export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = {
   name: "crm_send_bemobi_payment",
   description:
-    "Busca na Bemobi e envia diretamente ao cliente atual o PIX, a linha do boleto, o PDF ou o link de pagamento de uma fatura já consultada. " +
-    "Se a linha digitável não existir, boleto pode ser entregue como segunda via em PDF quando autorizada. " +
-    "Se nenhum envio for possível, available_methods indica alternativas reais; ofereça-as antes de chamar uma pessoa. " +
-    "O código financeiro não é devolvido ao modelo. O sistema gera a chave de idempotência do turno para não duplicar o envio.",
+    "Busca na Bemobi e envia diretamente ao cliente atual o pacote da fatura: linha digitável, PIX copia e cola e PDF, sempre em mensagens separadas. " +
+    "O parâmetro method registra apenas a preferência original; todos os meios disponíveis são enviados sem pedir que o cliente escolha um formato. " +
+    "O resultado informa sent_methods e missing_methods. Os códigos financeiros não são devolvidos ao modelo. " +
+    "O sistema gera a chave de idempotência do turno para não duplicar o pacote.",
   inputSchema: enviarInputShape,
   category: "write",
   requiresRole: "agent",
@@ -195,7 +196,6 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
           job_id: ctx.sourceJobId,
           conversation_id: input.conversation_id,
           invoice_id: input.invoice_id,
-          method: input.method,
         })}`
       : input.idempotency_key ?? ctx.idempotencyKey;
     if (!chaveIdempotencia) {
@@ -246,11 +246,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       };
     }
 
-    const recurso = input.method === "pdf" ? "invoice_pdf" : "payment_data";
-    const integracao = await carregarIntegracaoBemobi(ctx.supabase, ctx.organizationId, recurso);
-    if (!integracao.ok) {
-      return { erro: integracao.reason, mensagem: mensagemIntegracao(integracao.reason) };
-    }
+    const integracao = consulta;
 
     let dados;
     try {
@@ -274,27 +270,41 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         ? { type: "text", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}:\n${url}` }
         : { type: "document", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
             media_url: url, media_mime: "application/pdf" };
-    let envio: { type: "text" | "document"; body: string; media_url?: string; media_mime?: string };
-    let metodoEnviado: "pix" | "boleto" | "pdf" | "link" = input.method;
-    if (input.method === "pix" && dados.pixCode) {
-      envio = {
-        type: "text",
-        body: `Segue o PIX copia e cola da sua fatura${valor ? ` (${valor})` : ""}:\n\n${dados.pixCode}`,
-      };
-    } else if (input.method === "boleto" && dados.billetDigitableLine) {
-      envio = {
-        type: "text",
-        body: `Segue a linha digitável do boleto${valorDoBoleto ? ` (${valorDoBoleto})` : ""}:\n\n${dados.billetDigitableLine}`,
-      };
-    } else if (input.method === "boleto" && urlDoPdf) {
-      envio = envioPdf(urlDoPdf);
-      metodoEnviado = "pdf";
-    } else if (input.method === "pdf" && urlDoPdf) {
-      envio = envioPdf(urlDoPdf);
-    } else if (input.method === "link" && (dados.paymentLink || dados.negotiationLink || urlDoPdf)) {
+    type MetodoEnviado = "boleto" | "pix" | "pdf" | "link";
+    type Envio = {
+      method: MetodoEnviado;
+      payload: { type: "text" | "document"; body: string; media_url?: string; media_mime?: string };
+    };
+    const envios: Envio[] = [];
+    if (integracao.resources.payment_data && dados.billetDigitableLine) {
+      envios.push({
+        method: "boleto",
+        payload: {
+          type: "text",
+          body: `Linha digitável do boleto${valorDoBoleto ? ` (${valorDoBoleto})` : ""}:\n\n${dados.billetDigitableLine}`,
+        },
+      });
+    }
+    if (integracao.resources.payment_data && dados.pixCode) {
+      envios.push({
+        method: "pix",
+        payload: {
+          type: "text",
+          body: `PIX copia e cola da sua fatura${valor ? ` (${valor})` : ""}:\n\n${dados.pixCode}`,
+        },
+      });
+    }
+    if (urlDoPdf) {
+      envios.push({ method: "pdf", payload: envioPdf(urlDoPdf) });
+    }
+    if (envios.length === 0 && input.method === "link" && (dados.paymentLink || dados.negotiationLink)) {
       const link = dados.paymentLink || dados.negotiationLink || urlDoPdf;
-      envio = { type: "text", body: `Acesse seu pagamento por este link seguro:\n${link}` };
-    } else {
+      envios.push({
+        method: "link",
+        payload: { type: "text", body: `Acesse seu pagamento por este link seguro:\n${link}` },
+      });
+    }
+    if (envios.length === 0) {
       const availableMethods = [
         ...(integracao.resources.payment_data && dados.pixCode ? ["pix"] : []),
         ...(integracao.resources.payment_data && dados.billetDigitableLine ? ["boleto"] : []),
@@ -305,16 +315,19 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       return {
         erro: "meio_indisponivel",
         mensagem: availableMethods.length > 0
-          ? "O formato solicitado não está disponível nesta fatura. Ofereça uma das alternativas disponíveis ao cliente; não diga que já enviou."
+          ? "O pacote de boleto, PIX e PDF não está disponível nesta fatura. Ofereça uma das alternativas disponíveis ao cliente."
           : "Nenhum meio de pagamento autorizado está disponível nesta fatura; peça ajuda a uma pessoa.",
         available_methods: availableMethods,
       };
     }
 
+    const metodosObrigatorios = ["boleto", "pix", "pdf"] as const;
+    const metodosEnviados = envios.map((envio) => envio.method);
+    const metodosAusentes = metodosObrigatorios.filter((method) => !metodosEnviados.includes(method));
+
     const requestHash = hashRequest({
       conversation_id: input.conversation_id,
       invoice_id: input.invoice_id,
-      method: input.method,
     });
     // Um veto de ritmo acontece ANTES da reserva: ainda não houve envio e a
     // próxima tentativa precisa continuar livre para executar.
@@ -359,24 +372,57 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       };
     }
 
-    const parsed = sendMessageSchema.parse({
-      conversation_id: input.conversation_id,
-      ...envio,
-      metadata: { idempotency_key: chaveIdempotencia },
-    });
-    const message = await sendMessageHandler(
-      ctx.supabase,
-      { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
-      parsed,
-    );
-    await registrarEnvioPorToken(ritmo, ctx.organizationId, segurado, message.status);
+    const mensagens: Array<{ id: string; status: string; sent_at: string | null; method: MetodoEnviado }> = [];
+    try {
+      for (const [indice, envio] of envios.entries()) {
+        const envioSegurado = indice === 0
+          ? segurado
+          : await segurarEnvioPorToken(ritmo, {
+              organizationId: ctx.organizationId,
+              conversationId: input.conversation_id,
+              requestId: ctx.requestId,
+            });
+        const ultimo = indice === envios.length - 1;
+        const parsed = sendMessageSchema.parse({
+          conversation_id: input.conversation_id,
+          ...envio.payload,
+          metadata: {
+            idempotency_key: ultimo ? chaveIdempotencia : `${chaveIdempotencia}:${envio.method}`,
+          },
+        });
+        const message = await sendMessageHandler(
+          ctx.supabase,
+          { organization_id: ctx.organizationId, actor: ctx.actor, requestId: ctx.requestId },
+          parsed,
+        );
+        await registrarEnvioPorToken(ritmo, ctx.organizationId, envioSegurado, message.status);
+        mensagens.push({
+          id: message.id,
+          status: message.status,
+          sent_at: message.sent_at ?? null,
+          method: envio.method,
+        });
+      }
+    } catch (error) {
+      await avisarRevisaoDoEnvio(ctx, input.conversation_id);
+      throw error;
+    }
+
+    const comprovante = mensagens.at(-1)!;
 
     const response = {
-      message_id: message.id,
-      status: message.status,
-      method: metodoEnviado,
-      ...(metodoEnviado !== input.method ? { requested_method: input.method } : {}),
-      sent_at: message.sent_at,
+      message_id: comprovante.id,
+      message_ids: mensagens.map((mensagem) => mensagem.id),
+      status: comprovante.status,
+      method: comprovante.method,
+      requested_method: input.method,
+      sent_methods: metodosEnviados,
+      missing_methods: metodosAusentes,
+      complete_package: metodosAusentes.length === 0,
+      mensagem: metodosAusentes.length === 0
+        ? "Linha digitável, PIX copia e cola e PDF enviados em mensagens separadas."
+        : `Enviei os meios disponíveis em mensagens separadas. Não estavam disponíveis: ${metodosAusentes.join(", ")}.`,
+      sent_at: comprovante.sent_at,
     };
     const { error: reciboErro } = await ctx.supabase.from("idempotency_keys")
       .update({ response_body: response, status_code: 200 })

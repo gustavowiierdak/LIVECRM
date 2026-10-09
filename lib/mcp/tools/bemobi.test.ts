@@ -157,13 +157,48 @@ describe("envio financeiro Bemobi", () => {
     });
   });
 
-  it("repetição do mesmo turno devolve recibo sem reenviar", async () => {
+  it("repetição do mesmo turno devolve recibo sem reenviar, mesmo mudando a preferência", async () => {
     const { ctx } = contexto();
     await crmSendBemobiPayment.handler(INPUT, ctx);
-    await expect(crmSendBemobiPayment.handler(INPUT, ctx)).resolves.toMatchObject({
+    await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx)).resolves.toMatchObject({
       message_id: "mensagem-1", deduplicated: true,
     });
     expect(sendMessageHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("envia linha digitável, PIX e PDF em três mensagens separadas", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: INPUT.invoice_id, amount: 109.8 },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 109.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+      pixCode: "pix-copia-e-cola-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+    vi.mocked(sendMessageHandler)
+      .mockResolvedValueOnce({ id: "mensagem-boleto", status: "sent", sent_at: "2026-10-08T12:00:00Z" } as never)
+      .mockResolvedValueOnce({ id: "mensagem-pix", status: "sent", sent_at: "2026-10-08T12:00:01Z" } as never)
+      .mockResolvedValueOnce({ id: "mensagem-pdf", status: "sent", sent_at: "2026-10-08T12:00:02Z" } as never);
+
+    await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "pix" }, ctx)).resolves.toMatchObject({
+      message_id: "mensagem-pdf",
+      message_ids: ["mensagem-boleto", "mensagem-pix", "mensagem-pdf"],
+      sent_methods: ["boleto", "pix", "pdf"],
+      missing_methods: [],
+      complete_package: true,
+    });
+
+    const chamadas = vi.mocked(sendMessageHandler).mock.calls.map((chamada) => chamada[2]);
+    expect(chamadas).toHaveLength(3);
+    expect(chamadas[0]).toMatchObject({ type: "text", body: expect.stringContaining("Linha digitável") });
+    expect(chamadas[1]).toMatchObject({ type: "text", body: expect.stringContaining("PIX copia e cola") });
+    expect(chamadas[2]).toMatchObject({ type: "text", body: expect.stringContaining("segunda-via.pdf") });
+    expect(chamadas[0]?.metadata?.idempotency_key).toBe(`${insert.mock.calls[0]?.[0].key}:boleto`);
+    expect(chamadas[1]?.metadata?.idempotency_key).toBe(`${insert.mock.calls[0]?.[0].key}:pix`);
+    expect(chamadas[2]?.metadata?.idempotency_key).toBe(insert.mock.calls[0]?.[0].key);
   });
 
   it("entrega PDF como link de texto na sessão web", async () => {
@@ -243,7 +278,7 @@ describe("envio financeiro Bemobi", () => {
     );
   });
 
-  it("não usa o PDF quando a segunda via não foi autorizada e informa alternativas", async () => {
+  it("envia os meios disponíveis e informa os ausentes quando o pacote está incompleto", async () => {
     const { ctx, insert } = contexto("webchat");
     vi.mocked(carregarIntegracaoBemobi).mockResolvedValue({
       ok: true,
@@ -266,11 +301,12 @@ describe("envio financeiro Bemobi", () => {
     } as never);
 
     await expect(crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx)).resolves.toMatchObject({
-      erro: "meio_indisponivel",
-      available_methods: ["pix"],
+      sent_methods: ["pix"],
+      missing_methods: ["boleto", "pdf"],
+      complete_package: false,
     });
-    expect(insert).not.toHaveBeenCalled();
-    expect(sendMessageHandler).not.toHaveBeenCalled();
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(sendMessageHandler).toHaveBeenCalledTimes(1);
   });
 
   it("mantém a passagem humana quando a Bemobi não fornece boleto nem alternativa", async () => {
