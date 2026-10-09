@@ -38,9 +38,12 @@ import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conv
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { DialButton } from "@/components/voice/DialButton";
+import { VideoCallButton } from "@/components/inbox/VideoCallButton";
+import { motivoDoContato } from "@/lib/inbox/motivo-do-envio-bloqueado";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
+import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -108,6 +111,11 @@ export function ConversationHeader({
 
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c, t);
+  /**
+   * POR ONDE ESTA CONVERSA ENTROU — o mesmo rótulo da lista e da tela de
+   * canais (#2383). `null` quando não há canal, e aí o badge não existe.
+   */
+  const rotuloCanal = rotuloDoCanalDaConversa(conversation.channel_sessions, t);
   const phone = c?.phone_number ? phoneForDisplay(c.phone_number) : null;
   const status = conversation.status;
   const isMineAssigned = conversation.assigned_to_user_id === user.id;
@@ -216,6 +224,31 @@ export function ConversationHeader({
             provider={conversation.channel_sessions?.provider ?? null}
             lastInboundAt={conversation.last_inbound_at}
           />
+          {/* #2383: O CANAL DESTA CONVERSA, NO CABEÇALHO — a acepção que faltava
+              da issue: a lista já dizia por onde a conversa entrou, a conversa
+              ABERTA não dizia. O logo ao lado nomeia o provedor, não o número:
+              com "Peças" e "Vendas" conectados, ele é idêntico nos dois casos.
+
+              O TEXTO é o mesmo da lista e da tela `/app/connections`
+              (`rotuloDoCanalDaConversa` → `nomeDoCanal`): uma segunda cadeia de
+              regras aqui seria como as leituras de "quem manda" divergiram —
+              três telas, um fato, uma fonte.
+
+              `max-w` + `truncate` respondem ao critério de aceite "layout
+              utilizável com nomes de canal maiores": o badge encolhe e o `title`
+              devolve o texto inteiro. Sem canal (grupo, conversa sem sessão,
+              não-WA) não há rótulo nenhum e esta barra fica exatamente como
+              estava — o badge é acréscimo, não substituição. */}
+          {rotuloCanal && (
+            <Badge
+              variant="outline"
+              className="h-4 min-w-0 max-w-[9rem] truncate px-1.5 text-[10px]"
+              title={`${t("Entrou por")} ${rotuloCanal}`}
+              data-testid="canal-da-conversa"
+            >
+              <span className="truncate">{rotuloCanal}</span>
+            </Badge>
+          )}
         </div>
 
         {/* QUEM ESTÁ NO COMANDO, com nome e por GEOMETRIA — disco cheio para
@@ -273,6 +306,25 @@ export function ConversationHeader({
         {!conversation.is_group && c?.id && (
           <DialButton contactId={c.id} hasPhone={!!c.phone_number} />
         )}
+        {/* Videochamada (#2440): sem JITSI_SERVER_URL este botão não renderiza,
+            então ele não ocupa lugar nem na instalação que não oferece a feature.
+            A sala é aleatória por chamada (#2441) — não depende de telefone,
+            só do link ir pelo chat.
+
+            `provider`/`lastInboundAt`, `bloqueio` e `encerrada` vêm para o
+            botão seguir a MESMA régua do composer: janela de 24h (a rota não
+            barra quem envia da tela — vira 131047 silencioso, #1614), a trava
+            de contato e a de conversa encerrada. Os textos saem da mesma função
+            do composer (lib/inbox/motivo-do-envio-bloqueado.ts); encerrada só
+            desabilita, sem texto, como o composer faz. `supportReadonly` fica
+            de fora: ele mora no `user`, que este componente não recebe. */}
+        <VideoCallButton
+          conversationId={conversation.id}
+          provider={conversation.channel_sessions?.provider ?? null}
+          lastInboundAt={conversation.last_inbound_at}
+          bloqueio={motivoDoContato(c, t)}
+          encerrada={status === "closed"}
+        />
         {isOpen && (
           <Button
             size="sm"

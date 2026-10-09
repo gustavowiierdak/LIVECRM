@@ -48,10 +48,7 @@ describe("resolveBranding", () => {
 
 describe("guarda de white-label (self-host)", () => {
   const branding = fs.readFileSync(path.join(RAIZ, "lib/branding.ts"), "utf8");
-  const publicEnvScript = fs.readFileSync(
-    path.join(RAIZ, "app/public-env-script.tsx"),
-    "utf8",
-  );
+  const publicEnvScript = fs.readFileSync(path.join(RAIZ, "app/public-env-script.tsx"), "utf8");
   const layoutRaiz = fs.readFileSync(path.join(RAIZ, "app/layout.tsx"), "utf8");
 
   it("não usa prefixo NEXT_PUBLIC_ para a marca", () => {
@@ -101,7 +98,7 @@ describe("guarda de white-label (self-host)", () => {
       layoutRaiz.match(/await marcaResolvida\(\)/g) ?? [],
       "os quatro consumidores do layout raiz são `generateMetadata` (aba), " +
         "`EstiloDaMarca` (cor), `MarcaNoNavegador` (`window.__PUBLIC_ENV__`) e " +
-        "`MarcaDosClientComponents` (o contexto que os `\"use client\"` leem). " +
+        '`MarcaDosClientComponents` (o contexto que os `"use client"` leem). ' +
         "Consumidor a mais é legítimo — atualize o número. Consumidor a MENOS " +
         "significa que alguém voltou a montar a pilha por fora.",
     ).toHaveLength(4);
@@ -209,6 +206,12 @@ type EntradaDeMarca = {
 
 const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
   // ─── PROTOCOLO — contrato de fio. Renomear quebra integração alheia. ───
+  "lib/ai/pontos/pkce-da-assinatura.ts": {
+    categoria: "PROTOCOLO",
+    motivo:
+      "`agent_name_hint` identifica o aplicativo auto-hospedado durante a autorização SIWC da OpenAI; não é o nome apresentado nas telas do CRM. O fluxo de login depende deste identificador de produto.",
+    marcas: ["deskcommcrm"],
+  },
   "lib/webhooks/assinatura.ts": {
     categoria: "PROTOCOLO",
     motivo:
@@ -225,12 +228,23 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
     categoria: "PROTOCOLO",
     motivo:
       "é a guarda do contrato acima: este teste é o que reprova quem renomear o header. Trocar a string aqui para 'limpar a marca' desarmaria a única proteção que o contrato tem",
-    marcas: ["x-deskcomm-event", "x-deskcomm-signature", "x-deskcomm-signature", "x-deskcomm-signature"],
+    marcas: [
+      "x-deskcomm-event",
+      "x-deskcomm-signature",
+      "x-deskcomm-signature",
+      "x-deskcomm-signature",
+    ],
   },
   "lib/mcp/server.ts": {
     categoria: "PROTOCOLO",
     motivo:
       "nome do servidor MCP, que o cliente (Claude Desktop e afins) grava na própria configuração. Renomear derruba as conexões já configuradas de quem usa",
+    marcas: ["deskcomm-crm"],
+  },
+  "lib/mcp/servidor-externo/chamada.ts": {
+    categoria: "PROTOCOLO",
+    motivo:
+      "clientInfo do handshake `initialize` do MCP que este cliente manda ao servidor REMOTO: ele registra quem conectou e é comum haver regra de acesso por identificação do cliente lá do lado. Não é texto de interface — a tela nunca mostra — e renomear muda a identidade reportada no fio do protocolo",
     marcas: ["deskcomm-crm"],
   },
   "lib/supabase/admin.ts": {
@@ -341,6 +355,11 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
       "é a DEFINIÇÃO de DEFAULT_APP_NAME — o valor que aparece quando o operador não configurou marca nenhuma. Se esta linha sumir, some o padrão",
     marcas: ["deskcommcrm"],
   },
+  // `lib/video/jitsi.ts` ficou DE FORA por decisão do review do #2441: ele
+  // prefixa a sala do Jitsi com `sala-`, neutro. O link é repassado no chat e
+  // cai na tela do cliente final de quem revende a instalação — a sala não é
+  // lugar de marca. Com o prefixo neutro o arquivo não tem marca nenhuma, e
+  // lista só encolhe.
 };
 
 /**
@@ -415,7 +434,12 @@ function marcasNoTexto(fonte: string): string[] {
     for (const casada of linha.matchAll(/[\w@.-]*deskcomm[\w@.-]*/gi)) {
       // Pontuação encostada (o ponto final de "no DeskcommCRM.") não faz parte
       // do identificador e faria a lista mudar por causa de uma vírgula.
-      achadas.push(casada[0].toLowerCase().replace(/^[.-]+/, "").replace(/[.-]+$/, ""));
+      achadas.push(
+        casada[0]
+          .toLowerCase()
+          .replace(/^[.-]+/, "")
+          .replace(/[.-]+$/, ""),
+      );
     }
   }
   return achadas.sort();
@@ -585,7 +609,9 @@ describe("catraca de marca hardcoded", () => {
       const atual = encontrado.get(arquivo) ?? [];
       const congelado = [...entrada.marcas].sort();
       if (JSON.stringify(atual) !== JSON.stringify(congelado)) {
-        divergentes.push(`  ${arquivo}\n    lista: ${JSON.stringify(congelado)}\n    disco: ${JSON.stringify(atual)}`);
+        divergentes.push(
+          `  ${arquivo}\n    lista: ${JSON.stringify(congelado)}\n    disco: ${JSON.stringify(atual)}`,
+        );
       }
     }
     expect(
@@ -613,7 +639,10 @@ describe("catraca de marca hardcoded", () => {
     const ruins = Object.entries(MARCA_CONGELADA)
       .filter(([, e]) => !validas.includes(e.categoria) || e.motivo.trim().length < 40)
       .map(([f]) => f);
-    expect(ruins, `entrada sem categoria válida ou sem justificativa escrita:\n  ${ruins.join("\n  ")}`).toEqual([]);
+    expect(
+      ruins,
+      `entrada sem categoria válida ou sem justificativa escrita:\n  ${ruins.join("\n  ")}`,
+    ).toEqual([]);
   });
 
   it("a Fase 4 fechou: sobra uma dívida, e ela declara por que sobrou", () => {
@@ -639,7 +668,10 @@ describe("catraca de marca hardcoded", () => {
     const semFase = Object.entries(MARCA_CONGELADA)
       .filter(([, e]) => (e.categoria === "DIVIDA") !== (typeof e.fase === "number"))
       .map(([f]) => f);
-    expect(semFase, `DIVIDA sem fase, ou fase declarada onde não é dívida:\n  ${semFase.join("\n  ")}`).toEqual([]);
+    expect(
+      semFase,
+      `DIVIDA sem fase, ou fase declarada onde não é dívida:\n  ${semFase.join("\n  ")}`,
+    ).toEqual([]);
   });
 });
 
@@ -713,7 +745,10 @@ describe("catraca de marca no que o GoTrue renderiza", () => {
     for (const { arquivo } of ALVOS) {
       expect(fs.existsSync(path.join(RAIZ, arquivo)), `${arquivo} sumiu`).toBe(true);
     }
-    for (const modelo of ["supabase/templates/confirmation.html", "supabase/templates/recovery.html"]) {
+    for (const modelo of [
+      "supabase/templates/confirmation.html",
+      "supabase/templates/recovery.html",
+    ]) {
       const texto = fs.readFileSync(path.join(RAIZ, modelo), "utf8");
       expect(texto, `${modelo} não substitui a marca`).toContain("__APP_NAME__");
       expect(texto, `${modelo} não substitui o accent`).toContain("__ACCENT__");
@@ -722,13 +757,17 @@ describe("catraca de marca no que o GoTrue renderiza", () => {
 
   it("comentário de HTML não conta, e `-->` no meio da linha não engole o resto", () => {
     expect(marcasNoTexto(semComentariosHtml("<!-- fala do DeskcommCRM -->"))).toEqual([]);
-    expect(marcasNoTexto(semComentariosHtml("<!--\n  DeskcommCRM\n  em várias linhas\n-->"))).toEqual([]);
+    expect(
+      marcasNoTexto(semComentariosHtml("<!--\n  DeskcommCRM\n  em várias linhas\n-->")),
+    ).toEqual([]);
     // O caso que a regra de `//` erraria: marca REAL depois do fecho.
     expect(marcasNoTexto(semComentariosHtml("<!-- nota --> Sua conta no DeskcommCRM"))).toEqual([
       "deskcommcrm",
     ]);
     // E a marca fora de comentário nenhum continua contando.
-    expect(marcasNoTexto(semComentariosHtml("<p>conta no DeskcommCRM</p>"))).toEqual(["deskcommcrm"]);
+    expect(marcasNoTexto(semComentariosHtml("<p>conta no DeskcommCRM</p>"))).toEqual([
+      "deskcommcrm",
+    ]);
   });
 
   it("comentário de TOML não conta, mas `#` dentro de string não vira comentário", () => {
@@ -736,7 +775,9 @@ describe("catraca de marca no que o GoTrue renderiza", () => {
     expect(marcasNoTexto(semComentariosToml('cor = "#506d48"  # DeskcommCRM'))).toEqual([
       "deskcommcrm",
     ]);
-    expect(marcasNoTexto(semComentariosToml('subject = "Olá — DeskcommCRM"'))).toEqual(["deskcommcrm"]);
+    expect(marcasNoTexto(semComentariosToml('subject = "Olá — DeskcommCRM"'))).toEqual([
+      "deskcommcrm",
+    ]);
   });
 
   it("nenhum arquivo do GoTrue fixa a marca fora da lista", () => {
@@ -751,7 +792,10 @@ describe("catraca de marca no que o GoTrue renderiza", () => {
 
   it("a lista do GoTrue não guarda arquivo que já não tem marca", () => {
     const obsoletos = Object.keys(CONGELADO_SUPABASE).filter((f) => !encontradoAqui.has(f));
-    expect(obsoletos, `apague a linha destes de CONGELADO_SUPABASE:\n  ${obsoletos.join("\n  ")}`).toEqual([]);
+    expect(
+      obsoletos,
+      `apague a linha destes de CONGELADO_SUPABASE:\n  ${obsoletos.join("\n  ")}`,
+    ).toEqual([]);
   });
 
   it("arquivo congelado do GoTrue não mudou de conjunto sem a lista acompanhar", () => {
@@ -827,9 +871,15 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint oficial da Bemobi/7AZ usado para consultar faturas e meios de pagamento com a chave da própria organização; aparece também na tela para identificar o destino, não é domínio do revendedor",
   },
+  "chatgpt.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "é o serviço da conta ChatGPT nos DOIS papéis deste provedor: o destino do link que leva o operador a conectar a conta por Sign in with ChatGPT E o endpoint de listagem de modelos da assinatura (`lib/ai/catalogo/modelos-da-assinatura.ts` chama `chatgpt.com/backend-api/codex/models`, medido 200 na issue #2602 — a API pública devolve 403 Missing scopes para o mesmo token). O código FALA com ele; trocar pelo domínio do revendedor faria login e listagem não chegarem a lugar nenhum.",
+  },
   "datamanager.googleapis.com": {
     categoria: "FORNECEDOR",
-    motivo: "endpoint oficial da Google Data Manager API: recebe conversões e consulta o processamento na conta autorizada pela própria organização. O destino pertence ao fornecedor e não à instalação do CRM.",
+    motivo:
+      "endpoint oficial da Google Data Manager API: recebe conversões e consulta o processamento na conta autorizada pela própria organização. O destino pertence ao fornecedor e não à instalação do CRM.",
   },
   // ── localização compartilhada: o link que abre o pino do cliente ──
   "maps.google.com": {
@@ -871,11 +921,6 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "FORNECEDOR",
     motivo:
       "endpoint de autorização OAuth da OpenAI usado pelo login por PKCE da assinatura (`lib/ai/pontos/pkce-da-assinatura.ts`): é onde o fluxo troca o code pelo token e renova o acesso. É o destino do request, iniciado pelo próprio usuário na tela de Sistema — trocar pelo domínio do revendedor faria o login não chegar a lugar nenhum.",
-  },
-  "chatgpt.com": {
-    categoria: "FORNECEDOR",
-    motivo:
-      "backend do Codex (`OPENAI_CODEX_ENDPOINT` em `lib/agent-engine/edge/llm/providers.ts`): é para lá que a chamada da ASSINATURA do ChatGPT vai, com o access_token do login por PKCE, e o mesmo host é o painel que a lista de Credenciais aponta em `ondePegarAChave` (`lib/ai/pontos/provedores.ts`). Não é contrato público da OpenAI e a Openai pode mudá-lo sem aviso — é por isto que a queda para a chave da organização existe: muda o destino, não a conversa.",
   },
   "api.typesafe.ai": {
     categoria: "FORNECEDOR",
@@ -936,6 +981,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "FORNECEDOR",
     motivo: "endpoint da API da Nuvemshop/Tiendanube (ordens e catálogo do e-commerce do cliente).",
   },
+  "api.stripe.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da API da Stripe (`lib/cobranca/provedores/stripe.ts`): é por onde o DONO da instalação cobra as empresas dele, com a chave da conta Stripe DELE. É o destino do request; trocar pelo domínio do revendedor faria a cobrança não chegar a lugar nenhum.",
+  },
   "www.tiendanube.com": {
     categoria: "FORNECEDOR",
     motivo:
@@ -976,6 +1026,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "painel onde o usuário gera a PRÓPRIA chave da Requesty (`ondePegarAChave` em lib/ai/pontos/provedores.ts). Endereço do fornecedor, não nosso.",
   },
+  "myaccount.google.com": {
+    categoria: "CONSOLE",
+    motivo:
+      "página do Google onde a PESSOA revoga o acesso que deu ao app (`/permissions`). A política de privacidade (`app/legal/privacy/page.tsx`) tem de apontar para ela — o Google exige que o texto diga como revogar, e o endereço é dele, não nosso.",
+  },
   "aistudio.google.com": {
     categoria: "CONSOLE",
     motivo: "Google AI Studio — onde o usuário cria a chave do Gemini.",
@@ -1005,6 +1060,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     categoria: "AMOSTRA",
     motivo:
       "placeholder do campo de base URL de gateway OpenAI-compatible na tela de provedores: amostra do formato aceito.",
+  },
+  "meet.jit.si": {
+    categoria: "AMOSTRA",
+    motivo:
+      "a origem citada como EXEMPLO da URL da videochamada — na mensagem de erro do Zod de lib/env.ts (JITSI_SERVER_URL fora de http(s) desliga a feature), no comoLigar do catálogo de recursos opcionais e na tradução espanhola do mesmo texto. Não é destino de chamada: o produto nunca fala com `meet.jit.si`; quem chega lá é o operador e o contato, na aba que o link abre, pelo navegador deles — e o valor real é o do `.env` de cada instalação (em runtime, não queimado no build). Fica AMOSTRA porque chega à TELA, que é a razão de a régua exigir declaração em vez de silêncio.",
   },
   "000000000000-xxxxxxxx.apps.googleusercontent.com": {
     categoria: "AMOSTRA",
@@ -1177,6 +1237,10 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // Decisão escrita: painel de chaves da Requesty, o mesmo caso dos outros
       // CONSOLE (o link "Onde pegar a chave" da tela de Credenciais).
       "app.requesty.ai",
+      // `chatgpt.com` saiu daqui para FORNECEDOR (#2602): o código passou a
+      // FALAR com ele (a listagem de modelos da assinatura chama o backend do
+      // Codex), e quem fala com o host é FORNECEDOR — a categoria fechada
+      // perde o host no mesmo diff em que a lista de call sites o ganha.
       "console.anthropic.com",
       // Decisão escrita: é o painel de chaves do Jev, o mesmo caso dos outros
       // CONSOLE — o link "Onde pegar a chave" da tela de Credenciais.
@@ -1187,8 +1251,19 @@ describe("catraca de host de terceiro no código que embarca", () => {
       // abre é o celular do atendente. Crescimento escrito, como a regra pede.
       "maps.google.com",
       "meet.google.com",
+      // Decisão escrita, #2441: a origem do Jitsi aparece como EXEMPLO na
+      // mensagem do Zod de `JITSI_SERVER_URL`, no `comoLigar` do catálogo de
+      // recursos opcionais e na tradução do mesmo texto. O produto não fala
+      // com esse host (o valor real vem do `.env` em runtime); quem chega lá
+      // é quem abre o link. Crescimento escrito, como a regra pede.
+      "meet.jit.si",
       "meusistema.com",
       "mi-gateway.ejemplo.com",
+      // Decisão escrita: a política de privacidade (`app/legal/privacy/page.tsx`) manda a
+      // pessoa revogar o acesso ao Google em `/permissions`, que é onde o Google exige
+      // que o texto aponte. O produto não fala com o host — quem abre o link é a pessoa
+      // — e o endereço é do Google, não nosso. Crescimento escrito, como a regra pede.
+      "myaccount.google.com",
       "partners.tiendanube.com",
       "platform.deepseek.com",
       "platform.openai.com",
