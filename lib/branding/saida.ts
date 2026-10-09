@@ -3,13 +3,13 @@
  *
  * ── E na fachada de acesso, que tem DOM e mesmo assim vem aqui ────────────────
  *
- * `app/(public)/layout.tsx` (login, cadastro, recuperação, MFA) também chama
- * `marcaDaSaida(null)`, e isso não contradiz o nome deste módulo: o que aquela
- * casca precisa é exatamente o que ele entrega — UM nome e UM logo, da pilha
- * instalação → `.env`, de um resolvedor que nunca lança. Cor ela não usa: quem
- * pinta aquelas telas é o `<style id="marca-instalacao">` do layout raiz. O que
- * NÃO pode acontecer é a fachada montar a própria pilha e anunciar uma
- * precedência que o resto do produto não usa.
+ * `lib/branding/fachada.ts` também chama este módulo para login, cadastro,
+ * recuperação e MFA. Em instalação dedicada (uma única organização ativa), a
+ * fachada pede `marcaDaSaida(orgId)` e troca apenas o texto pelo
+ * `organizations.display_name`; em instalação multi-tenant pede
+ * `marcaDaSaida(null)`. Cor ela não usa: quem pinta aquelas telas é o
+ * `<style id="marca-instalacao">` do layout raiz. A fachada só decide QUAL das
+ * duas pilhas existentes pode ser anunciada sem ambiguidade.
  *
  * ── Por que este seam existe ─────────────────────────────────────────────────
  *

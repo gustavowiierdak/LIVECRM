@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { EntrarComGoogle } from "@/components/auth/EntrarComGoogle";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { marcaDaSaida } from "@/lib/branding/saida";
+import { marcaDaFachada } from "@/lib/branding/fachada";
 import { createClient } from "@/lib/supabase/server";
 import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -27,7 +27,7 @@ export default async function LoginPage({
     (user?.user_metadata?.locale as string | undefined) ?? null,
   );
   const t = (texto: string) => traduzir(texto, idioma);
-  const marca = await marcaDaSaida(null);
+  const marca = await marcaDaFachada();
 
   return (
     <div className="space-y-6">

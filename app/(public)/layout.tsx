@@ -1,6 +1,6 @@
 import { LogotipoDoProduto } from "@/components/branding/MarcaDoProduto";
 import { marcaEhADoProduto } from "@/lib/branding";
-import { marcaDaSaida } from "@/lib/branding/saida";
+import { marcaDaFachada } from "@/lib/branding/fachada";
 import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
 
@@ -16,24 +16,21 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * senha, cadastro de MFA), que é justamente onde o cliente do revendedor
  * aparece sozinho e sem contexto.
  *
- * ── Por que `marcaDaSaida(null)` ──────────────────────────────────────────────
+ * ── Como a organização chega aqui antes do login ─────────────────────────────
  *
- * Aqui não existe organização resolvida: `null` é a declaração disso, e a pilha
- * resultante é a mesma do layout raiz (banco acima, `.env` embaixo). Montar a
- * pilha à mão nesta tela faria a fachada anunciar uma precedência que o resto do
- * produto não usa. E `marcaDaSaida` NUNCA lança (ver o cabeçalho dela): uma cor
- * ou um logo mal gravados não podem derrubar a única tela por onde se entra para
- * corrigi-los.
+ * Em instalação dedicada há exatamente uma organização ativa, então a fachada
+ * pode usar o logo configurado por ela sem adivinhar. Com duas ou mais, a escolha
+ * volta para a marca da instalação: antes da autenticação não existe uma fonte
+ * confiável que diga qual tenant a pessoa quer acessar.
  *
  * Sem logo configurado E com o nome padrão, a fachada mostra o logotipo do
  * PRODUTO (`components/branding/MarcaDoProduto.tsx`) — inline, sem `<img>`,
  * para que `tests/e2e/marca-logo.spec.ts` continue medindo "a fachada está sem
  * `<img>`" como "sem logo do revendedor".
  *
- * O conteúdo de cada página resolve o próprio nome. A tela de login usa
- * `marcaDaSaida(null)`, como o título da aba, para que a marca alterada pela
- * instalação apareça também sob o botão "Entrar"; a casca usa a mesma resolução
- * para logo e tema.
+ * O conteúdo de cada página resolve o próprio nome. A tela de login chama o
+ * mesmo `marcaDaFachada`, memoizado por render, para que logo e nome nunca
+ * atravessem duas decisões diferentes.
  *
  * Com o login e a aba na MESMA pilha, `tests/e2e/icone-da-marca.spec.ts` deixou
  * de cruzar duas resoluções independentes: ele só prova que as duas concordam.
@@ -42,7 +39,7 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * o confere no login de quem não entrou. Não apague um sem o outro.
  */
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const marca = await marcaDaSaida(null);
+  const marca = await marcaDaFachada();
   // A maioria destas telas roda ANTES do login (não há usuário nenhum), mas
   // duas — `/login/mfa` e, em parte, `/login/recovery` — rodam com uma sessão
   // parcial já criada (primeiro fator verificado, segundo pendente). Onde há
@@ -72,9 +69,8 @@ export default async function PublicLayout({ children }: { children: React.React
                 marca de outra fonte descreveria uma marca que não é a do logo.
 
                 O `data-testid` é lido por `tests/e2e/marca-logo.spec.ts`, que prova
-                que o logo da EMPRESA não vaza para cá. Sem ele a spec caía na
-                "primeira <img> da página", e uma asserção de negação com seletor
-                largo passa sozinha assim que outra imagem entra na tela.
+                qual camada chegou à fachada. Sem ele a spec caía na "primeira
+                <img> da página", e poderia medir outra imagem que entrasse na tela.
               */}
               <div
                 className={

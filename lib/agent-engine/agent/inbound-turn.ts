@@ -198,7 +198,7 @@ import {
   tipoDeEnvio,
 } from "../guardrails/before-send";
 import { isStatusSendable } from "../../channels/meta/template-binding";
-import { capabilitiesOf } from "@/lib/channels/capabilities";
+import { capabilitiesOf, requiresTemplatesForTurn } from "@/lib/channels/capabilities";
 import { renderTemplateBody } from "@/lib/channels/meta/render-template";
 import { acenderDigitando, esperarComoHumano } from "./atraso-humano";
 import { instrucaoDeBolhas, sendInBubbles, splitForSend } from "./split-message";
@@ -4808,7 +4808,7 @@ async function executarTurnoDoAgente(
       { registry: deps.registry, log: runLog },
     );
 
-    let mensagensDoTurno = turn.result.response.messages;
+    let mensagensDoTurno: ModelMessage[] = turn.result.responseMessages;
     const semRespostaVisivel = preview
       ? preview.result.candidates.length === 0
       : outcomes.length === 0;
@@ -4856,7 +4856,7 @@ async function executarTurnoDoAgente(
         },
         { registry: deps.registry, log: runLog },
       );
-      mensagensDoTurno = [...mensagensDoTurno, ...fechamento.result.response.messages];
+      mensagensDoTurno = [...mensagensDoTurno, ...fechamento.result.responseMessages];
       if (
         preview &&
         preview.result.candidates.length === 0 &&
@@ -4905,7 +4905,6 @@ async function executarTurnoDoAgente(
     // nenhuma razão para o silêncio (`turno-mudo.ts`). UMA correção, com a mesma
     // conversa e as mesmas ferramentas: o envio passa pela cadeia inteira, como
     // qualquer outro. O fechamento lê a fita das DUAS chamadas.
-    let mensagensDoTurno: ModelMessage[] = turn.result.responseMessages;
     if (
       !preview &&
       liveJob().kind === "inbound_turn" &&
@@ -4931,7 +4930,7 @@ async function executarTurnoDoAgente(
           agentId: agentConfig?.agentId ?? null,
           purpose: "agent_turn",
           system,
-          messages: [...openingMessages, ...turn.result.responseMessages, pedidoDeCorrecao],
+          messages: [...openingMessages, ...mensagensDoTurno, pedidoDeCorrecao],
           tools,
           maxSteps: Math.min(maxSteps, 3),
           ...(agentConfig !== null
