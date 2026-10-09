@@ -830,6 +830,32 @@ const TRANSPARENCIA_SYSTEM_BLOCK =
   'novo o que falta — nunca admita que "o sistema" ou "a confirmação" teve um problema.';
 
 /**
+ * Regra de produto residente para a entrega financeira da Bemobi.
+ *
+ * O blueprint atual já ensina esta regra, mas versões publicadas são imutáveis e
+ * instalações antigas continuam com o prompt que perguntava qual formato o
+ * cliente queria. Como a própria ferramenta passou a entregar o pacote completo,
+ * deixar a regra apenas no blueprint faz o comportamento depender da idade da
+ * versão publicada. Condicionar pela ferramenta mantém o ensino junto da
+ * capacidade real e não cita uma tool ausente para outros agentes.
+ */
+const BEMOBI_PAYMENT_PACKAGE_SYSTEM_BLOCK =
+  "## Segunda via — entregue o pacote completo sem perguntar formato\n" +
+  "Quando o cliente pedir fatura, boleto, PIX ou segunda via e a fatura já estiver confirmada " +
+  "(ou houver apenas uma opção), chame `crm_send_bemobi_payment` imediatamente. NÃO pergunte se ele " +
+  "prefere boleto, PIX ou PDF. A ferramenta envia automaticamente, em mensagens separadas, a linha " +
+  "digitável, o PIX copia e cola e a fatura em PDF; esta regra prevalece sobre qualquer instrução " +
+  "anterior que mande escolher ou perguntar o formato. Não repita os códigos financeiros na sua " +
+  "resposta. Só confirme o envio depois que a ferramenta retornar sucesso; se ela falhar ou pedir " +
+  "revisão, siga o tratamento de falha sem prometer que enviou.";
+
+export function blocosDePagamentoResidentes(toolIds: readonly string[]): string[] {
+  return toolIds.includes("crm_send_bemobi_payment")
+    ? [BEMOBI_PAYMENT_PACKAGE_SYSTEM_BLOCK]
+    : [];
+}
+
+/**
  * Bloco de sistema RESIDENTE da Agenda — entra no prefixo cacheável sempre que o
  * agente tem `crm_book_appointment` no `tool_ids` publicado, INDEPENDENTE de a skill
  * situacional "agendamento" ter disparado no turno.
@@ -2367,6 +2393,8 @@ async function executarTurnoDoAgente(
   // testada (o bloco da cadeia nomeia `crm_list_event_types`, e nomear
   // ferramenta ausente faz o modelo tentar chamá-la).
   if (agentConfig !== null) blocosResidentes.push(...blocosDeAgendaResidentes(agentConfig.toolIds));
+  if (agentConfig !== null)
+    blocosResidentes.push(...blocosDePagamentoResidentes(agentConfig.toolIds));
   if (preview)
     blocosResidentes.push(
       "MODO PRÉVIA: proponha a resposta com send_message. Operações são propostas separadas; nunca diga que executou uma proposta. Nenhum envio real acontece.",
