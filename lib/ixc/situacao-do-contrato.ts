@@ -8,6 +8,24 @@ export type SituacaoDeAcessoIxc =
   | "contrato_inativo"
   | "desconhecido";
 
+export type ConfiguracaoDesbloqueioConfiancaIxc =
+  "habilitado" | "desabilitado" | "padrao_da_empresa" | "desconhecido";
+
+export interface ElegibilidadeDesbloqueioConfiancaIxc {
+  configuracao: ConfiguracaoDesbloqueioConfiancaIxc;
+  utilizando_agora: boolean | null;
+  restricao_auto_desbloqueio: boolean | null;
+  disponivel_para_solicitar: boolean;
+  motivo:
+    | "disponivel"
+    | "contrato_inativo"
+    | "sem_bloqueio_financeiro"
+    | "desabilitado_no_contrato"
+    | "ja_utilizando"
+    | "restricao_ativa"
+    | "dados_insuficientes";
+}
+
 function codigo(valor: string | null | undefined): string {
   return valor?.trim().toUpperCase() ?? "";
 }
@@ -42,4 +60,68 @@ export function situacaoDoContratoIxc(
     return { situacao: "desativado", bloqueioFinanceiro: false };
   }
   return { situacao: "desconhecido", bloqueioFinanceiro: false };
+}
+
+/**
+ * Traduz os três campos que controlam o botão de desbloqueio de confiança.
+ *
+ * `P` significa que o contrato herda o padrão da empresa. O IXC ainda refaz as
+ * validações globais (dias, quantidade de títulos e intervalo entre usos) no
+ * endpoint de ação; por isso este resultado autoriza OFERECER e SOLICITAR, não
+ * substituir o veredito final devolvido pelo próprio IXC.
+ */
+export function elegibilidadeDesbloqueioConfiancaIxc(
+  contrato: Pick<
+    IxcContract,
+    | "status"
+    | "status_internet"
+    | "contrato_suspenso"
+    | "desbloqueio_confianca"
+    | "desbloqueio_confianca_ativo"
+    | "restricao_auto_desbloqueio"
+  >,
+): ElegibilidadeDesbloqueioConfiancaIxc {
+  const acesso = situacaoDoContratoIxc(contrato);
+  const configuracaoCodigo = codigo(contrato.desbloqueio_confianca);
+  const configuracao: ConfiguracaoDesbloqueioConfiancaIxc =
+    configuracaoCodigo === "S"
+      ? "habilitado"
+      : configuracaoCodigo === "N"
+        ? "desabilitado"
+        : configuracaoCodigo === "P"
+          ? "padrao_da_empresa"
+          : "desconhecido";
+  const usandoCodigo = codigo(contrato.desbloqueio_confianca_ativo);
+  const utilizandoAgora = usandoCodigo === "S" ? true : usandoCodigo === "N" ? false : null;
+  const restricaoCodigo = codigo(contrato.restricao_auto_desbloqueio);
+  const restricao = restricaoCodigo === "S" ? true : restricaoCodigo === "N" ? false : null;
+
+  const base = {
+    configuracao,
+    utilizando_agora: utilizandoAgora,
+    restricao_auto_desbloqueio: restricao,
+  };
+  if (codigo(contrato.status) !== "A") {
+    return { ...base, disponivel_para_solicitar: false, motivo: "contrato_inativo" };
+  }
+  if (!acesso.bloqueioFinanceiro) {
+    return { ...base, disponivel_para_solicitar: false, motivo: "sem_bloqueio_financeiro" };
+  }
+  if (configuracao === "desabilitado") {
+    return { ...base, disponivel_para_solicitar: false, motivo: "desabilitado_no_contrato" };
+  }
+  if (utilizandoAgora === true) {
+    return { ...base, disponivel_para_solicitar: false, motivo: "ja_utilizando" };
+  }
+  if (restricao === true) {
+    return { ...base, disponivel_para_solicitar: false, motivo: "restricao_ativa" };
+  }
+  if (
+    (configuracao !== "habilitado" && configuracao !== "padrao_da_empresa") ||
+    utilizandoAgora === null ||
+    restricao === null
+  ) {
+    return { ...base, disponivel_para_solicitar: false, motivo: "dados_insuficientes" };
+  }
+  return { ...base, disponivel_para_solicitar: true, motivo: "disponivel" };
 }

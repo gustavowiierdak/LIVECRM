@@ -131,6 +131,9 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // O envio financeiro opera por conversa do contato do turno, não por negócio.
   // A posse da conversa e da fatura é conferida antes do envio no handler.
   crm_send_bemobi_payment: "sem_funil",
+  // O desbloqueio opera pela conversa do turno e por contrato do IXC, não por
+  // negócio. O handler revalida posse, elegibilidade e consentimento explícito.
+  crm_request_ixc_trust_unlock: "sem_funil",
   // Abre conversa nova (contato pode nem ter negócio ainda) e manda a primeira
   // mensagem — não recebe `lead_id` nem `pipeline_id`. Como as de configuração
   // logo abaixo, a barreira dela é OUTRA: `requiresRole: manager` +

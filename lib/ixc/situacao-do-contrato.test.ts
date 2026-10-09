@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { situacaoDoContratoIxc } from "./situacao-do-contrato";
+import {
+  elegibilidadeDesbloqueioConfiancaIxc,
+  situacaoDoContratoIxc,
+} from "./situacao-do-contrato";
 
 describe("situação de acesso do contrato IXC", () => {
   it("traduz CA em bloqueio financeiro quando o contrato está ativo", () => {
@@ -28,5 +31,38 @@ describe("situação de acesso do contrato IXC", () => {
         contrato_suspenso: suspenso,
       }),
     ).toEqual({ situacao, bloqueioFinanceiro: false });
+  });
+});
+
+describe("desbloqueio de confiança", () => {
+  const contrato = {
+    status: "A",
+    status_internet: "CA",
+    contrato_suspenso: "N",
+    desbloqueio_confianca: "P",
+    desbloqueio_confianca_ativo: "N",
+    restricao_auto_desbloqueio: "N",
+  };
+
+  it("oferece quando o contrato bloqueado herda o padrão e não tem restrição", () => {
+    expect(elegibilidadeDesbloqueioConfiancaIxc(contrato)).toEqual({
+      configuracao: "padrao_da_empresa",
+      utilizando_agora: false,
+      restricao_auto_desbloqueio: false,
+      disponivel_para_solicitar: true,
+      motivo: "disponivel",
+    });
+  });
+
+  it.each([
+    [{ restricao_auto_desbloqueio: "S" }, "restricao_ativa"],
+    [{ desbloqueio_confianca_ativo: "S" }, "ja_utilizando"],
+    [{ desbloqueio_confianca: "N" }, "desabilitado_no_contrato"],
+    [{ status_internet: "A" }, "sem_bloqueio_financeiro"],
+  ] as const)("recusa %j", (alteracao, motivo) => {
+    expect(elegibilidadeDesbloqueioConfiancaIxc({ ...contrato, ...alteracao })).toMatchObject({
+      disponivel_para_solicitar: false,
+      motivo,
+    });
   });
 });

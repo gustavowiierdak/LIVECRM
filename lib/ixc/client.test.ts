@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buscarClienteIxc,
+  desbloquearConfiancaIxc,
   IxcConnectionError,
   listarContratosIxc,
   normalizarBaseIxc,
@@ -139,5 +140,26 @@ describe("cliente IXC", () => {
     await expect(
       listarContratosIxc("https://ixc.example", "token", "42", transportar),
     ).rejects.toMatchObject({ code: "unexpected_response" });
+  });
+
+  it("executa o recurso de desbloqueio com o id e cabeçalho de ação", async () => {
+    const transportar = vi
+      .fn()
+      .mockResolvedValue(JSON.stringify({ type: "success", message: "Desbloqueado" }));
+    await expect(
+      desbloquearConfiancaIxc("https://ixc.example", "token", "19789", transportar),
+    ).resolves.toEqual({ ok: true, message: "Desbloqueado" });
+    const chamada = transportar.mock.calls[0]?.[0];
+    expect(chamada.url.toString()).toBe("https://ixc.example/webservice/v1/desbloqueio_confianca");
+    expect(chamada.ixcsoft).toBe("");
+    expect(JSON.parse(chamada.body)).toEqual({ id: "19789" });
+  });
+
+  it("separa recusa de negócio do erro de transporte", async () => {
+    await expect(
+      desbloquearConfiancaIxc("https://ixc.example", "token", "7", async () =>
+        JSON.stringify({ type: "error", message: "Desbloqueio indisponível" }),
+      ),
+    ).resolves.toEqual({ ok: false, message: "Desbloqueio indisponível" });
   });
 });

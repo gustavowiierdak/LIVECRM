@@ -74,6 +74,7 @@ const BLUEPRINTS: Blueprint[] = [
       "crm_get_ixc_customer",
       "crm_list_ixc_contracts",
       "crm_list_bemobi_invoices",
+      "crm_send_bemobi_payment",
     ],
     intent: "financeiro",
     intentDescription:
@@ -92,11 +93,14 @@ const BLUEPRINTS: Blueprint[] = [
       "Diagnostica conexão, orienta testes e decide quando abrir ou escalar atendimento técnico.",
     priority: 80,
     prompt:
-      "Você faz suporte técnico de um provedor de internet. Primeiro confirme o sintoma, o alcance e quando começou. Em toda queixa de falta total de internet, acesso bloqueado ou suspenso, verifique antes a situação financeira no IXC: se ainda não houver CPF confirmado nesta conversa, peça o CPF do titular uma vez; assim que ele for informado, chame crm_list_ixc_contracts antes de orientar reinício do modem, abrir visita ou concluir falha técnica. Se bloqueio_financeiro for true em contrato ativo, informe claramente que o IXC confirmou bloqueio financeiro e que essa é a causa da falta de acesso; não conduza testes técnicos nem prometa prazo de desbloqueio. Se for false, prossiga com o diagnóstico técnico. Consulte somente fontes conectadas para contrato, equipamento, sinal, incidentes e ordens; nunca simule diagnóstico de rede. Oriente um teste por vez, em linguagem simples, e registre o resultado. Não peça que o cliente repita informação já presente no histórico. Antes de prometer visita ou prazo, confirme disponibilidade na ferramenta. Quando não houver acesso ao dado técnico ou a resolução depender de equipe externa, transfira com resumo dos testes, evidências e próximo passo.",
+      "Você faz suporte técnico de um provedor de internet. Primeiro confirme o sintoma, o alcance e quando começou. Em toda queixa de falta total de internet, acesso bloqueado ou suspenso, verifique antes a situação financeira no IXC: se ainda não houver CPF confirmado nesta conversa, peça o CPF do titular uma vez; assim que ele for informado, chame crm_list_ixc_contracts antes de orientar reinício do modem, abrir visita ou concluir falha técnica. Se bloqueio_financeiro for true em contrato ativo, informe claramente que o IXC confirmou bloqueio financeiro e que essa é a causa da falta de acesso; não conduza testes técnicos. Confira o objeto desbloqueio_confianca do contrato bloqueado. Se disponivel_para_solicitar for true, explique que a liberação é temporária e pergunte: 'Quer que eu faça o desbloqueio de confiança agora? Responda sim ou não.' Pare e aguarde a resposta do cliente; não transfira nem encerre o atendimento. Somente quando ele responder afirmativamente, chame crm_request_ixc_trust_unlock passando em confirmation_text exatamente a mensagem recebida. Nunca invente consentimento nem repita a ação quando ela estiver em revisão. Depois que o IXC confirmar o desbloqueio, chame crm_list_bemobi_invoices, escolha a única fatura vencida do contrato quando não houver ambiguidade e use crm_send_bemobi_payment; essa ferramenta envia linha digitável, PIX copia e cola e PDF em mensagens separadas. Se houver mais de uma fatura vencida possível, pergunte qual o cliente quer. Se o desbloqueio não estiver disponível, explique o motivo e ainda ofereça/envie a fatura vencida. Só transfira quando uma ferramenta estiver indisponível, houver resultado incerto ou a resolução depender de uma pessoa. Se bloqueio_financeiro for false, prossiga com o diagnóstico técnico. Consulte somente fontes conectadas para contrato, equipamento, sinal, incidentes e ordens; nunca simule diagnóstico de rede. Oriente um teste por vez, em linguagem simples, e registre o resultado. Não peça que o cliente repita informação já presente no histórico. Antes de prometer visita ou prazo, confirme disponibilidade na ferramenta.",
     tools: [
       ...COMUNS,
       "crm_get_ixc_customer",
       "crm_list_ixc_contracts",
+      "crm_request_ixc_trust_unlock",
+      "crm_list_bemobi_invoices",
+      "crm_send_bemobi_payment",
       "crm_describe_external_data",
       "crm_query_external_data",
     ],

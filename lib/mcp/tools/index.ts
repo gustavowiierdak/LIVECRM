@@ -29,13 +29,9 @@ import {
 import { crmGetPipelineForecast, crmListPipelines } from "./pipelines";
 import { crmSendWhatsappMessage } from "./messages";
 import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
-import { crmGetIxcCustomer, crmListIxcContracts } from "./ixc";
+import { crmGetIxcCustomer, crmListIxcContracts, crmRequestIxcTrustUnlock } from "./ixc";
 import { crmStartConversationAndSend } from "./start-conversation";
-import {
-  crmAssignConversation,
-  crmManageTags,
-  crmGetQueueStatus,
-} from "./governance";
+import { crmAssignConversation, crmManageTags, crmGetQueueStatus } from "./governance";
 import {
   crmListAvailableAttendants,
   crmListHumanCases,
@@ -162,6 +158,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmRetomarLead,
   crmSendWhatsappMessage,
   crmSendBemobiPayment,
+  crmRequestIxcTrustUnlock,
   crmStartConversationAndSend,
   crmCreateConversationDraft,
   crmAssignConversation,

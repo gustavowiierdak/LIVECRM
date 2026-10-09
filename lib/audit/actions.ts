@@ -218,6 +218,8 @@ export const AUDIT_ACTIONS = [
   "ai_reply.rejected",
   "ai_agent.reverted",
   "ai.dispatcher_run",
+  /** IXC confirmou uma liberação temporária após consentimento do cliente. */
+  "ixc.trust_unlock_executed",
   "ai.pacing_knobs_updated",
   "ai.inbox_item_status_changed",
   "ai.flywheel_proposal_applied",

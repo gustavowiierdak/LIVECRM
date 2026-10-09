@@ -149,6 +149,9 @@ describe("consultas IXC para o agente", () => {
         status_internet: "CA",
         bloqueio_automatico: "S",
         contrato_suspenso: "N",
+        desbloqueio_confianca: "P",
+        desbloqueio_confianca_ativo: "N",
+        restricao_auto_desbloqueio: "N",
       },
     ]);
 
@@ -162,6 +165,11 @@ describe("consultas IXC para o agente", () => {
           id: "7",
           situacao_acesso: "bloqueado_financeiro",
           bloqueio_financeiro: true,
+          desbloqueio_confianca: {
+            configuracao: "padrao_da_empresa",
+            disponivel_para_solicitar: true,
+            motivo: "disponivel",
+          },
         },
       ],
       aviso: expect.stringContaining("causa da falta de acesso"),

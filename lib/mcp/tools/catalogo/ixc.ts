@@ -21,4 +21,17 @@ export const TOOLS_IXC = declararTools([
     risco: "seguro",
     pacotes: ["atender"],
   },
+  {
+    name: "crm_request_ixc_trust_unlock",
+    category: "write",
+    rotulo: "Fazer desbloqueio de confiança",
+    explicacao:
+      "Libera temporariamente no IXC um contrato com bloqueio financeiro, somente depois da confirmação explícita do cliente.",
+    oQueToca: "Acesso do contrato do assinante",
+    risco: "atencao",
+    // A ação financeira excepcional não entra no pacote genérico Atender,
+    // que já ocupa o teto de ferramentas. O blueprint do Suporte a recebe
+    // explicitamente; Retenção também pode habilitá-la quando fizer sentido.
+    pacotes: ["reter"],
+  },
 ]);
