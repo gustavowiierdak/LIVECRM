@@ -515,7 +515,7 @@ export const AUDIT_ACTIONS = [
   // a tela de Meta Ads para de funcionar para todo mundo da organização, e a
   // trilha precisa dizer quem fez isso e quando.
   "ad_insights_connection.deleted",
-  // Integração de ERP/provedor da organização (0583). O token do IXC dá
+  // Integração de ERP/provedor da organização (0629). O token do IXC dá
   // acesso a cadastro, contratos e financeiro; troca, teste e remoção têm
   // perguntas operacionais diferentes e por isso ficam em ações separadas.
   "erp_integration.updated",

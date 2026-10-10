@@ -1,5 +1,5 @@
 -- manifest: A integração IXC guarda credencial cifrada por organização em conexão server-side, sem leitura pelo navegador.
--- 0583 — conexão segura com ERP/provedor, começando pelo IXC.
+-- 0629 — conexão segura com ERP/provedor, começando pelo IXC.
 --
 -- A tabela é genérica no limite do core (`provider`), mas só aceita IXC nesta
 -- fatia: aceitar nomes sem adaptador criaria conexões que a aplicação nunca

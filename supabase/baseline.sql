@@ -46316,7 +46316,7 @@ grant execute on function public.fn_contato_pessoal_remove_trechos_do_rag(uuid,u
 notify pgrst,'reload schema';
 
 
--- ---- 0583: conexão segura com ERP/provedor (IXC primeiro adaptador) ----
+-- ---- 0629: conexão segura com ERP/provedor (IXC primeiro adaptador) ----
 create table if not exists public.erp_integrations (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -46353,7 +46353,7 @@ for each row execute function public.fn_set_updated_at();
 
 notify pgrst, 'reload schema';
 
--- ---- 0584: Bemobi/7AZ como segundo adaptador financeiro ----
+-- ---- 0630: Bemobi/7AZ como segundo adaptador financeiro ----
 alter table public.erp_integrations
   drop constraint if exists erp_integrations_provider_conhecido;
 
@@ -46366,7 +46366,7 @@ comment on table public.erp_integrations is
 
 notify pgrst, 'reload schema';
 
--- ---- 0585: encerramento do webchat chega ao cliente ----
+-- ---- 0631: encerramento do webchat chega ao cliente ----
 -- manifest: O fechamento da conversa web encerra a sessao publica, grava um aviso visivel no fio e impede que uma mensagem tardia reabra o atendimento.
 
 alter table public.webchat_messages
