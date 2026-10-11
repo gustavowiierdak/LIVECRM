@@ -85,6 +85,44 @@ describe("vínculo do contato com o IXC", () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ action: "contact.ixc_linked" }));
   });
 
+  it("mantém o vínculo IXC no contato do webchat quando o CPF já pertence ao cadastro canônico", async () => {
+    const contato = {
+      source_metadata: {},
+      updated_at: "2026-10-09T12:00:00.000Z",
+      cpf_hash: null,
+      is_anonymized: false,
+    };
+    const leitura = {
+      select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn().mockResolvedValue({ data: contato, error: null }),
+    };
+    leitura.select.mockReturnValue(leitura); leitura.eq.mockReturnValue(leitura);
+    const escrita = (resultado: { data: { id: string } | null; error: { code: string } | null }) => {
+      const query = { update: vi.fn(), eq: vi.fn(), select: vi.fn(), maybeSingle: vi.fn().mockResolvedValue(resultado) };
+      query.update.mockReturnValue(query); query.eq.mockReturnValue(query); query.select.mockReturnValue(query);
+      return query;
+    };
+    const comCpf = escrita({ data: null, error: { code: "23505" } });
+    const somenteMetadata = escrita({ data: { id: "contato-1" }, error: null });
+    const from = vi.fn()
+      .mockReturnValueOnce(leitura)
+      .mockReturnValueOnce(comCpf)
+      .mockReturnValueOnce(somenteMetadata);
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+
+    await expect(vincularContatoAoIxc({ from, rpc } as never, {
+      organizationId: "org-1", contactId: "contato-1", document: CPF,
+      cliente: CLIENTE, origem: "automatico",
+    })).resolves.toMatchObject({ ok: true, alterado: true });
+
+    expect(comCpf.update).toHaveBeenCalledWith(expect.objectContaining({ cpf_hash: hashCpf(CPF) }));
+    expect(somenteMetadata.update).toHaveBeenCalledWith({
+      source_metadata: expect.objectContaining({ ixc_customer_id: CLIENTE.id }),
+    });
+    expect(rpc).toHaveBeenCalledWith("emit_event", expect.objectContaining({
+      p_event_type: "contact.ixc_linked",
+    }));
+  });
+
   it("automático não substitui outro cadastro já vinculado", async () => {
     const db = banco({
       source_metadata: {

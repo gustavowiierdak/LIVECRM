@@ -129,7 +129,7 @@ export async function vincularContatoAoIxc(
       return { ok: false, motivo: "falha_ao_salvar" };
     }
 
-    const { data: atualizado, error: atualizacaoErro } = await supabase
+    let { data: atualizado, error: atualizacaoErro } = await supabase
       .from("contacts")
       .update({ source_metadata: metadata, ...camposCpf })
       .eq("organization_id", input.organizationId)
@@ -137,6 +137,30 @@ export async function vincularContatoAoIxc(
       .eq("updated_at", contato.updated_at)
       .select("id")
       .maybeSingle<{ id: string }>();
+
+    // Um cliente pode iniciar o webchat com outro nome/navegador depois de já
+    // ter confirmado o mesmo CPF em um atendimento anterior. O índice único do
+    // CPF protege o cadastro canônico e, nesse caso, recusa gravar o hash no
+    // contato transitório. O vínculo IXC ainda pertence à conversa atual e
+    // precisa aparecer para o atendente; repita somente a metadata, sem criar
+    // um segundo dono do CPF. A próxima consulta continua validando o documento
+    // no IXC, portanto essa degradação não transforma o vínculo em prova local.
+    if (
+      atualizacaoErro?.code === "23505" &&
+      !contato.cpf_hash &&
+      "cpf_hash" in camposCpf
+    ) {
+      const fallback = await supabase
+        .from("contacts")
+        .update({ source_metadata: metadata })
+        .eq("organization_id", input.organizationId)
+        .eq("id", input.contactId)
+        .eq("updated_at", contato.updated_at)
+        .select("id")
+        .maybeSingle<{ id: string }>();
+      atualizado = fallback.data;
+      atualizacaoErro = fallback.error;
+    }
     if (atualizacaoErro) return { ok: false, motivo: "falha_ao_salvar" };
     if (!atualizado) continue;
 
