@@ -36,7 +36,7 @@ import {
   type DecisaoDeEspacamento,
 } from "@/lib/agent-engine/pacing/ledger-supabase";
 import { ApiError } from "@/lib/api/types";
-import { capabilitiesOf, DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels/capabilities";
+import { capabilitiesForConversation, DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels/capabilities";
 import type { ChannelProvider } from "@/lib/channels/types";
 
 /**
@@ -71,7 +71,7 @@ export type EnvioSegurado = { channelSessionId: string } | null;
 
 function temRiscoDeBan(provider: string | null): boolean {
   try {
-    return capabilitiesOf((provider ?? DEFAULT_CHANNEL_PROVIDER) as ChannelProvider).banRisk;
+    return capabilitiesForConversation((provider ?? DEFAULT_CHANNEL_PROVIDER) as ChannelProvider).banRisk;
   } catch {
     // Provider fora da matriz: falha FECHADA. Errar para "sem risco" desarmaria
     // o freio num número que pode ser banido.

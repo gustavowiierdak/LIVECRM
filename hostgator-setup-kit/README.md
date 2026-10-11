@@ -140,6 +140,8 @@ proxy errado deixa o site no ar sem responder, o instalador mostra o que encontr
 confirmação. Em `bash install.sh --yes` não há a quem perguntar: ele para e pede que você
 declare `REVERSE_PROXY=traefik` no `.env` — aí a escolha é sua e ele segue sem perguntar.
 
+Atrás do proxy do Coolify (ou outro Traefik em rede Docker própria): veja [docs/saas/coolify.md](../docs/saas/coolify.md) — a porta do banco (API_GW_HTTP_PORT) e a rede do proxy (TRAEFIK_NETWORK) vão no comando.
+
 ## Scripts do kit
 
 | Script | Função |
@@ -151,6 +153,30 @@ declare `REVERSE_PROXY=traefik` no `.env` — aí a escolha é sua e ele segue s
 | `reset-password.sh` | Redefine senha de um usuário |
 | `reset-mfa.sh` | Remove o MFA de um usuário travado |
 | `healthcheck.sh` | Diagnóstico dos serviços |
+
+> ⚠️ **Restaurar um backup: o `restore.sh` só restaura num banco VAZIO.** O dump do
+> `backup.sh` sai com `--no-owner --no-privileges` e **sem `--clean`**: ele não tem `DROP` nem
+> `TRUNCATE`, e os `CREATE TABLE` não têm `IF NOT EXISTS`. Antes de pedir a confirmação, o
+> `restore.sh` conta as tabelas de `public` e, se o banco já tem as tabelas do sistema, **para
+> com mensagem própria** — nada é alterado e o `psql` nem é chamado. Ou seja: hoje ele **não**
+> volta o backup por cima da instalação que está em uso (isso está em aberto na issue #2120).
+>
+> O caminho que funciona hoje é restaurar num **projeto Supabase novo, em que o instalador
+> ainda não rodou** (o instalador cria as tabelas, e aí o restore recusa), e depois apontar a
+> instalação para esse projeto — trocando no `.env` a conexão e as chaves do Supabase pelas do
+> projeto novo. Medimos a parte do restore num Supabase recém-criado (`rc=0`, 110 tabelas); a
+> troca do `.env` não foi medida. Se não tiver segurança para fazer essa troca, ou se o seu
+> Supabase roda no próprio servidor (single-server, onde não há projeto novo para criar),
+> **peça ajuda antes**.
+>
+> O `psql` roda **sem** `-v ON_ERROR_STOP=1 --single-transaction`. Essas flags faziam o
+> restore falhar também em **banco vazio**: o dump traz os schemas internos (`auth`,
+> `storage`, `realtime`, `vault`) e extensões como `pg_net`, que já existem num Supabase
+> novo — medido em Supabase novo, Postgres 17 puro e database nova, as três deram `rc=3` e
+> 0 tabelas; sem elas, nos dois primeiros, o mesmo dump entrou com `rc=0` e 110 tabelas. Sem a
+> transação única não há rollback: em falha fatal do `psql`, confira o estado do banco antes
+> de repetir. (Gerar o dump com `--clean --if-exists` mudaria o formato dele — decisão do
+> mantenedor, issue #2120.)
 
 ## Automações e webhooks
 

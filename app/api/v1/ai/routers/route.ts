@@ -126,10 +126,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     () => base().maybeSingle(),
   );
   if (sessionErr) {
-    return fail("internal_error", t("Erro ao verificar o número de WhatsApp."), 500, { requestId });
+    return fail("internal_error", t("Erro ao verificar o canal de atendimento."), 500, { requestId });
   }
   if (!session) {
-    return fail("channel_session_not_found", t("Número de WhatsApp não encontrado nesta organização."), 404, {
+    return fail("channel_session_not_found", t("Canal de atendimento não encontrado nesta organização."), 404, {
       requestId,
     });
   }
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   if (insErr || !created) {
     if (insErr?.code === "23505") {
-      return fail("router_already_exists", t("Este número já tem um roteador ativo."), 409, { requestId });
+      return fail("router_already_exists", t("Este canal já tem um roteador ativo."), 409, { requestId });
     }
     return fail("internal_error", "Erro ao criar router.", 500, { requestId });
   }

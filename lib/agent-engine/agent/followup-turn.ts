@@ -50,6 +50,7 @@ import {
   type LeadCheckpointRow,
 } from './inbound-turn';
 import { isLeadInHandoff } from './human-handoff';
+import { aplicarPessoaNoComandoAoTurno } from '@/lib/followup/pessoa-no-comando-no-turno';
 import { fusoDaOrganizacao } from './fuso-da-org';
 import {
   followupPublicadoDoEnrollment,
@@ -350,7 +351,29 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
       [tenantId, boundary!.conversation_id, leadId]);
     if (!targetRows[0]) throw new Error('conversa de origem indisponível');
     if (targetRows[0].archived_at) throw new Error('canal arquivado');
-    if (targetRows[0].canal_desativado === 'true') throw new Error('canal desativado');
+    // Canal DESATIVADO (#2329): consumir SEM ERRO, em vez de `throw`.
+    //
+    // `throw` mandava o job para a fila de retentativa: 5 tentativas gastas para
+    // descartar uma mensagem que não pode sair, e no fim um `dead` com o aviso
+    // CRÍTICO "Job descartado" na Central — UM por follow-up, sem ninguém poder
+    // fazer nada (o canal continua desligado). O desfecho próprio é este: o job
+    // termina `done`, com o motivo no log, sem pagar o turno de modelo nem
+    // acender alerta.
+    //
+    // `turn_discarded` NÃO é gravado aqui, ao contrário do descarte por
+    // organização parada (migration 0501): lá a reativação reenfileira porque o
+    // `claim` não entrega inscrição com a org parada; com o CANAL pausado não há
+    // essa barreira, e o evento enfileiraria um turno novo a cada recheck até o
+    // operador religar — justamente a reação que esta issue está barrando.
+    if (targetRows[0].canal_desativado === 'true') {
+      deps.log?.info('followup_turn: canal desativado — turno consumido sem rodar', {
+        job_id: job.id,
+        tenant_id: tenantId,
+        lead_id: leadId,
+        motivo: 'canal_desativado',
+      });
+      return;
+    }
     const target: ReentrySendTarget = { tenantId, leadId, conversationId: boundary!.conversation_id, channelSessionId: targetRows[0]!.channel_session_id };
 
     // A INSCRIÇÃO PRECISA ESTAR VIVA ANTES DE QUALQUER EFEITO. O turno já
@@ -367,6 +390,52 @@ export function createFollowupTurnHandler(deps: FollowupTurnDeps) {
     // sem nó é defeito de programação e segue falhando alto em
     // `runFlowDrivenTurn`, como falhava.
     if (payload.followup_enrollment_id !== undefined && payload.node_id !== undefined) {
+      // PESSOA NO COMANDO: a política de handoff do fluxo vale também para a
+      // conversa assumida à mão, que não emite `ai.handoff_triggered`. Com
+      // `pause` o passo é ADIADO e confere de novo (o mesmo `deferred` da janela
+      // de envio, abaixo); cancelada, a inscrição cai no descarte logo abaixo.
+      if (payload.purpose === 'send_message') {
+        const agora = (deps.clock ?? ((): Date => new Date()))();
+        const pessoa = await aplicarPessoaNoComandoAoTurno(
+          pool,
+          {
+            organizationId: tenantId,
+            enrollmentId: payload.followup_enrollment_id,
+            nodeId: payload.node_id,
+            contactId: leadId,
+          },
+          agora,
+        );
+        if (pessoa !== null) {
+          withFields(deps.log, {
+            job_id: job.id,
+            tenant_id: tenantId,
+            lead_id: leadId,
+            enrollment_id: payload.followup_enrollment_id,
+          }).info('turno de fluxo não fala por cima de quem assumiu a conversa', {
+            inscricao: pessoa.kind,
+            ...(pessoa.kind === 'adiada' ? { next_run_at: pessoa.ate.toISOString() } : {}),
+          });
+        }
+        if (pessoa?.kind === 'adiada') {
+          const complete = deps.completeFollowupTurn;
+          if (!complete) {
+            throw new Error(
+              'passo adiado por pessoa no comando sem completeFollowupTurn — o enrollment não saberia do adiamento',
+            );
+          }
+          await rescheduleReentry(pool, { tenantId, leadId, jobId: job.id, at: pessoa.ate, payload: job.payload });
+          await complete(pool, {
+            jobId: job.id,
+            jobClaim: claimOfJob(job),
+            organizationId: tenantId,
+            enrollmentId: payload.followup_enrollment_id,
+            nodeId: payload.node_id,
+            result: { kind: 'deferred', until: pessoa.ate, reason: 'pessoa_no_comando' },
+          });
+          return;
+        }
+      }
       const { rows: inscricaoRows } = await pool.query<{ current_node_id: string; status: string }>(
         `select current_node_id, status from followup_enrollments where organization_id = $1 and id = $2 limit 1`,
         [tenantId, payload.followup_enrollment_id],

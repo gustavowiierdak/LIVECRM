@@ -1,4 +1,4 @@
-import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
+import { setExecutionAgentOperation } from "@/lib/atendimento/fronteira-server";
 /**
  * Handler do job `operator_turn` — o papel OPERADOR (spec 16 §3.2).
  *
@@ -34,28 +34,28 @@ import { setExecutionAgentOperation } from '@/lib/atendimento/fronteira-server';
  * turno pode ter deixado promessa sem dono. Os dois estados que o passo 2 tomou o
  * cuidado de não colapsar decidem, aqui, se uma chamada de modelo acontece.
  */
-import { z } from 'zod';
-import type pg from 'pg';
+import { z } from "zod";
+import type pg from "pg";
 
-import { withFields, type Logger } from '../obs/logger';
-import type { JobRow } from '../queue/queue';
-import type { InboundTurnDeps } from './inbound-turn';
-import { checkpointDoJob } from './inbound-turn';
-import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from './declaracao';
-import { loadPublishedAgentConfigById } from './agent-config';
-import { isLeadInHandoff } from './human-handoff';
-import { resolveActiveLeadForContact, type LeadCandidate } from '@/lib/leads/active-lead';
-import { fusoDaOrganizacao } from './fuso-da-org';
-import { renderAgora } from '@/lib/tempo/agora';
-import { insertInboxItem } from '../db/repository';
-import { buildMcpTurnTools } from '../edge/crm/mcp-tools';
-import { runModelCall } from '../edge/llm/run-model-call';
-import { avisarCapacidadesAusentes } from './inbound-turn';
-import { maoDoOperador } from './entrega-de-capacidade';
-import { criaRetornoDbPg } from '../../followup/retorno-pg';
-import { emitAgentActivityForContact } from '../../leads/agent-activity';
-import { copyDaPromessaSemDono } from '../../ai/agent-inbox-copy';
-import { normalizarIdioma, type Idioma } from '@/lib/i18n/idiomas';
+import { withFields, type Logger } from "../obs/logger";
+import type { JobRow } from "../queue/queue";
+import type { InboundTurnDeps } from "./inbound-turn";
+import { checkpointDoJob } from "./inbound-turn";
+import { declaracaoDoTurnoSchema, promessasEmAberto, type DeclaracaoDoTurno } from "./declaracao";
+import { loadPublishedAgentConfigById } from "./agent-config";
+import { isLeadInHandoff } from "./human-handoff";
+import { resolveActiveLeadForContact, type LeadCandidate } from "@/lib/leads/active-lead";
+import { fusoDaOrganizacao } from "./fuso-da-org";
+import { renderAgora } from "@/lib/tempo/agora";
+import { insertInboxItem } from "../db/repository";
+import { buildMcpTurnTools } from "../edge/crm/mcp-tools";
+import { runModelCall } from "../edge/llm/run-model-call";
+import { avisarCapacidadesAusentes } from "./inbound-turn";
+import { maoDoOperador } from "./entrega-de-capacidade";
+import { criaRetornoDbPg } from "../../followup/retorno-pg";
+import { emitAgentActivityForContact } from "../../leads/agent-activity";
+import { copyDaPromessaSemDono } from "../../ai/agent-inbox-copy";
+import { normalizarIdioma, type Idioma } from "@/lib/i18n/idiomas";
 
 /**
  * O que o runtime enfileira ao fim do turno do Conversador. Só PONTEIROS: org e
@@ -84,17 +84,17 @@ export const operatorTurnPayloadSchema = z
  * vazamento medido); aqui, é o vocabulário de trabalho.
  */
 export const SYSTEM_DO_OPERADOR =
-  'Você é o operador do sistema. Seu trabalho é deixar o CRM refletindo o que aconteceu na ' +
-  'conversa que acabou de ocorrer — mover o lead, registrar, abrir o que precisa ser aberto.\n\n' +
-  'VOCÊ NÃO FALA COM O CLIENTE. Você não tem como enviar mensagem, e não deve tentar: quem ' +
-  'conversa é outro. Se algo exigir falar com a pessoa, registre e siga.\n\n' +
-  'ATENÇÃO: quem conversou só FALA — ele não grava nada no CRM sozinho. Se a promessa dele veio ' +
+  "Você é o operador do sistema. Seu trabalho é deixar o CRM refletindo o que aconteceu na " +
+  "conversa que acabou de ocorrer — mover o lead, registrar, abrir o que precisa ser aberto.\n\n" +
+  "VOCÊ NÃO FALA COM O CLIENTE. Você não tem como enviar mensagem, e não deve tentar: quem " +
+  "conversa é outro. Se algo exigir falar com a pessoa, registre e siga.\n\n" +
+  "ATENÇÃO: quem conversou só FALA — ele não grava nada no CRM sozinho. Se a promessa dele veio " +
   'redigida como já concluída ("registrei com o Fulano", "já está com a equipe", "ficou ' +
   'combinado"), isso é o que ele DISSE ao cliente, não prova de que algo foi registrado. O passado ' +
-  'na frase não é evidência de ação — trate a promessa como pendente até você mesmo confirmar ou ' +
-  'registrar (mover o lead, abrir nota, o que fizer sentido com as ferramentas que você tem).\n\n' +
-  'Use apenas o que a conversa sustenta. Não invente avanço, não registre o que ninguém disse. ' +
-  'Se não houver nada a fazer, não faça nada — um turno sem ação é uma resposta válida.';
+  "na frase não é evidência de ação — trate a promessa como pendente até você mesmo confirmar ou " +
+  "registrar (mover o lead, abrir nota, o que fizer sentido com as ferramentas que você tem).\n\n" +
+  "Use apenas o que a conversa sustenta. Não invente avanço, não registre o que ninguém disse. " +
+  "Se não houver nada a fazer, não faça nada — um turno sem ação é uma resposta válida.";
 
 /**
  * O briefing do turno: o que o Conversador declarou, em linguagem de negócio.
@@ -113,7 +113,7 @@ export const SYSTEM_DO_OPERADOR =
 export function renderBriefingDoOperador(
   declaracao: DeclaracaoDoTurno | null,
   promessas: ReturnType<typeof promessasEmAberto>,
-  agoraBlock = '',
+  agoraBlock = "",
   ids?: { leadId: string | null; contactId: string; conversationId: string },
 ): string {
   // Identificadores REAIS do atendimento. Sem eles o modelo inventava UUIDs
@@ -126,36 +126,38 @@ export function renderBriefingDoOperador(
     ids === undefined
       ? []
       : [
-          '',
-          `Identificadores deste atendimento: lead_id=${ids.leadId ?? '(sem card)'} · contact_id=${ids.contactId} · conversation_id=${ids.conversationId}.`,
-          'Ao usar ferramentas de lead, use o `lead_id` acima (o card do funil) — nunca invente UUID. ' +
-            (ids.leadId === null ? 'Não há card para este contato: não chame ferramentas de lead.' : ''),
+          "",
+          `Identificadores deste atendimento: lead_id=${ids.leadId ?? "(sem card)"} · contact_id=${ids.contactId} · conversation_id=${ids.conversationId}.`,
+          "Ao usar ferramentas de lead, use o `lead_id` acima (o card do funil) — nunca invente UUID. " +
+            (ids.leadId === null
+              ? "Não há card para este contato: não chame ferramentas de lead."
+              : ""),
         ];
   const comAgora = (linhas: string[]): string =>
-    (agoraBlock === '' ? linhas : [agoraBlock, '', ...linhas]).concat(idsLinhas).join('\n');
+    (agoraBlock === "" ? linhas : [agoraBlock, "", ...linhas]).concat(idsLinhas).join("\n");
   if (declaracao === null) {
     // Ausente ≠ vazia, de novo — e aqui a diferença vira instrução. Dizer ao
     // modelo "não houve declaração" e pedir que ele olhe o estado é diferente de
     // deixá-lo achar que o turno foi vazio.
     return comAgora([
-      'O turno anterior NÃO deixou declaração do que aconteceu (fechamento incompleto).',
-      'Verifique o estado do lead e registre o que estiver claramente pendente.',
-      'Na dúvida, não faça nada.',
+      "O turno anterior NÃO deixou declaração do que aconteceu (fechamento incompleto).",
+      "Verifique o estado do lead e registre o que estiver claramente pendente.",
+      "Na dúvida, não faça nada.",
     ]);
   }
-  const linhas = ['Foi isto que aconteceu na conversa que acabou:'];
+  const linhas = ["Foi isto que aconteceu na conversa que acabou:"];
   if (declaracao.intencoes.length > 0) {
-    linhas.push('', 'O que a pessoa quer:');
+    linhas.push("", "O que a pessoa quer:");
     for (const i of declaracao.intencoes)
       linhas.push(`- ${i.o_que} (na conversa: "${i.evidencia}")`);
   }
   if (promessas.length > 0) {
-    linhas.push('', 'O que foi prometido a ela (precisa existir no sistema):');
+    linhas.push("", "O que foi prometido a ela (precisa existir no sistema):");
     for (const p of promessas) {
-      linhas.push(`- ${p.o_que}${p.prazo === null ? '' : ` — até ${p.prazo}`}`);
+      linhas.push(`- ${p.o_que}${p.prazo === null ? "" : ` — até ${p.prazo}`}`);
     }
   }
-  linhas.push('', 'Deixe o sistema refletindo isso. O que já estiver registrado, não repita.');
+  linhas.push("", "Deixe o sistema refletindo isso. O que já estiver registrado, não repita.");
   return comAgora(linhas);
 }
 
@@ -171,10 +173,10 @@ export function renderBriefingDoOperador(
  * Best-effort: falha de leitura vira `null` — mas registrada, não engolida.
  */
 export async function cardDoFunil(
-  pool: Pick<pg.Pool, 'query'>,
+  pool: Pick<pg.Pool, "query">,
   tenantId: string,
   contactId: string,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, "warn">,
 ): Promise<string | null> {
   try {
     const { rows } = await pool.query<LeadCandidate>(
@@ -187,7 +189,7 @@ export async function cardDoFunil(
     const alvo = resolveActiveLeadForContact(rows);
     return alvo.routed ? alvo.leadId : null;
   } catch (err) {
-    log.warn('card do funil não resolvido — o briefing do operador segue sem lead_id', {
+    log.warn("card do funil não resolvido — o briefing do operador segue sem lead_id", {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
     });
     return null;
@@ -197,9 +199,9 @@ export async function cardDoFunil(
 /** O que o Operador decidiu neste turno — vai a `event_log` e, quando muda o que
  *  alguém faria a seguir, à timeline do lead. */
 export type DesfechoDoOperador =
-  | { tipo: 'nada_a_fazer'; porque: 'declaracao_vazia' }
-  | { tipo: 'pulado'; porque: 'papel_desligado' | 'sem_agente' | 'handoff_humano' }
-  | { tipo: 'agiu'; ferramentas: number };
+  | { tipo: "nada_a_fazer"; porque: "declaracao_vazia" }
+  | { tipo: "pulado"; porque: "papel_desligado" | "sem_agente" | "handoff_humano" }
+  | { tipo: "agiu"; ferramentas: number };
 
 /**
  * Os NOMES das ferramentas que o turno chamou. Só os nomes: argumento carrega o
@@ -217,16 +219,16 @@ export function nomesDasFerramentasChamadas(
 ): string[] {
   if (saida === null) return [];
   return saida.result.steps.flatMap((s) =>
-    (s.toolCalls ?? []).map((c) => String(c.toolName ?? 'desconhecida')),
+    (s.toolCalls ?? []).map((c) => String(c.toolName ?? "desconhecida")),
   );
 }
 
 /** Quem ficou responsável pela promessa que o Conversador declarou. */
 export type DonoDaPromessa =
-  | { assumida: true; por: 'ferramenta_do_operador' | 'retorno_agendado' | 'caso_aberto' }
+  | { assumida: true; por: "ferramenta_do_operador" | "retorno_agendado" | "caso_aberto" }
   | {
       assumida: false;
-      porque: 'operador_sem_ferramentas' | 'operador_nao_agiu' | 'operador_nao_rodou';
+      porque: "operador_sem_ferramentas" | "operador_nao_agiu" | "operador_nao_rodou";
     };
 
 /**
@@ -262,12 +264,12 @@ export function apuraDonoDaPromessa(input: {
   operadorTemFerramentas: boolean;
 }): DonoDaPromessa {
   if (input.ferramentasChamadas.length > 0)
-    return { assumida: true, por: 'ferramenta_do_operador' };
-  if (input.temRetornoVivo) return { assumida: true, por: 'retorno_agendado' };
-  if (input.temCasoAberto) return { assumida: true, por: 'caso_aberto' };
-  if (!input.operadorRodou) return { assumida: false, porque: 'operador_nao_rodou' };
-  if (!input.operadorTemFerramentas) return { assumida: false, porque: 'operador_sem_ferramentas' };
-  return { assumida: false, porque: 'operador_nao_agiu' };
+    return { assumida: true, por: "ferramenta_do_operador" };
+  if (input.temRetornoVivo) return { assumida: true, por: "retorno_agendado" };
+  if (input.temCasoAberto) return { assumida: true, por: "caso_aberto" };
+  if (!input.operadorRodou) return { assumida: false, porque: "operador_nao_rodou" };
+  if (!input.operadorTemFerramentas) return { assumida: false, porque: "operador_sem_ferramentas" };
+  return { assumida: false, porque: "operador_nao_agiu" };
 }
 
 /**
@@ -317,14 +319,14 @@ export function decidirSeRoda(input: {
   // de um desfecho que não o tem. Aqui, `roda: false` GARANTE um desfecho de
   // não-execução, e `roda: true` garante que não há desfecho a inspecionar.
   | { roda: true }
-  | { roda: false; desfecho: Extract<DesfechoDoOperador, { tipo: 'nada_a_fazer' | 'pulado' }> } {
+  | { roda: false; desfecho: Extract<DesfechoDoOperador, { tipo: "nada_a_fazer" | "pulado" }> } {
   if (!input.papelLigado) {
-    return { roda: false, desfecho: { tipo: 'pulado', porque: 'papel_desligado' } };
+    return { roda: false, desfecho: { tipo: "pulado", porque: "papel_desligado" } };
   }
   // Declarou explicitamente que não havia nada: quem avaliou estava lá, com o
   // contexto inteiro. Repetir a avaliação com menos contexto é gastar por nada.
   if (input.declaracao !== null && input.declaracao.nada_a_declarar) {
-    return { roda: false, desfecho: { tipo: 'nada_a_fazer', porque: 'declaracao_vazia' } };
+    return { roda: false, desfecho: { tipo: "nada_a_fazer", porque: "declaracao_vazia" } };
   }
   return { roda: true };
 }
@@ -338,7 +340,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
     const tenantId = job.organization_id;
     const leadId = job.contact_id;
     if (leadId === null) {
-      throw new Error('operator_turn sem contact_id — o CHECK da fila deveria impedir');
+      throw new Error("operator_turn sem contact_id — o CHECK da fila deveria impedir");
     }
     const payload = operatorTurnPayloadSchema.parse(job.payload);
     const log = withFields(deps.log, {
@@ -374,7 +376,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
           originJobId: payload.origin_job_id,
           conversationId: payload.conversation_id,
           agentId: payload.agent_id,
-          desfecho: { tipo: 'pulado', porque: 'handoff_humano' },
+          desfecho: { tipo: "pulado", porque: "handoff_humano" },
           promessasDeclaradas: 0,
           dono: null,
           ferramentasChamadas: [],
@@ -417,7 +419,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
           originJobId: payload.origin_job_id,
           conversationId: payload.conversation_id,
           agentId: payload.agent_id,
-          desfecho: { tipo: 'pulado', porque: 'sem_agente' },
+          desfecho: { tipo: "pulado", porque: "sem_agente" },
           promessasDeclaradas: promessas.length,
           dono: await apurarComRetorno(pool, tenantId, leadId, promessas.length, {
             ferramentasChamadas: [],
@@ -433,7 +435,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
       return;
     }
 
-    if (agentConfig.pausedAt || agentConfig.operationMode === 'assisted') return;
+    if (agentConfig.pausedAt || agentConfig.operationMode === "assisted") return;
     if (agentConfig.operationRevision)
       setExecutionAgentOperation({
         organizationId: tenantId,
@@ -485,7 +487,12 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
       try {
         mcp = await buildMcpTurnTools(
           deps.crmCfg,
-          { organizationId: tenantId, jobId: job.id, contactId: leadId },
+          {
+            organizationId: tenantId,
+            jobId: job.id,
+            contactId: leadId,
+            conversationId: payload.conversation_id,
+          },
           // A ponte lê `toolIds`; o papel guarda a lista dele em
           // `operatorToolIds`. A troca acontece AQUI, num ponto só, para que
           // nenhum caminho do Operador alcance a lista do Conversador por
@@ -499,14 +506,14 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
         // derruba o job, mas também não morre no log de um contêiner que
         // ninguém abre — o aviso vai para a Central.
         const detalhe = (err instanceof Error ? err.message : String(err)).slice(0, 200);
-        log.error('capacidades do operador não montadas — o papel segue sem elas', {
+        log.error("capacidades do operador não montadas — o papel segue sem elas", {
           error: detalhe,
         });
         await avisarCapacidadesAusentes(pool, tenantId, payload.conversation_id, detalhe, log);
       }
     }
 
-    log.info('operador rodou', {
+    log.info("operador rodou", {
       promessas: promessas.length,
       intencoes: declaracao?.intencoes.length ?? 0,
       declaracao_ausente: declaracao === null,
@@ -534,11 +541,11 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
             // Atribuição de custo própria: sem isto o gasto do Operador entraria
             // como se fosse conversa, e "quanto custa ligar o papel?" — a
             // pergunta que o dono do negócio vai fazer — não teria resposta.
-            purpose: 'operator_turn',
+            purpose: "operator_turn",
             system: SYSTEM_DO_OPERADOR,
             messages: [
               {
-                role: 'user',
+                role: "user",
                 content: renderBriefingDoOperador(
                   declaracao,
                   promessas,
@@ -546,7 +553,11 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
                     deps.clock?.() ?? new Date(),
                     await fusoDaOrganizacao(pool, tenantId, log),
                   ),
-                  { leadId: leadCardId, contactId: leadId, conversationId: payload.conversation_id },
+                  {
+                    leadId: leadCardId,
+                    contactId: leadId,
+                    conversationId: payload.conversation_id,
+                  },
                 ),
               },
             ],
@@ -584,7 +595,7 @@ export function createOperatorTurnHandler(deps: InboundTurnDeps) {
         originJobId: payload.origin_job_id,
         conversationId: payload.conversation_id,
         agentId: payload.agent_id,
-        desfecho: { tipo: 'agiu', ferramentas: ferramentasChamadas.length },
+        desfecho: { tipo: "agiu", ferramentas: ferramentasChamadas.length },
         promessasDeclaradas: promessas.length,
         dono: await apurarComRetorno(pool, tenantId, leadId, promessas.length, {
           ferramentasChamadas,
@@ -657,12 +668,12 @@ export async function apurarComRetorno(
 async function idiomaDaOrganizacao(pool: pg.Pool, tenantId: string): Promise<Idioma> {
   try {
     const { rows } = await pool.query<{ locale: string | null }>(
-      'select locale from organizations where id = $1',
+      "select locale from organizations where id = $1",
       [tenantId],
     );
     return normalizarIdioma(rows[0]?.locale ?? null);
   } catch {
-    return 'pt-BR';
+    return "pt-BR";
   }
 }
 
@@ -674,7 +685,11 @@ async function idiomaDaOrganizacao(pool: pg.Pool, tenantId: string): Promise<Idi
  * Falha de leitura responde `false`: na dúvida o aviso sai, que é o erro barato
  * — calar uma promessa sem dono é o caro.
  */
-async function temCasoAbertoPg(pool: pg.Pool, tenantId: string, conversationId: string): Promise<boolean> {
+async function temCasoAbertoPg(
+  pool: pg.Pool,
+  tenantId: string,
+  conversationId: string,
+): Promise<boolean> {
   try {
     const { rowCount } = await pool.query(
       `select 1 from agent_cases
@@ -740,9 +755,9 @@ export async function registrarDesfecho(
   const { desfecho, dono } = entrada;
   const semDono = dono !== null && !dono.assumida;
 
-  log.info('operador — desfecho do turno', {
+  log.info("operador — desfecho do turno", {
     desfecho: desfecho.tipo,
-    porque: 'porque' in desfecho ? desfecho.porque : null,
+    porque: "porque" in desfecho ? desfecho.porque : null,
     promessas: entrada.promessasDeclaradas,
     promessa_assumida_por: dono?.assumida === true ? dono.por : null,
     promessa_sem_dono_porque: semDono && dono !== null && !dono.assumida ? dono.porque : null,
@@ -760,7 +775,7 @@ export async function registrarDesfecho(
         // o cliente disse, e já vive em `lead_checkpoints`.
         JSON.stringify({
           desfecho: desfecho.tipo,
-          porque: 'porque' in desfecho ? desfecho.porque : null,
+          porque: "porque" in desfecho ? desfecho.porque : null,
           // QUAL agente. Sem esta chave a medida do papel só existe agregada por
           // organização, e o painel que a mostra vive na página de UM agente —
           // apontando ação de configuração para o agente errado (invariante 7:
@@ -776,7 +791,7 @@ export async function registrarDesfecho(
       ],
     );
   } catch (err) {
-    log.warn('desfecho do operador não foi registrado', {
+    log.warn("desfecho do operador não foi registrado", {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
     });
   }
@@ -794,39 +809,39 @@ export async function registrarDesfecho(
       pool,
       organizationId: entrada.tenantId,
       contactId: entrada.leadId,
-      type: 'promise_unowned',
-      sourceModule: 'agent-operador',
+      type: "promise_unowned",
+      sourceModule: "agent-operador",
       sourceId: entrada.jobId,
       ...(entrada.agentId !== null ? { agentId: entrada.agentId } : {}),
       reason: texto.title,
       payload: { promessas: entrada.promessasDeclaradas, porque: dono.porque },
     });
   } catch (err) {
-    log.warn('linha de promessa sem responsável não foi emitida', {
+    log.warn("linha de promessa sem responsável não foi emitida", {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
     });
   }
 
-  if ('porque' in desfecho && desfecho.porque === 'handoff_humano') return;
+  if ("porque" in desfecho && desfecho.porque === "handoff_humano") return;
 
   try {
     await insertInboxItem(
       pool,
       entrada.tenantId,
       {
-        kind: 'promise_unfulfilled',
-        severity: 'warn',
+        kind: "promise_unfulfilled",
+        severity: "warn",
         title: texto.title,
         body: texto.body,
-        refKind: 'conversation',
+        refKind: "conversation",
         refId: entrada.conversationId,
       },
       // Por conversa, não por organização: dedupar este kind org-wide engoliria a
       // promessa de OUTRO cliente, que é perder sinal em vez de sobrar ruído.
-      'kind_e_ref',
+      "kind_e_ref",
     );
   } catch (err) {
-    log.warn('aviso de promessa sem responsável não foi gravado', {
+    log.warn("aviso de promessa sem responsável não foi gravado", {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
     });
   }

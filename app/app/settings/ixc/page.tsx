@@ -75,7 +75,7 @@ export default async function IxcSettingsPage() {
       <IxcConnectionForm initial={conexao} />
 
       <p className="max-w-3xl text-xs text-muted-foreground">
-        {t("Nenhum cadastro é importado. As consultas de cliente e contrato são feitas somente no momento do atendimento, com CPF confirmado. Ordens de serviço e recebíveis do IXC ainda não estão disponíveis para a IA.")}
+        {t("Os dados completos permanecem no IXC. Quando um CPF é confirmado no atendimento, o CRM guarda somente o ID, o nome do cadastro e o CPF cifrado para reconhecer esse vínculo nas próximas conversas.")}
       </p>
     </div>
   );

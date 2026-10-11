@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cssDaMarca,
+  ESCOPO_DA_FACHADA,
   ESCOPO_DA_INSTALACAO,
   ESCOPO_DA_ORGANIZACAO,
 } from "@/lib/branding/css";
@@ -225,6 +226,30 @@ describe("o escopo da organização", () => {
   });
 });
 
+describe("o escopo da fachada pública", () => {
+  it("emite os dois seletores exatos e a mesma paleta da organização", () => {
+    const cor = corDe("#5b21b6");
+    const fachada = lerBlocos(cssDaMarca(cor, ESCOPO_DA_FACHADA).css ?? "");
+    const organizacao = lerBlocos(cssDaMarca(cor, ESCOPO_DA_ORGANIZACAO).css ?? "");
+
+    expect(Object.keys(fachada)).toEqual([
+      "body:has([data-marca-fachada])",
+      '[data-theme="dark"] body:has([data-marca-fachada])',
+    ]);
+    expect(Object.values(fachada)).toEqual(Object.values(organizacao));
+  });
+
+  it("o layout público carrega o bloco dentro do marcador que o ativa", () => {
+    const layout = fs.readFileSync(path.join(RAIZ, "app/(public)/layout.tsx"), "utf8");
+    const marcador = layout.indexOf('data-marca-fachada=""');
+    const estilo = layout.indexOf('id="marca-fachada"');
+
+    expect(marcador).toBeGreaterThan(-1);
+    expect(estilo).toBeGreaterThan(marcador);
+    expect(layout).toContain("cssDaMarca(marca.cor, ESCOPO_DA_FACHADA)");
+  });
+});
+
 describe("allowlist de FORMA de valor", () => {
   const comSoftForjado = (valor: string): CorResolvida => {
     const derivada = derivarMarca("#506d48", REGUA);
@@ -325,7 +350,13 @@ describe("guardas de mecanismo", () => {
         chamadas.push(`${alvo}: ${chamada}`);
         const escopo = chamada.split(",")[1]?.trim().replace(/\)$/, "");
         if (escopo === undefined) continue;
-        if (escopo === "ESCOPO_DA_INSTALACAO" || escopo === "ESCOPO_DA_ORGANIZACAO") continue;
+        if (
+          escopo === "ESCOPO_DA_INSTALACAO" ||
+          escopo === "ESCOPO_DA_ORGANIZACAO" ||
+          escopo === "ESCOPO_DA_FACHADA"
+        ) {
+          continue;
+        }
         forasteiros.push(`${alvo}: ${chamada}`);
       }
     }

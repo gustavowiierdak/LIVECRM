@@ -36,7 +36,7 @@ import { useT } from "@/hooks/i18n/useT";
 import Link from "next/link";
 
 import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
-import { PROVEDORES } from "@/lib/ai/pontos/provedores";
+import { PROVEDOR_POR_ASSINATURA, PROVEDORES } from "@/lib/ai/pontos/provedores";
 
 import { ModelPicker, useModelMeta } from "./ModelPicker";
 import { CHAVE_DA_INSTALACAO, CredentialPicker, STATUS_LABEL, findCredential } from "./CredentialPicker";
@@ -115,6 +115,12 @@ interface BaseProps {
    * página server component, do mesmo jeito que as credenciais.
    */
   provedorPadrao?: string;
+  /**
+   * Os provedores que ESTA instalação oferece — o servidor filtra por
+   * `idsDosProvedoresOferecidos` (a assinatura do ChatGPT só com o módulo
+   * `login_codex` ligado). Ausente = sem a assinatura (falha fechada).
+   */
+  provedoresOferecidos?: readonly string[];
   channelSessions: ChannelSessionLite[];
   routerMembership?: { routerId: string; routerName: string } | null;
   readOnly?: boolean;
@@ -181,6 +187,12 @@ interface FormState {
   history_token_window: number;
   handoff_keywords: string[];
   handoff_tool_enabled: boolean;
+  /**
+   * A chave por ASSUNTO JURÍDICO (#2097, #2156) — irmã da de cima, só que ela
+   * não remove a ferramenta: troca a descrição que manda passar em "questão
+   * jurídica". Padrão LIGADO (`?? true` abaixo), como a coluna na versão.
+   */
+  handoff_legal_enabled: boolean;
   proposal_ai_draft_enabled: boolean;
   cases_enabled: boolean;
   split_messages: boolean;
@@ -223,6 +235,10 @@ const DEFAULT_TRIGGER: TriggerValue = {
   concurrency: "one_per_conversation",
 };
 
+const SEM_A_ASSINATURA: readonly string[] = PROVEDORES.map((p) => p.id).filter(
+  (id) => id !== PROVEDOR_POR_ASSINATURA,
+);
+
 /**
  * O provedor inicial de um agente que ainda não tem versão.
  *
@@ -232,8 +248,11 @@ const DEFAULT_TRIGGER: TriggerValue = {
  * formulário pedindo para escolher de novo. Fora da lista, `anthropic` (o que
  * o seed da instalação sempre teve).
  */
-export function provedorInicial(provedorPadrao?: string): Provider {
-  if (provedorPadrao && PROVEDORES.some((p) => p.id === provedorPadrao)) {
+export function provedorInicial(
+  provedorPadrao?: string,
+  oferecidos: readonly string[] = SEM_A_ASSINATURA,
+): Provider {
+  if (provedorPadrao && oferecidos.includes(provedorPadrao)) {
     return provedorPadrao as Provider;
   }
   return "anthropic";
@@ -252,13 +271,14 @@ export function buildState(args: {
    * continua sendo o último degrau, para instalação que ainda não escolheu nada.
    */
   provedorPadrao?: string;
+  provedoresOferecidos?: readonly string[];
 }): FormState {
-  const { agent, version, t, provedorPadrao } = args;
+  const { agent, version, t, provedorPadrao, provedoresOferecidos } = args;
   return {
     name: agent?.name ?? "",
     description: agent?.description ?? "",
     priority: agent?.priority ?? 0,
-    provider: (version?.provider as Provider) ?? provedorInicial(provedorPadrao),
+    provider: (version?.provider as Provider) ?? provedorInicial(provedorPadrao, provedoresOferecidos),
     model: version?.model ?? "",
     // `null` gravado = a versão usa a chave da instalação. Sem esta tradução,
     // reabrir o agente mostraria o campo em branco e pediria para escolher de novo.
@@ -283,6 +303,7 @@ export function buildState(args: {
       "pessoa real",
     ],
     handoff_tool_enabled: version?.handoff_tool_enabled ?? true,
+    handoff_legal_enabled: version?.handoff_legal_enabled ?? true,
     proposal_ai_draft_enabled: version?.proposal_ai_draft_enabled ?? true,
     cases_enabled: version?.cases_enabled ?? false,
     split_messages: version?.split_messages ?? false,
@@ -347,6 +368,7 @@ function toVersionPayload(s: FormState) {
     history_token_window: s.history_token_window,
     handoff_keywords: s.handoff_keywords,
     handoff_tool_enabled: s.handoff_tool_enabled,
+    handoff_legal_enabled: s.handoff_legal_enabled,
     proposal_ai_draft_enabled: s.proposal_ai_draft_enabled,
     cases_enabled: s.cases_enabled,
     split_messages: s.split_messages,
@@ -379,7 +401,12 @@ export function AgentForm(props: Props) {
       const ref = props.base ?? props.draft ?? props.published;
       return buildState({ agent: props.agent, version: ref, t });
     }
-    return buildState({ version: null, t, provedorPadrao: props.provedorPadrao });
+    return buildState({
+      version: null,
+      t,
+      provedorPadrao: props.provedorPadrao,
+      provedoresOferecidos: props.provedoresOferecidos,
+    });
   }, [isEdit, props, t]);
 
   const [form, setForm] = React.useState<FormState>(baseline);
@@ -528,10 +555,10 @@ export function AgentForm(props: Props) {
         return `${t("Credencial")} ${motivo.provedor} ${motivo.estado === "invalid" ? t("inválida") : t("ainda não validada")}.`;
       case "sem_numero":
         return t(
-          "Escolha por qual número de WhatsApp ele atende. O rascunho está salvo; conecte um número em Conexões e volte aqui para publicar.",
+          "Escolha o canal em que ele atende. O rascunho está salvo; habilite um canal em Conexões e volte aqui para publicar.",
         );
       case "numero_desconectado":
-        return `${t("Número WhatsApp não está conectado (status:")} ${motivo.estado}).`;
+        return `${t("Canal não está conectado (status:")} ${motivo.estado}).`;
     }
   }, [isEdit, props, isValid, dirty, credSt, form.provider, form.credential_id, channelSession, t]);
 
@@ -878,7 +905,16 @@ export function AgentForm(props: Props) {
                     nenhum item casava com o valor, e o primeiro save silencioso
                     trocava o provedor do dono por outro.
                   */}
-                  {PROVEDORES.map((p) => (
+                  {/*
+                    Só o que a instalação oferece — mais o provedor já gravado,
+                    para o campo não abrir em branco (o mesmo defeito acima); a
+                    gravação é que recusa um desligado.
+                  */}
+                  {PROVEDORES.filter(
+                    (p) =>
+                      (props.provedoresOferecidos ?? SEM_A_ASSINATURA).includes(p.id) ||
+                      p.id === form.provider,
+                  ).map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.rotulo}
                     </SelectItem>
@@ -937,14 +973,14 @@ export function AgentForm(props: Props) {
               </div>
             )}
             <div className="space-y-1">
-              <Label htmlFor="channel_session_id">{t("Número conectado")}</Label>
+              <Label htmlFor="channel_session_id">{t("Canal de atendimento")}</Label>
               <Select
                 value={form.channel_session_id || undefined}
                 onValueChange={(v) => patch({ channel_session_id: v })}
                 disabled={disabled}
               >
                 <SelectTrigger id="channel_session_id">
-                  <SelectValue placeholder={t("Selecione um número")} />
+                  <SelectValue placeholder={t("Selecione um canal")} />
                 </SelectTrigger>
                 <SelectContent>
                   {props.channelSessions.map((s) => (
@@ -963,7 +999,7 @@ export function AgentForm(props: Props) {
                   ))}
                   {props.channelSessions.length === 0 ? (
                     <SelectItem value="__none__" disabled>
-                      {t("Nenhum número conectado")}
+                      {t("Nenhum canal conectado")}
                     </SelectItem>
                   ) : null}
                 </SelectContent>
@@ -978,17 +1014,17 @@ export function AgentForm(props: Props) {
                 <p className="text-xs text-muted-foreground">
                   {props.channelSessions.length === 0 ? (
                     <>
-                      {t("Nenhum número conectado ainda — o rascunho salva sem ele.")}{" "}
+                      {t("Nenhum canal conectado ainda — o rascunho salva sem ele.")}{" "}
                       <Link
                         href="/app/connections"
                         className="font-medium text-foreground underline underline-offset-4"
                       >
-                        {t("Conectar WhatsApp")}
+                        {t("Habilitar um canal")}
                       </Link>{" "}
                       {t("para poder publicar.")}
                     </>
                   ) : (
-                    t("Escolha o número para poder publicar. Sem ele, o rascunho salva mas não atende.")
+                    t("Escolha o canal para poder publicar. Sem ele, o rascunho salva mas não atende.")
                   )}
                 </p>
               ) : null}
@@ -1251,6 +1287,34 @@ export function AgentForm(props: Props) {
                 {t("Deixar o agente chamar uma pessoa quando perceber que não é caso dele")}
               </Label>
             </div>
+            {/* A chave por ASSUNTO JURÍDICO (#2097, #2156): irmã da de cima,
+                mas com efeito diferente — ela NÃO remove a ferramenta, só troca
+                a descrição que mandava passar em "questão jurídica". Por isso
+                ela fica DESABILITADA quando a de cima está desligada: sem a
+                ferramenta não há descrição nenhuma para trocar. Só admin mexe
+                (toda escrita de versão exige admin), e o pedido explícito de
+                pessoa continua passando dos dois lados. */}
+            <div className="flex items-center gap-2">
+              <Switch
+                id="handoff_legal_enabled"
+                checked={form.handoff_legal_enabled}
+                onCheckedChange={(v) => patch({ handoff_legal_enabled: v })}
+                disabled={disabled || !form.handoff_tool_enabled}
+              />
+              <Label
+                htmlFor="handoff_legal_enabled"
+                className={form.handoff_tool_enabled ? undefined : "text-muted-foreground"}
+              >
+                {t(
+                  "Passar para uma pessoa quando o cliente falar de assunto jurídico (Procon, advogado, processo)",
+                )}
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "Desligue se assunto jurídico é o trabalho normal deste agente. Quem pede para falar com uma pessoa continua sendo passado.",
+              )}
+            </p>
             <HandoffKeywordsInput
               value={form.handoff_keywords}
               onChange={(v) => patch({ handoff_keywords: v })}

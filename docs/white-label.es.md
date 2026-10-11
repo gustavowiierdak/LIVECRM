@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@e862cd45e445 -->
+<!-- traduzido-de: docs/white-label.md@291b348b0ecc -->
 
 [🇧🇷 Português](white-label.md) · [🇺🇸 English](white-label.en.md) · 🇪🇸 Español
 
@@ -87,12 +87,12 @@ La frontera, que es deliberada:
 
 | Dónde | Qué marca aparece |
 |---|---|
-| `/login`, registro, recuperación de contraseña, verificación en dos pasos | La de la **instalación** (la tuya) |
+| `/login`, registro, recuperación de contraseña, verificación en dos pasos | Con **una organización activa**, su logo, color de marca y el nombre de exhibición de la organización; con dos o más, la marca de la instalación |
 | Dentro del sistema (`/app/...`), después de entrar | La de la **organización**, si la tiene; si no, la de la instalación |
 | Correos de acceso (confirmación de cuenta, recuperación de contraseña) | La de la **instalación** |
 | Invitación de equipo, correos de LGPD | La de la **organización** que los envió |
 
-El motivo de que el login quede fuera no es una limitación: **antes de que la persona entre, el sistema no sabe de qué organización es.** Pintar el login con el color de alguna de ellas sería elegir una a ciegas.
+Una instalación dedicada no tiene ambigüedad: cuando existe **una única organización activa**, la fachada usa el logo y el color guardados en Configuraciones → Marca y el nombre de exhibición guardado en Configuraciones → Organización. Los botones, el foco de los campos y los demás destacados usan la paleta derivada de ese color en los temas claro y oscuro. Con dos o más organizaciones activas, antes de que la persona entre el sistema no sabe a cuál pertenece; por eso vuelve a la marca de la instalación en vez de elegir una a ciegas.
 
 Esto no vuelve obsoleta la instalación dedicada — ver la comparación de abajo, que sigue valiendo por infraestructura, aislamiento y discurso de venta.
 
@@ -172,7 +172,7 @@ Aun así, los dos modelos sirven a propósitos diferentes:
 
 | | Una instalación por cliente | Una instalación para todos |
 |---|---|---|
-| **Marca** | La de cada cliente, incluso en la pantalla de entrada | La tuya en el login; la de cada organización dentro del sistema |
+| **Marca** | La de cada cliente, incluso en la pantalla de entrada | La de la instalación en el login; la de cada organización dentro del sistema |
 | **Coste de infraestructura** | Una VPS por cliente | Una VPS |
 | **Fallo** | Aislado | Alcanza a todos |
 | **Actualización** | Una por vez, se puede escalonar | Todos de una vez |
@@ -229,4 +229,4 @@ Guía completa de instalación: [`hostgator-setup-kit/README.md`](../hostgator-s
 
 En **Marca**, **Logo** sigue siendo la imagen predeterminada (tema claro y correo electrónico). **Logo para el tema oscuro (opcional)** acepta una segunda imagen PNG o JPG de hasta 512 KB, preparada para fondos oscuros. Aparece sin marco blanco en el menú lateral, la pantalla de acceso de la instalación y la vista previa. Sin la segunda imagen, el logo predeterminado conserva la protección blanca en el tema oscuro. Cada archivo se elimina por separado; quitar el oscuro restaura el comportamiento anterior.
 
-Una organización que sube su propio logo predeterminado deja de heredar la imagen oscura de la instalación, evitando mezclar marcas. Sin logos propios, hereda el par de la instalación. El acceso siempre usa la marca de la instalación. [Compatibilidad y reversión](runbooks/logo-por-tema.md).
+Una organización que sube su propio logo predeterminado deja de heredar la imagen oscura de la instalación, evitando mezclar marcas. Sin logos propios, hereda el par de la instalación. Con una sola organización activa, el acceso usa ese mismo par; con varias, usa el par de la instalación. [Compatibilidad y reversión](runbooks/logo-por-tema.md).

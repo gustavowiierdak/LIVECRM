@@ -116,11 +116,67 @@ describe("consultas IXC para o agente", () => {
     expect(resposta).toMatchObject({
       encontrado: true,
       total: 1,
-      contratos: [{ id: "7", status: "A" }],
+      bloqueio_financeiro: false,
+      diagnostico: "sem_bloqueio_financeiro_no_ixc",
+      contratos: [
+        {
+          id: "7",
+          status: "A",
+          situacao_acesso: "ativo",
+          bloqueio_financeiro: false,
+        },
+      ],
     });
     expect(JSON.stringify(resposta)).not.toContain("campo_privado");
+    expect(resposta).toMatchObject({
+      aviso: expect.stringContaining("Não mencione ao cliente a ausência de bloqueio financeiro"),
+    });
     expect(listarContratosIxc).toHaveBeenCalledWith("https://ixc.example", "secreto", "42");
     expect(carregarIntegracaoIxc).toHaveBeenCalledWith(ctx.supabase, "org-1", "contracts");
+  });
+
+  it("traduz CA em bloqueio financeiro explícito para o agente", async () => {
+    const { ctx } = contexto();
+    vi.mocked(buscarClienteIxc).mockResolvedValue({
+      id: "42",
+      razao: "Cliente",
+      fantasia: null,
+      ativo: "S",
+    });
+    vi.mocked(listarContratosIxc).mockResolvedValue([
+      {
+        id: "7",
+        id_cliente: "42",
+        contrato: "Plano",
+        status: "A",
+        status_internet: "CA",
+        bloqueio_automatico: "S",
+        contrato_suspenso: "N",
+        desbloqueio_confianca: "P",
+        desbloqueio_confianca_ativo: "N",
+        restricao_auto_desbloqueio: "N",
+      },
+    ]);
+
+    await expect(crmListIxcContracts.handler({ document: CPF }, ctx)).resolves.toMatchObject({
+      encontrado: true,
+      bloqueio_financeiro: true,
+      contratos_bloqueados_financeiro: 1,
+      diagnostico: "bloqueio_financeiro_confirmado",
+      contratos: [
+        {
+          id: "7",
+          situacao_acesso: "bloqueado_financeiro",
+          bloqueio_financeiro: true,
+          desbloqueio_confianca: {
+            configuracao: "padrao_da_empresa",
+            disponivel_para_solicitar: true,
+            motivo: "disponivel",
+          },
+        },
+      ],
+      aviso: expect.stringContaining("causa da falta de acesso"),
+    });
   });
 
   it("não consulta o IXC quando a integração está desligada", async () => {

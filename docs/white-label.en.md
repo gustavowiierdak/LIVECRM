@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@e862cd45e445 -->
+<!-- traduzido-de: docs/white-label.md@291b348b0ecc -->
 
 [🇧🇷 Português](white-label.md) · 🇺🇸 English · [🇪🇸 Español](white-label.es.md)
 
@@ -87,12 +87,12 @@ The boundary, which is deliberate:
 
 | Where | Which brand shows up |
 |---|---|
-| `/login`, sign-up, password recovery, two-step verification | The **installation's** (yours) |
+| `/login`, sign-up, password recovery, two-step verification | With **one active organization**, its brand logo, color and organization display name; with two or more, the installation brand |
 | Inside the system (`/app/...`), after signing in | The **organization's**, if it has one; otherwise the installation's |
 | Access e-mails (account confirmation, password recovery) | The **installation's** |
 | Team invite, LGPD e-mails | The **organization's** that sent them |
 
-The reason login is left out is not a limitation: **before the person signs in, the system does not know which organization they belong to.** Painting the login with the color of one of them would be picking one in the dark.
+A dedicated installation is unambiguous: when there is **one active organization**, the facade uses the logo and color saved under Settings → Brand and the display name saved under Settings → Organization. Buttons, field focus and other highlights use the palette derived from that color in both light and dark themes. With two or more active organizations, the system does not know which one the person belongs to before sign-in, so it falls back to the installation brand instead of picking one in the dark.
 
 This does not make the dedicated installation obsolete — see the comparison below, which still holds on infrastructure, isolation and sales pitch.
 
@@ -172,7 +172,7 @@ Even so, the two models serve different purposes:
 
 | | One installation per client | One installation for everyone |
 |---|---|---|
-| **Brand** | Each client's, including on the sign-in screen | Yours at login; each organization's inside the system |
+| **Brand** | Each client's, including on the sign-in screen | The installation's at login; each organization's inside the system |
 | **Infrastructure cost** | One VPS per client | One VPS |
 | **Failure** | Isolated | Hits everyone |
 | **Update** | One at a time, can be staggered | Everyone at once |
@@ -229,4 +229,4 @@ Full installation guide: [`hostgator-setup-kit/README.md`](../hostgator-setup-ki
 
 In **Brand**, **Logo** remains the default image (light theme and email). **Logo for dark theme (optional)** accepts a second PNG or JPG image up to 512 KB, designed for dark backgrounds. It appears without a white frame in the sidebar, installation sign-in screen and preview. Without the second image, the default logo keeps its white protection in dark mode. Each image has its own removal control; removing the dark image restores the previous behavior.
 
-An organization that uploads its own default logo stops inheriting the installation’s dark image, preventing accidental mixing of brands. Without its own logos, it inherits the installation’s pair. Sign-in always uses the installation brand. [Compatibility and rollback](runbooks/logo-por-tema.md).
+An organization that uploads its own default logo stops inheriting the installation’s dark image, preventing accidental mixing of brands. Without its own logos, it inherits the installation’s pair. With one active organization, sign-in uses that same pair; with several, it uses the installation pair. [Compatibility and rollback](runbooks/logo-por-tema.md).

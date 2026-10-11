@@ -34,6 +34,11 @@ export interface ContactSummary {
    * atendimento aparece. Opcional: conversas em cache de antes do campo existir.
    */
   force_human?: boolean | null;
+  /** Cadastro operacional associado ao contato; o CPF nunca sai nesta leitura. */
+  ixc_customer_id?: string | null;
+  ixc_customer_name?: string | null;
+  ixc_linked_at?: string | null;
+  ixc_linked_by?: "automatico" | "atendente" | null;
 }
 
 /**

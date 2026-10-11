@@ -111,6 +111,15 @@ describe("segurarEnvioPorToken", () => {
     expect(d.decide).not.toHaveBeenCalled();
   });
 
+  it("não aplica teto diário do WhatsApp ao webchat", async () => {
+    const d = deps(
+      { channelSessionId: SESSAO, provider: "webchat" },
+      { liberado: false, motivo: "teto_diario", liberaEm: AGORA },
+    );
+    await expect(segurarEnvioPorToken(d, entrada)).resolves.toBeNull();
+    expect(d.decide).not.toHaveBeenCalled();
+  });
+
   it("trata provider ausente ou desconhecido como canal com risco (falha fechada)", async () => {
     for (const provider of [null, "provider-que-nao-existe"]) {
       const d = deps(

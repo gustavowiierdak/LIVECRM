@@ -134,7 +134,13 @@ async function lerResposta(response: IncomingMessage): Promise<string> {
   return Buffer.concat(partes).toString("utf8");
 }
 
-async function postar(url: URL, token: string, body: string, signal: AbortSignal): Promise<string> {
+async function postar(
+  url: URL,
+  token: string,
+  body: string,
+  signal: AbortSignal,
+  ixcsoft: "listar" | "" = "listar",
+): Promise<string> {
   const hostname = hostnameSemColchetes(url.hostname);
   const enderecos = await resolverEnderecosPublicos(hostname, signal);
 
@@ -153,7 +159,7 @@ async function postar(url: URL, token: string, body: string, signal: AbortSignal
           authorization: `Basic ${Buffer.from(token, "utf8").toString("base64")}`,
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
-          ixcsoft: "listar",
+          ixcsoft,
         },
       },
       (response) => {
@@ -193,6 +199,8 @@ export interface IxcTransportInput {
   token: string;
   body: string;
   signal: AbortSignal;
+  /** `listar` consulta registros; vazio executa recursos/ações do IXC. */
+  ixcsoft: "listar" | "";
 }
 
 const identificadorIxc = z
@@ -219,6 +227,10 @@ const contratoIxcSchema = z
     status_internet: z.string().nullish(),
     bloqueio_automatico: z.string().nullish(),
     contrato_suspenso: z.string().nullish(),
+    desbloqueio_confianca: z.string().nullish(),
+    desbloqueio_confianca_ativo: z.string().nullish(),
+    restricao_auto_desbloqueio: z.string().nullish(),
+    dt_ult_des_bloq_conf: z.string().nullish(),
   })
   .passthrough();
 
@@ -258,7 +270,13 @@ async function consultarRegistrosIxc(
     IXC_TIMEOUT_MS,
   );
   try {
-    const raw = await transportar({ url, token, body, signal: controller.signal });
+    const raw = await transportar({
+      url,
+      token,
+      body,
+      signal: controller.signal,
+      ixcsoft: "listar",
+    });
     let json: unknown;
     try {
       json = JSON.parse(raw);
@@ -304,8 +322,13 @@ export async function buscarClienteIxc(
   baseUrl: string,
   token: string,
   cpf: string,
-  transportar: (input: IxcTransportInput) => Promise<string> = ({ url, token, body, signal }) =>
-    postar(url, token, body, signal),
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
 ): Promise<IxcCustomer | null> {
   const documento = somenteDigitos(cpf);
   if (documento.length !== 11)
@@ -346,8 +369,13 @@ export async function listarContratosIxc(
   baseUrl: string,
   token: string,
   clienteId: string,
-  transportar: (input: IxcTransportInput) => Promise<string> = ({ url, token, body, signal }) =>
-    postar(url, token, body, signal),
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
 ): Promise<IxcContract[]> {
   const id = identificadorIxc.safeParse(clienteId);
   if (!id.success)
@@ -369,11 +397,100 @@ export async function listarContratosIxc(
   });
 }
 
+export type IxcTrustUnlockResult =
+  { ok: true; message: string | null } | { ok: false; message: string };
+
+/**
+ * Executa o recurso próprio do IXC para desbloqueio de confiança.
+ *
+ * O corpo leva somente o id do contrato já conferido pelo chamador. O cabeçalho
+ * `ixcsoft` vazio é o contrato dos recursos de ação do IXC; `listar` aqui faria
+ * a chamada parecer uma consulta e não deve ser usado.
+ */
+export async function desbloquearConfiancaIxc(
+  baseUrl: string,
+  token: string,
+  contratoId: string,
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
+): Promise<IxcTrustUnlockResult> {
+  const id = identificadorIxc.safeParse(contratoId);
+  if (!id.success) {
+    throw new IxcConnectionError("unexpected_response", "Identificação do contrato inválida.");
+  }
+  const origem = normalizarBaseIxc(baseUrl);
+  const url = new URL("/webservice/v1/desbloqueio_confianca", origem);
+  const body = JSON.stringify({ id: id.data });
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () =>
+      controller.abort(new IxcConnectionError("timeout", "O IXC não respondeu em 10 segundos.")),
+    IXC_TIMEOUT_MS,
+  );
+
+  try {
+    const raw = await transportar({
+      url,
+      token,
+      body,
+      signal: controller.signal,
+      ixcsoft: "",
+    });
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      throw new IxcConnectionError("unexpected_response", "O IXC não retornou JSON válido.");
+    }
+    const resposta = z
+      .object({
+        type: z.string(),
+        message: z.string().nullish(),
+      })
+      .passthrough()
+      .safeParse(json);
+    if (!resposta.success) {
+      throw new IxcConnectionError("unexpected_response", "O IXC retornou um formato inesperado.");
+    }
+    if (resposta.data.type.trim().toLowerCase() === "success") {
+      return { ok: true, message: resposta.data.message ?? null };
+    }
+    if (resposta.data.type.trim().toLowerCase() === "error") {
+      return {
+        ok: false,
+        message: resposta.data.message?.trim() || "O IXC não autorizou o desbloqueio de confiança.",
+      };
+    }
+    throw new IxcConnectionError(
+      "unexpected_response",
+      "O IXC retornou um resultado desconhecido.",
+    );
+  } catch (error) {
+    if (error instanceof IxcConnectionError) throw error;
+    if (controller.signal.aborted) {
+      throw new IxcConnectionError("timeout", "O IXC não respondeu em 10 segundos.");
+    }
+    throw new IxcConnectionError("connection_failed", "Não foi possível executar a ação no IXC.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function testarConexaoIxc(
   baseUrl: string,
   token: string,
-  transportar: (input: IxcTransportInput) => Promise<string> = ({ url, token, body, signal }) =>
-    postar(url, token, body, signal),
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
 ): Promise<{ total: number | null }> {
   const origem = normalizarBaseIxc(baseUrl);
   const url = new URL("/webservice/v1/cliente", origem);
@@ -394,7 +511,13 @@ export async function testarConexaoIxc(
   );
 
   try {
-    const raw = await transportar({ url, token, body, signal: controller.signal });
+    const raw = await transportar({
+      url,
+      token,
+      body,
+      signal: controller.signal,
+      ixcsoft: "listar",
+    });
     let resposta: { registros?: unknown; total?: unknown; type?: unknown };
     try {
       resposta = JSON.parse(raw) as typeof resposta;

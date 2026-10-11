@@ -18,7 +18,8 @@ vi.mock("@/lib/mcp/audit", () => ({ auditMcpToolCall: vi.fn().mockResolvedValue(
 const { pickToolsFromMcp } = await import("@/lib/ai/runtime/tools");
 const { allTools, getToolByName } = await import("@/lib/mcp/tools");
 const { catalogEntry } = await import("@/lib/mcp/tools/catalog");
-const { ESCOPO_DAS_ESCRITAS, escritaCabeNoTurno } = await import("@/lib/ai/runtime/escopo-das-escritas");
+const { ESCOPO_DAS_ESCRITAS, escritaCabeNoTurno } =
+  await import("@/lib/ai/runtime/escopo-das-escritas");
 const { MODULOS_OPCIONAIS } = await import("@/lib/instalacao/modulos");
 const { CAPACIDADES_DA_ORGANIZACAO } = await import("@/lib/organizacao/capacidades");
 
@@ -50,16 +51,44 @@ const TABELAS: Record<string, Linha[]> = {
     { id: COMPROMISSO_DO_TURNO, organization_id: ORG, contact_id: DO_TURNO },
   ],
   cron_jobs: [
-    { id: RETORNO_DE_B, organization_id: ORG, contact_id: DE_B, kind: "at", job_kind: "followup_turn" },
-    { id: RETORNO_DO_TURNO, organization_id: ORG, contact_id: DO_TURNO, kind: "at", job_kind: "followup_turn" },
+    {
+      id: RETORNO_DE_B,
+      organization_id: ORG,
+      contact_id: DE_B,
+      kind: "at",
+      job_kind: "followup_turn",
+    },
+    {
+      id: RETORNO_DO_TURNO,
+      organization_id: ORG,
+      contact_id: DO_TURNO,
+      kind: "at",
+      job_kind: "followup_turn",
+    },
   ],
   agent_cases: [
     { id: CASO_DE_B, organization_id: ORG, conversation_id: CONVERSA_DE_B },
     { id: CASO_DO_TURNO, organization_id: ORG, conversation_id: CONVERSA_DO_TURNO },
   ],
   crm_leads: [
-    { id: NEGOCIO_DE_B, organization_id: ORG, contact_id: DE_B, pipeline_id: FUNIL, status: "open", last_activity_at: "2020-01-01T00:00:00Z", created_at: "2020-01-01T00:00:00Z" },
-    { id: NEGOCIO_DO_TURNO, organization_id: ORG, contact_id: DO_TURNO, pipeline_id: FUNIL, status: "open", last_activity_at: "2020-01-01T00:00:00Z", created_at: "2020-01-01T00:00:00Z" },
+    {
+      id: NEGOCIO_DE_B,
+      organization_id: ORG,
+      contact_id: DE_B,
+      pipeline_id: FUNIL,
+      status: "open",
+      last_activity_at: "2020-01-01T00:00:00Z",
+      created_at: "2020-01-01T00:00:00Z",
+    },
+    {
+      id: NEGOCIO_DO_TURNO,
+      organization_id: ORG,
+      contact_id: DO_TURNO,
+      pipeline_id: FUNIL,
+      status: "open",
+      last_activity_at: "2020-01-01T00:00:00Z",
+      created_at: "2020-01-01T00:00:00Z",
+    },
   ],
 };
 
@@ -82,7 +111,9 @@ function bancoFalso() {
       then: (ok: (v: unknown) => unknown, falha?: (e: unknown) => unknown) =>
         Promise.resolve({ data: linhas, error: null }).then(ok, falha),
     };
-    const cadeia: unknown = new Proxy(alvo, { get: (t, p: string) => (p in t ? t[p] : () => cadeia) });
+    const cadeia: unknown = new Proxy(alvo, {
+      get: (t, p: string) => (p in t ? t[p] : () => cadeia),
+    });
     return cadeia;
   };
   return { from, contagem: () => consultas };
@@ -95,8 +126,21 @@ async function executar(nome: string, args: Linha, contatoDoTurno?: string) {
   const ator = { type: "ai_agent", id: "ag-1", role: "ai_operator" };
   const ferramentas = pickToolsFromMcp({
     toolIds: [nome],
-    auth: { organizationId: ORG, role: "ai_operator", scopes: ["mcp:read", "mcp:write"], actor: ator, apiTokenId: "tok-1" },
-    ctx: { organizationId: ORG, role: "ai_operator", actor: ator, apiTokenId: "tok-1", requestId: "req-1", supabase },
+    auth: {
+      organizationId: ORG,
+      role: "ai_operator",
+      scopes: ["mcp:read", "mcp:write"],
+      actor: ator,
+      apiTokenId: "tok-1",
+    },
+    ctx: {
+      organizationId: ORG,
+      role: "ai_operator",
+      actor: ator,
+      apiTokenId: "tok-1",
+      requestId: "req-1",
+      supabase,
+    },
     supabase,
     pipelineIds: [FUNIL],
     modulosLigados: MODULOS_OPCIONAIS,
@@ -115,35 +159,103 @@ async function executar(nome: string, args: Linha, contatoDoTurno?: string) {
 afterEach(() => vi.restoreAllMocks());
 
 /** Ferramenta → como montar os args com um alvo, e os alvos do turno e de B. */
-const CASOS: Array<{ nome: string; args: (alvo: string) => Linha; doTurno: string; deB: string }> = [
-  ...["crm_book_appointment", "crm_find_and_book_appointment", "crm_propose_contact_field", "crm_schedule_followup"].map(
-    (nome) => ({ nome, args: (a: string) => ({ contact_id: a }), doTurno: DO_TURNO, deB: DE_B }),
-  ),
-  { nome: "crm_enroll_followup_flow", args: (a) => ({ contact_id: a, flow_id: FUNIL }), doTurno: DO_TURNO, deB: DE_B },
-  { nome: "crm_create_lead", args: (a) => ({ contact_id: a, pipeline_id: FUNIL }), doTurno: DO_TURNO, deB: DE_B },
-  { nome: "crm_update_lead", args: (a) => ({ lead_id: NEGOCIO_DO_TURNO, contact_id: a }), doTurno: DO_TURNO, deB: DE_B },
-  ...["crm_reschedule_appointment", "crm_cancel_appointment", "crm_confirm_appointment", "crm_set_appointment_outcome"].map(
-    (nome) => ({ nome, args: (a: string) => ({ appointment_id: a }), doTurno: COMPROMISSO_DO_TURNO, deB: COMPROMISSO_DE_B }),
-  ),
-  ...[
-    "crm_create_conversation_draft",
-    "crm_assign_conversation",
-    "crm_send_whatsapp_message",
-    "crm_request_human_handoff",
-    "crm_resume_ai_attendance",
-  ].map((nome) => ({ nome, args: (a: string) => ({ conversation_id: a }), doTurno: CONVERSA_DO_TURNO, deB: CONVERSA_DE_B })),
-  { nome: "crm_draft_proposal", args: (a) => ({ lead_id: NEGOCIO_DO_TURNO, conversation_id: a }), doTurno: CONVERSA_DO_TURNO, deB: CONVERSA_DE_B },
-  { nome: "crm_cancel_followup", args: (a) => ({ followup_id: a }), doTurno: RETORNO_DO_TURNO, deB: RETORNO_DE_B },
-  ...["crm_add_case_note", "crm_close_human_case"].map((nome) => ({
-    nome,
-    args: (a: string) => ({ case_id: a }),
-    doTurno: CASO_DO_TURNO,
-    deB: CASO_DE_B,
-  })),
-  { nome: "crm_manage_tags", args: (a) => ({ target_kind: "contact", target_id: a }), doTurno: DO_TURNO, deB: DE_B },
-  { nome: "crm_manage_tags", args: (a) => ({ target_kind: "conversation", target_id: a }), doTurno: CONVERSA_DO_TURNO, deB: CONVERSA_DE_B },
-  { nome: "crm_manage_tags", args: (a) => ({ target_kind: "lead", target_id: a }), doTurno: NEGOCIO_DO_TURNO, deB: NEGOCIO_DE_B },
-];
+const CASOS: Array<{ nome: string; args: (alvo: string) => Linha; doTurno: string; deB: string }> =
+  [
+    ...[
+      "crm_book_appointment",
+      "crm_find_and_book_appointment",
+      "crm_propose_contact_field",
+      "crm_schedule_followup",
+    ].map((nome) => ({
+      nome,
+      args: (a: string) => ({ contact_id: a }),
+      doTurno: DO_TURNO,
+      deB: DE_B,
+    })),
+    {
+      nome: "crm_enroll_followup_flow",
+      args: (a) => ({ contact_id: a, flow_id: FUNIL }),
+      doTurno: DO_TURNO,
+      deB: DE_B,
+    },
+    {
+      nome: "crm_create_lead",
+      args: (a) => ({ contact_id: a, pipeline_id: FUNIL }),
+      doTurno: DO_TURNO,
+      deB: DE_B,
+    },
+    {
+      nome: "crm_update_lead",
+      args: (a) => ({ lead_id: NEGOCIO_DO_TURNO, contact_id: a }),
+      doTurno: DO_TURNO,
+      deB: DE_B,
+    },
+    ...[
+      "crm_reschedule_appointment",
+      "crm_cancel_appointment",
+      "crm_confirm_appointment",
+      "crm_set_appointment_outcome",
+    ].map((nome) => ({
+      nome,
+      args: (a: string) => ({ appointment_id: a }),
+      doTurno: COMPROMISSO_DO_TURNO,
+      deB: COMPROMISSO_DE_B,
+    })),
+    ...[
+      "crm_create_conversation_draft",
+      "crm_assign_conversation",
+      "crm_send_whatsapp_message",
+      "crm_request_human_handoff",
+      "crm_resume_ai_attendance",
+    ].map((nome) => ({
+      nome,
+      args: (a: string) => ({ conversation_id: a }),
+      doTurno: CONVERSA_DO_TURNO,
+      deB: CONVERSA_DE_B,
+    })),
+    {
+      nome: "crm_draft_proposal",
+      args: (a) => ({ lead_id: NEGOCIO_DO_TURNO, conversation_id: a }),
+      doTurno: CONVERSA_DO_TURNO,
+      deB: CONVERSA_DE_B,
+    },
+    {
+      nome: "crm_request_ixc_trust_unlock",
+      args: (a) => ({ conversation_id: a, contract_id: "7" }),
+      doTurno: CONVERSA_DO_TURNO,
+      deB: CONVERSA_DE_B,
+    },
+    {
+      nome: "crm_cancel_followup",
+      args: (a) => ({ followup_id: a }),
+      doTurno: RETORNO_DO_TURNO,
+      deB: RETORNO_DE_B,
+    },
+    ...["crm_add_case_note", "crm_close_human_case"].map((nome) => ({
+      nome,
+      args: (a: string) => ({ case_id: a }),
+      doTurno: CASO_DO_TURNO,
+      deB: CASO_DE_B,
+    })),
+    {
+      nome: "crm_manage_tags",
+      args: (a) => ({ target_kind: "contact", target_id: a }),
+      doTurno: DO_TURNO,
+      deB: DE_B,
+    },
+    {
+      nome: "crm_manage_tags",
+      args: (a) => ({ target_kind: "conversation", target_id: a }),
+      doTurno: CONVERSA_DO_TURNO,
+      deB: CONVERSA_DE_B,
+    },
+    {
+      nome: "crm_manage_tags",
+      args: (a) => ({ target_kind: "lead", target_id: a }),
+      doTurno: NEGOCIO_DO_TURNO,
+      deB: NEGOCIO_DE_B,
+    },
+  ];
 
 describe.each(CASOS)("$nome $args", ({ nome, args, doTurno, deB }) => {
   it("com turno: de outro cliente e inexistente recebem a MESMA recusa, e o handler não roda", async () => {
@@ -168,7 +280,9 @@ describe.each(CASOS)("$nome $args", ({ nome, args, doTurno, deB }) => {
 });
 
 describe("toda escrita montável no turno tem o dono de cada identificador declarado", () => {
-  const escritas = allTools.filter((t) => t.category !== "read" && !catalogEntry(t.name)?.apenasHumano);
+  const escritas = allTools.filter(
+    (t) => t.category !== "read" && !catalogEntry(t.name)?.apenasHumano,
+  );
 
   it.each(escritas.map((t) => [t.name, t] as const))("%s", (nome, def) => {
     const campos = ESCOPO_DAS_ESCRITAS[nome];
@@ -176,7 +290,8 @@ describe("toda escrita montável no turno tem o dono de cada identificador decla
     // `_ids` também: uma lista de ids sem dono passaria pela ponte sem conferência.
     const ids = Object.keys(def.inputSchema).filter((c) => /_ids?$/.test(c));
     for (const c of ids) expect(campos![c], `${nome}.${c} sem dono declarado`).toBeDefined();
-    for (const c of Object.keys(campos!)) expect(def.inputSchema, `${nome}.${c} não existe`).toHaveProperty(c);
+    for (const c of Object.keys(campos!))
+      expect(def.inputSchema, `${nome}.${c} não existe`).toHaveProperty(c);
   });
 
   it("escrita sem entrada é recusada no turno (fecha na dúvida)", async () => {
@@ -200,9 +315,15 @@ describe("forma do valor num campo declarado", () => {
   });
 
   it("campo ausente ou nulo não é conferido", async () => {
-    const sem = { from: () => { throw new Error("nada a conferir"); } };
+    const sem = {
+      from: () => {
+        throw new Error("nada a conferir");
+      },
+    };
     for (const args of [{ contact_id: null }, {}]) {
-      expect(await escritaCabeNoTurno(sem as never, ORG, DO_TURNO, "crm_book_appointment", args)).toEqual({
+      expect(
+        await escritaCabeNoTurno(sem as never, ORG, DO_TURNO, "crm_book_appointment", args),
+      ).toEqual({
         permitido: true,
       });
     }
@@ -210,7 +331,11 @@ describe("forma do valor num campo declarado", () => {
 
   it("o id do próprio contato em maiúsculas passa, como passaria no Postgres", async () => {
     const contato = "abcdef12-3456-4789-8abc-def123456789";
-    const sem = { from: () => { throw new Error("o dono contato não consulta"); } };
+    const sem = {
+      from: () => {
+        throw new Error("o dono contato não consulta");
+      },
+    };
     const r = await escritaCabeNoTurno(sem as never, ORG, contato, "crm_propose_contact_field", {
       contact_id: contato.toUpperCase(),
     });

@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
-import { depsDoRitmo, registrarEnvioPorToken, segurarEnvioPorToken } from "@/lib/messaging/ritmo-do-envio-por-token";
+import { DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels";
+import {
+  depsDoRitmo,
+  registrarEnvioPorToken,
+  segurarEnvioPorToken,
+} from "@/lib/messaging/ritmo-do-envio-por-token";
 
 import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
@@ -33,8 +38,12 @@ const INPUT = {
   method: "pix" as const,
 };
 
-function contexto() {
-  let reservado: { key: string; request_hash: string; response_body: Record<string, unknown> | null } | null = null;
+function contexto(provider: string = DEFAULT_CHANNEL_PROVIDER) {
+  let reservado: {
+    key: string;
+    request_hash: string;
+    response_body: Record<string, unknown> | null;
+  } | null = null;
   const avisoInsert = vi.fn(async () => ({ error: null }));
   const insert = vi.fn(async (row: { key: string; request_hash: string }) => {
     if (reservado) return { error: { code: "23505" } };
@@ -71,11 +80,23 @@ function contexto() {
       const conversa = {
         select: vi.fn(),
         eq: vi.fn(),
-        maybeSingle: vi.fn(async () => ({ data: { contact_id: "contato-1" } })),
+        maybeSingle: vi.fn(async () => ({
+          data: { contact_id: "contato-1", channel_session_id: "sessao-1" },
+        })),
       };
       conversa.select.mockReturnValue(conversa);
       conversa.eq.mockReturnValue(conversa);
       return conversa;
+    }
+    if (table === "channel_sessions") {
+      const sessao = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        maybeSingle: vi.fn(async () => ({ data: { provider } })),
+      };
+      sessao.select.mockReturnValue(sessao);
+      sessao.eq.mockReturnValue(sessao);
+      return sessao;
     }
     throw new Error(`tabela inesperada: ${table}`);
   });
@@ -125,7 +146,9 @@ describe("envio financeiro Bemobi", () => {
 
   it("consulta faturas com a política de CPF do financeiro", async () => {
     const { ctx } = contexto();
-    await expect(crmListBemobiInvoices.handler({ document: INPUT.document }, ctx)).resolves.toMatchObject({
+    await expect(
+      crmListBemobiInvoices.handler({ document: INPUT.document }, ctx),
+    ).resolves.toMatchObject({
       total: 1,
     });
     expect(confirmarDocumentoDoTurno).toHaveBeenCalledWith(ctx, INPUT.document, "fatura");
@@ -134,7 +157,8 @@ describe("envio financeiro Bemobi", () => {
   it("reserva antes de enviar e usa chave do job, não a sugerida pelo modelo", async () => {
     const { ctx, insert, update } = contexto();
     const resposta = await crmSendBemobiPayment.handler(
-      { ...INPUT, idempotency_key: "chave-arbitraria-do-modelo" }, ctx,
+      { ...INPUT, idempotency_key: "chave-arbitraria-do-modelo" },
+      ctx,
     );
     expect(resposta).toMatchObject({ message_id: "mensagem-1", status: "sent" });
     expect(confirmarDocumentoDoTurno).toHaveBeenCalledWith(ctx, INPUT.document, "fatura");
@@ -146,13 +170,256 @@ describe("envio financeiro Bemobi", () => {
     });
   });
 
-  it("repetição do mesmo turno devolve recibo sem reenviar", async () => {
+  it("repetição do mesmo turno devolve recibo sem reenviar, mesmo mudando a preferência", async () => {
     const { ctx } = contexto();
     await crmSendBemobiPayment.handler(INPUT, ctx);
-    await expect(crmSendBemobiPayment.handler(INPUT, ctx)).resolves.toMatchObject({
-      message_id: "mensagem-1", deduplicated: true,
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx),
+    ).resolves.toMatchObject({
+      message_id: "mensagem-1",
+      deduplicated: true,
     });
     expect(sendMessageHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("envia linha digitável, PIX e PDF em três mensagens separadas", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: INPUT.invoice_id, amount: 109.8 },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 109.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+      pixCode: "pix-copia-e-cola-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+    vi.mocked(sendMessageHandler)
+      .mockResolvedValueOnce({
+        id: "mensagem-boleto",
+        status: "sent",
+        sent_at: "2026-10-08T12:00:00Z",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "mensagem-pix",
+        status: "sent",
+        sent_at: "2026-10-08T12:00:01Z",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "mensagem-pdf",
+        status: "sent",
+        sent_at: "2026-10-08T12:00:02Z",
+      } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, method: "pix" }, ctx),
+    ).resolves.toMatchObject({
+      message_id: "mensagem-pdf",
+      message_ids: ["mensagem-boleto", "mensagem-pix", "mensagem-pdf"],
+      sent_methods: ["boleto", "pix", "pdf"],
+      missing_methods: [],
+      complete_package: true,
+    });
+
+    const chamadas = vi.mocked(sendMessageHandler).mock.calls.map((chamada) => chamada[2]);
+    expect(chamadas).toHaveLength(3);
+    expect(chamadas[0]).toMatchObject({
+      type: "text",
+      body: expect.stringContaining("Linha digitável"),
+    });
+    expect(chamadas[1]).toMatchObject({
+      type: "text",
+      body: expect.stringContaining("PIX copia e cola"),
+    });
+    expect(chamadas[2]).toMatchObject({
+      type: "document",
+      media_url: "https://faturas.example/segunda-via.pdf",
+      media_mime: "application/pdf",
+    });
+    expect(chamadas[0]?.metadata?.idempotency_key).toBe(`${insert.mock.calls[0]?.[0].key}:boleto`);
+    expect(chamadas[1]?.metadata?.idempotency_key).toBe(`${insert.mock.calls[0]?.[0].key}:pix`);
+    expect(chamadas[2]?.metadata?.idempotency_key).toBe(insert.mock.calls[0]?.[0].key);
+  });
+
+  it("resolve pela data exibida quando o modelo não copia o invoice_id", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      {
+        erpInvoiceId: INPUT.invoice_id,
+        dueDate: "2026-10-13T00:00:00",
+        formatedDueDate: "13/10/2026",
+        amount: 109.8,
+      },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 109.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+      pixCode: "pix-copia-e-cola-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, invoice_id: "13/10/2026" }, ctx),
+    ).resolves.toMatchObject({ complete_package: true });
+    expect(obterDadosPagamentoBemobi).toHaveBeenCalledWith("chave", INPUT.invoice_id);
+  });
+
+  it("não adivinha a fatura quando duas cobranças têm a mesma data", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: "fatura-a", formatedDueDate: "13/10/2026" },
+      { erpInvoiceId: "fatura-b", dueDate: "2026-10-13" },
+    ] as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, invoice_id: "13/10/2026" }, ctx),
+    ).resolves.toMatchObject({ erro: "fatura_fora_do_contato" });
+    expect(obterDadosPagamentoBemobi).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("entrega PDF como documento na sessão web", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "pdf" }, ctx);
+    expect(vi.mocked(sendMessageHandler).mock.calls[0]?.[2]).toMatchObject({
+      type: "document",
+      media_url: "https://faturas.example/segunda-via.pdf",
+      media_mime: "application/pdf",
+    });
+  });
+
+  it("entrega a segunda via em PDF quando o boleto não tem linha digitável no webchat", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      billetDigitableLine: null,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx),
+    ).resolves.toMatchObject({
+      status: "sent",
+      method: "pdf",
+      requested_method: "boleto",
+    });
+    expect(sendMessageHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        type: "document",
+        media_url: "https://faturas.example/segunda-via.pdf",
+        media_mime: "application/pdf",
+      }),
+    );
+  });
+
+  it("mostra o valor codificado na linha em todas as mensagens quando a Bemobi devolve outro amount", async () => {
+    const { ctx } = contexto("webchat");
+    vi.mocked(listarFaturasBemobi).mockResolvedValueOnce([
+      { erpInvoiceId: INPUT.invoice_id, amount: 109.8 },
+    ] as never);
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 99.8,
+      billetDigitableLine: "00190.00009 01234.567891 23456.789017 1 12340000010980",
+      pixCode: "pix-copia-e-cola-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx);
+
+    for (const chamada of vi.mocked(sendMessageHandler).mock.calls) {
+      expect(chamada[2]).toMatchObject({
+        body: expect.stringContaining("R$\u00a0109,80"),
+      });
+      expect(chamada[2]?.body).not.toContain("R$\u00a099,80");
+    }
+  });
+
+  it("entrega o PDF como documento no WhatsApp quando não há linha digitável", async () => {
+    const { ctx } = contexto();
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx);
+    expect(sendMessageHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        type: "document",
+        media_url: "https://faturas.example/segunda-via.pdf",
+      }),
+    );
+  });
+
+  it("envia os meios disponíveis e informa os ausentes quando o pacote está incompleto", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(carregarIntegracaoBemobi).mockResolvedValue({
+      ok: true,
+      apiKey: "chave",
+      resources: {
+        invoices: true,
+        payment_data: true,
+        invoice_pdf: false,
+        secure_portal: false,
+        negotiation: false,
+        recurrence: false,
+        checkout: false,
+      },
+    });
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      pixCode: "pix-de-teste",
+      invoicePDFURL: "https://faturas.example/segunda-via.pdf",
+    } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx),
+    ).resolves.toMatchObject({
+      sent_methods: ["pix"],
+      missing_methods: ["boleto", "pdf"],
+      complete_package: false,
+    });
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(sendMessageHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantém a passagem humana quando a Bemobi não fornece boleto nem alternativa", async () => {
+    const { ctx, insert } = contexto("webchat");
+    vi.mocked(obterDadosPagamentoBemobi).mockResolvedValueOnce({
+      id: INPUT.invoice_id,
+      amount: 50,
+      billetDigitableLine: null,
+      invoicePDFURL: null,
+      pixCode: null,
+    } as never);
+
+    await expect(
+      crmSendBemobiPayment.handler({ ...INPUT, method: "boleto" }, ctx),
+    ).resolves.toMatchObject({
+      erro: "meio_indisponivel",
+      available_methods: [],
+    });
+    expect(insert).not.toHaveBeenCalled();
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+  });
+
+  it("registra recusa do meio solicitado como falha, não sucesso", () => {
+    expect(crmSendBemobiPayment.motivoDoVazio?.({ erro: "meio_indisponivel" })).toBe(
+      "meio_indisponivel",
+    );
   });
 
   it("reserva pendente falha fechada, sem segundo envio", async () => {
@@ -163,9 +430,12 @@ describe("envio financeiro Bemobi", () => {
       erro: "envio_em_revisao",
     });
     expect(sendMessageHandler).toHaveBeenCalledTimes(1);
-    expect(avisoInsert).toHaveBeenCalledWith(expect.objectContaining({
-      organization_id: "org-1", ref_id: CONVERSA,
-    }));
+    expect(avisoInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "org-1",
+        ref_id: CONVERSA,
+      }),
+    );
   });
 
   it("veto de ritmo não prende a chave nem envia pagamento", async () => {

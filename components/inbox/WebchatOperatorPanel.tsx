@@ -452,7 +452,9 @@ export function WebchatOperatorPanel({
                             : "text-muted-foreground",
                         )}
                       >
-                        {item.data.direction === "operator" ? t("Você") : t("Cliente")} ·{" "}
+                        {item.data.direction === "operator"
+                          ? t(item.data.sender_kind === "ai" ? "IA" : "Você")
+                          : t("Cliente")} ·{" "}
                         {horaDaMensagem(item.data.created_at)}
                       </div>
                     </div>

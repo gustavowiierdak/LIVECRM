@@ -90,4 +90,33 @@ describe("configuração visual do atendimento web", () => {
       ),
     );
   });
+
+  it("permite ligar respostas web 24h sem mudar configurações de outro canal", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (!init?.method)
+        return Response.json({ data: {
+          enabled: true,
+          public_id: "05440000-5555-4000-8000-000000000003",
+          allowed_sectors: ["suporte"],
+          allowed_origins: [window.location.origin],
+          handoff_ttl_seconds: 900,
+          ai_replies_24h: false,
+        } });
+      return Response.json({ data: JSON.parse(String(init.body)) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<WebchatSettingsForm />);
+
+    const checkbox = await screen.findByRole("checkbox", { name: "A IA responde 24 horas por dia" });
+    expect(checkbox).not.toBeChecked();
+    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: "Salvar atendimento web" }));
+
+    await waitFor(() => {
+      const request = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(request).toBeDefined();
+      expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ ai_replies_24h: true });
+    });
+  });
 });

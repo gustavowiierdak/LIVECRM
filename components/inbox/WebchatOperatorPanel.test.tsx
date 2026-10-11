@@ -116,6 +116,24 @@ describe("WebchatOperatorPanel", () => {
     );
   });
 
+  it("identifica a resposta automática como IA, sem atribuí-la ao operador", async () => {
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("webchat-sessions")) return Response.json({ data: [
+        { id: SESSION_ID, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true },
+      ] });
+      if (url.includes("webchat/messages?")) return Response.json({ data: [
+        { id: "ai-1", direction: "operator", sender_kind: "ai", body: "Segue o PIX",
+          created_at: "2026-10-08T12:00:00Z" },
+      ] });
+      return Response.json({ data: [] });
+    });
+    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
+    expect(await screen.findByText("Segue o PIX")).toBeInTheDocument();
+    expect(screen.getByText(/IA ·/)).toBeInTheDocument();
+    expect(screen.queryByText(/Você ·/)).not.toBeInTheDocument();
+  });
+
   it("salva nota interna sem enviar texto ao visitante", async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(async (input: string | URL | Request) => {
