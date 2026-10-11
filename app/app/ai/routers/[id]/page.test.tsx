@@ -17,8 +17,12 @@ vi.mock("@/lib/auth/server", () => ({
   resolveActiveOrg: resolveActiveOrgMock,
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: createClientMock }));
-vi.mock("@/lib/ai/classifier-models", () => ({ listClassifierModels: vi.fn().mockResolvedValue([]) }));
-vi.mock("@/lib/channels/selectable", () => ({ listSelectableChannels: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/ai/classifier-models", () => ({
+  listClassifierModels: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/lib/channels/selectable", () => ({
+  listSelectableAgentChannels: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("next/navigation", () => ({ notFound: vi.fn(), redirect: vi.fn() }));
 vi.mock("./_client", () => ({ RouterEditorClient: () => null }));
 
@@ -51,7 +55,8 @@ describe("SELECT server-side do editor do roteador (#2415)", () => {
       return q;
     };
     createClientMock.mockReturnValue({
-      from: (table: string) => chain(table, table === "ai_routers" ? { id: ROUTER_ID, name: "R" } : []),
+      from: (table: string) =>
+        chain(table, table === "ai_routers" ? { id: ROUTER_ID, name: "R" } : []),
     });
 
     const el = await RouterEditorPage({ params: Promise.resolve({ id: ROUTER_ID }) });

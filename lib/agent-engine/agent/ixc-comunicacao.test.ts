@@ -73,7 +73,7 @@ describe("comunicação do diagnóstico financeiro do IXC", () => {
 
     expect(inicioDaTool).toBeGreaterThan(-1);
     expect(ferramenta).toMatch(
-      /if \(ixcLiberouDiagnosticoTecnico\)[\s\S]*code: "diagnostico_tecnico_pendente"/,
+      /if \(ixcLiberouDiagnosticoTecnico\)[\s\S]*code: ["']diagnostico_tecnico_pendente["']/,
     );
     expect(ferramenta.indexOf("if (ixcLiberouDiagnosticoTecnico)")).toBeLessThan(
       ferramenta.indexOf("passouParaAEquipe = true"),

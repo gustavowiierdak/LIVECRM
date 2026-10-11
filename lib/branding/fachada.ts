@@ -4,6 +4,7 @@ import { cache } from "react";
 
 import { resolveBranding } from "@/lib/branding";
 import { logger } from "@/lib/logger";
+import { STATUS_OPERANTE } from "@/lib/organizacao/operante";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import type { MarcaResolvida } from "./resolve";
@@ -47,7 +48,7 @@ async function resolverMarcaDaFachada(): Promise<MarcaResolvida> {
     const consulta = createAdminClient()
       .from("organizations")
       .select("id, display_name")
-      .eq("status", "active")
+      .eq("status", STATUS_OPERANTE)
       .order("created_at", { ascending: true })
       .limit(2);
 

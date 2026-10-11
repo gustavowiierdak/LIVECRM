@@ -207,7 +207,7 @@ describe("fiação da evidência operacional no turno", () => {
       "utf8",
     );
     expect(fonte).toMatch(
-      /name === "crm_list_ixc_contracts"[\s\S]*registrarDesbloqueioConfiancaIxc\(resultado\)/,
+      /name === ["']crm_list_ixc_contracts["'][\s\S]*registrarDesbloqueioConfiancaIxc\(resultado\)/,
     );
   });
 });

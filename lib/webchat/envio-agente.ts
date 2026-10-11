@@ -19,37 +19,73 @@ export async function enviarMensagemWebchatAgente(
   input: SendMessageInput,
   colunas: string,
 ): Promise<Message> {
-  if (ctx.actor.type !== "ai_agent" || input.type !== "text" || !input.body?.trim()) {
-    throw new ApiError(422, "validation_failed", undefined, ctx.requestId,
-      "Neste canal o agente só pode enviar texto pela sessão web.");
+  const anexo =
+    input.type === "document" && input.media_url
+      ? {
+          type: "document" as const,
+          url: input.media_url,
+          mime: input.media_mime ?? "application/pdf",
+        }
+      : null;
+  const urlSegura = anexo ? new URL(anexo.url).protocol === "https:" : true;
+  if (
+    ctx.actor.type !== "ai_agent" ||
+    (!input.body?.trim() && !anexo) ||
+    (input.type !== "text" && !anexo) ||
+    !urlSegura
+  ) {
+    throw new ApiError(
+      422,
+      "validation_failed",
+      undefined,
+      ctx.requestId,
+      "Neste canal o agente pode enviar texto ou documento HTTPS pela sessão web.",
+    );
   }
-  const chaveOriginal = String(input.metadata?.idempotency_key ?? ctx.internalMessageId ?? randomUUID());
+  const chaveOriginal = String(
+    input.metadata?.idempotency_key ?? ctx.internalMessageId ?? randomUUID(),
+  );
   const messageId = ctx.internalMessageId ?? randomUUID();
   const { data, error } = await supabase.rpc("fn_enviar_mensagem_webchat_agente", {
     p_organization_id: ctx.organization_id,
     p_conversation_id: input.conversation_id,
     p_message_id: messageId,
     p_idempotency_key: chaveWebchatDoEnvio(chaveOriginal),
-    p_body: input.body,
-    p_metadata: { ...(input.metadata ?? {}), idempotency_key: chaveOriginal,
-      ai_actor_id: ctx.actor.id },
+    p_body: input.body?.trim() || "Fatura em PDF.",
+    p_metadata: {
+      ...(input.metadata ?? {}),
+      idempotency_key: chaveOriginal,
+      ai_actor_id: ctx.actor.id,
+      ...(anexo ? { webchat_attachment: anexo } : {}),
+    },
     p_service_revision: ctx.serviceBoundary?.service_revision ?? null,
   });
   if (error) throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   const receipt = data as { ok?: boolean; reason?: string; message_id?: string } | null;
   if (!receipt?.ok || !receipt.message_id) {
-    throw new ApiError(409, "conflict", { reason: receipt?.reason }, ctx.requestId,
-      "A sessão web não está disponível para resposta automática.");
+    throw new ApiError(
+      409,
+      "conflict",
+      { reason: receipt?.reason },
+      ctx.requestId,
+      "A sessão web não está disponível para resposta automática.",
+    );
   }
-  const { data: message, error: readError } = await supabase.from("messages")
+  const { data: message, error: readError } = await supabase
+    .from("messages")
     .select(colunas)
     .eq("organization_id", ctx.organization_id)
     .eq("conversation_id", input.conversation_id)
     .eq("id", receipt.message_id)
     .single();
   if (readError || !message) {
-    throw new ApiError(500, "internal_error", undefined, ctx.requestId,
-      "A resposta foi entregue no webchat, mas o recibo não pôde ser lido.");
+    throw new ApiError(
+      500,
+      "internal_error",
+      undefined,
+      ctx.requestId,
+      "A resposta foi entregue no webchat, mas o recibo não pôde ser lido.",
+    );
   }
   return message as unknown as Message;
 }

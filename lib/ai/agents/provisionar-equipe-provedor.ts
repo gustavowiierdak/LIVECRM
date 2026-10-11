@@ -321,9 +321,10 @@ export async function provisionarEquipeProvedor(
       ...records.version,
     });
     if (versionError || !agent) {
+      const arquivadoEm = new Date().toISOString();
       await admin
         .from("ai_agents")
-        .update({ archived_at: new Date().toISOString(), is_active: false })
+        .update({ archived_at: arquivadoEm, is_active: false })
         .eq("organization_id", input.organizationId)
         .eq("id", records.agent.id);
       throw new Error(

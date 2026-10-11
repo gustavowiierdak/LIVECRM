@@ -11,7 +11,11 @@ import { z } from "zod";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { hashDaColuna, hashLido } from "@/lib/api/idempotency";
-import { idDePagamentoBemobi, listarFaturasBemobi, obterDadosPagamentoBemobi } from "@/lib/bemobi/client";
+import {
+  idDePagamentoBemobi,
+  listarFaturasBemobi,
+  obterDadosPagamentoBemobi,
+} from "@/lib/bemobi/client";
 import type { BemobiInvoice } from "@/lib/bemobi/client";
 import { carregarIntegracaoBemobi } from "@/lib/bemobi/integration";
 import {
@@ -21,7 +25,6 @@ import {
 } from "@/lib/messaging/ritmo-do-envio-por-token";
 import { sendMessageSchema } from "@/lib/schemas/messaging";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ehSessaoDeAtendimentoWeb } from "@/lib/channels";
 import { logger } from "@/lib/logger";
 import { confirmarDocumentoDoTurno } from "./documento-confirmado";
 
@@ -134,7 +137,8 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
-        mensagem: error instanceof Error ? error.message : "não foi possível consultar as faturas agora.",
+        mensagem:
+          error instanceof Error ? error.message : "não foi possível consultar as faturas agora.",
       };
     }
   },
@@ -148,13 +152,24 @@ const enviarInputShape = {
     .min(11)
     .max(18)
     .describe("O mesmo CPF confirmado usado para listar as faturas deste cliente."),
-  invoice_id: z.string().trim().min(1).max(100)
+  invoice_id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
     .describe(
       "Copie o invoice_id devolvido por crm_list_bemobi_invoices. Se houver apenas a data escolhida pelo cliente, envie-a exatamente como foi devolvida; o sistema só aceita uma correspondência única.",
     ),
-  method: z.enum(["pix", "boleto", "pdf", "link"])
-    .describe("Preferência original do cliente. O sistema envia todos os meios disponíveis em mensagens separadas."),
-  idempotency_key: z.string().min(1).max(200).optional()
+  method: z
+    .enum(["pix", "boleto", "pdf", "link"])
+    .describe(
+      "Preferência original do cliente. O sistema envia todos os meios disponíveis em mensagens separadas.",
+    ),
+  idempotency_key: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
     .describe("Só para chamadas externas; no turno de IA a chave é gerada pelo sistema."),
 };
 
@@ -188,8 +203,9 @@ function localizarFaturaDoContato(
   const dataEscolhida = dataCanonicaDaFatura(seletor);
   if (!dataEscolhida) return null;
   const porData = faturas.filter((fatura) =>
-    [fatura.dueDate, fatura.formatedDueDate]
-      .some((data) => dataCanonicaDaFatura(data) === dataEscolhida),
+    [fatura.dueDate, fatura.formatedDueDate].some(
+      (data) => dataCanonicaDaFatura(data) === dataEscolhida,
+    ),
   );
   return porData.length === 1 ? porData[0]! : null;
 }
@@ -218,7 +234,11 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
   category: "write",
   requiresRole: "agent",
   requiresScope: "mcp:write",
-  redigirParaAuditoria: (args) => ({ ...args, document: "[redigido]", idempotency_key: "[redigido]" }),
+  redigirParaAuditoria: (args) => ({
+    ...args,
+    document: "[redigido]",
+    idempotency_key: "[redigido]",
+  }),
   motivoDoVazio: (resultado) => {
     if (!resultado || typeof resultado !== "object") return null;
     const erro = (resultado as { erro?: unknown }).erro;
@@ -231,7 +251,7 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
           conversation_id: input.conversation_id,
           invoice_id: input.invoice_id,
         })}`
-      : input.idempotency_key ?? ctx.idempotencyKey;
+      : (input.idempotency_key ?? ctx.idempotencyKey);
     if (!chaveIdempotencia) {
       return {
         erro: "idempotencia_obrigatoria",
@@ -252,13 +272,6 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         mensagem: "a conversa informada não pertence ao cliente deste turno.",
       };
     }
-    const { data: sessao } = await ctx.supabase.from("channel_sessions")
-      .select("provider")
-      .eq("organization_id", ctx.organizationId)
-      .eq("id", conversa.channel_session_id)
-      .maybeSingle<{ provider: string }>();
-    const entregaTextual = ehSessaoDeAtendimentoWeb(sessao?.provider);
-
     const consulta = await carregarIntegracaoBemobi(ctx.supabase, ctx.organizationId, "invoices");
     if (!consulta.ok) {
       return { erro: consulta.reason, mensagem: mensagemIntegracao(consulta.reason) };
@@ -270,7 +283,8 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
-        mensagem: error instanceof Error ? error.message : "não foi possível confirmar a fatura agora.",
+        mensagem:
+          error instanceof Error ? error.message : "não foi possível confirmar a fatura agora.",
       };
     }
     if (!faturaDoContato) {
@@ -289,21 +303,32 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     } catch (error) {
       return {
         erro: "bemobi_indisponivel",
-        mensagem: error instanceof Error ? error.message : "não foi possível obter o pagamento agora.",
+        mensagem:
+          error instanceof Error ? error.message : "não foi possível obter o pagamento agora.",
       };
     }
 
     const valorDoPagamento = dados.finalAmount ?? dados.amount;
     const valor = valorFormatado(
-      valorDaLinhaDigitavel(dados.billetDigitableLine) ?? faturaDoContato.amount ?? valorDoPagamento,
+      valorDaLinhaDigitavel(dados.billetDigitableLine) ??
+        faturaDoContato.amount ??
+        valorDoPagamento,
     );
     const pdfAutorizado = integracao.resources.invoice_pdf;
     const urlDoPdf = pdfAutorizado ? dados.invoicePDFURL : null;
-    const envioPdf = (url: string): { type: "text" | "document"; body: string; media_url?: string; media_mime?: string } =>
-      entregaTextual
-        ? { type: "text", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}:\n${url}` }
-        : { type: "document", body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
-            media_url: url, media_mime: "application/pdf" };
+    const envioPdf = (
+      url: string,
+    ): {
+      type: "document";
+      body: string;
+      media_url: string;
+      media_mime: string;
+    } => ({
+      type: "document",
+      body: `Segunda via da sua fatura${valor ? ` — ${valor}` : ""}.`,
+      media_url: url,
+      media_mime: "application/pdf",
+    });
     type MetodoEnviado = "boleto" | "pix" | "pdf" | "link";
     type Envio = {
       method: MetodoEnviado;
@@ -331,7 +356,11 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     if (urlDoPdf) {
       envios.push({ method: "pdf", payload: envioPdf(urlDoPdf) });
     }
-    if (envios.length === 0 && input.method === "link" && (dados.paymentLink || dados.negotiationLink)) {
+    if (
+      envios.length === 0 &&
+      input.method === "link" &&
+      (dados.paymentLink || dados.negotiationLink)
+    ) {
       const link = dados.paymentLink || dados.negotiationLink || urlDoPdf;
       envios.push({
         method: "link",
@@ -344,20 +373,24 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
         ...(integracao.resources.payment_data && dados.billetDigitableLine ? ["boleto"] : []),
         ...(urlDoPdf ? ["pdf"] : []),
         ...(integracao.resources.payment_data && (dados.paymentLink || dados.negotiationLink)
-          ? ["link"] : []),
+          ? ["link"]
+          : []),
       ];
       return {
         erro: "meio_indisponivel",
-        mensagem: availableMethods.length > 0
-          ? "O pacote de boleto, PIX e PDF não está disponível nesta fatura. Ofereça uma das alternativas disponíveis ao cliente."
-          : "Nenhum meio de pagamento autorizado está disponível nesta fatura; peça ajuda a uma pessoa.",
+        mensagem:
+          availableMethods.length > 0
+            ? "O pacote de boleto, PIX e PDF não está disponível nesta fatura. Ofereça uma das alternativas disponíveis ao cliente."
+            : "Nenhum meio de pagamento autorizado está disponível nesta fatura; peça ajuda a uma pessoa.",
         available_methods: availableMethods,
       };
     }
 
     const metodosObrigatorios = ["boleto", "pix", "pdf"] as const;
     const metodosEnviados = envios.map((envio) => envio.method);
-    const metodosAusentes = metodosObrigatorios.filter((method) => !metodosEnviados.includes(method));
+    const metodosAusentes = metodosObrigatorios.filter(
+      (method) => !metodosEnviados.includes(method),
+    );
 
     const requestHash = hashRequest({
       conversation_id: input.conversation_id,
@@ -386,7 +419,10 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
     });
     if (reservaErro) {
       if (reservaErro.code !== "23505") {
-        return { erro: "envio_indisponivel", mensagem: "Não foi possível reservar o envio com segurança." };
+        return {
+          erro: "envio_indisponivel",
+          mensagem: "Não foi possível reservar o envio com segurança.",
+        };
       }
       const { data: anterior } = await ctx.supabase
         .from("idempotency_keys")
@@ -402,20 +438,27 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       await avisarRevisaoDoEnvio(ctx, input.conversation_id);
       return {
         erro: "envio_em_revisao",
-        mensagem: "O envio desta fatura está em processamento ou precisa de revisão humana. Não reenvie.",
+        mensagem:
+          "O envio desta fatura está em processamento ou precisa de revisão humana. Não reenvie.",
       };
     }
 
-    const mensagens: Array<{ id: string; status: string; sent_at: string | null; method: MetodoEnviado }> = [];
+    const mensagens: Array<{
+      id: string;
+      status: string;
+      sent_at: string | null;
+      method: MetodoEnviado;
+    }> = [];
     try {
       for (const [indice, envio] of envios.entries()) {
-        const envioSegurado = indice === 0
-          ? segurado
-          : await segurarEnvioPorToken(ritmo, {
-              organizationId: ctx.organizationId,
-              conversationId: input.conversation_id,
-              requestId: ctx.requestId,
-            });
+        const envioSegurado =
+          indice === 0
+            ? segurado
+            : await segurarEnvioPorToken(ritmo, {
+                organizationId: ctx.organizationId,
+                conversationId: input.conversation_id,
+                requestId: ctx.requestId,
+              });
         const ultimo = indice === envios.length - 1;
         const parsed = sendMessageSchema.parse({
           conversation_id: input.conversation_id,
@@ -453,12 +496,14 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       sent_methods: metodosEnviados,
       missing_methods: metodosAusentes,
       complete_package: metodosAusentes.length === 0,
-      mensagem: metodosAusentes.length === 0
-        ? "Linha digitável, PIX copia e cola e PDF enviados em mensagens separadas."
-        : `Enviei os meios disponíveis em mensagens separadas. Não estavam disponíveis: ${metodosAusentes.join(", ")}.`,
+      mensagem:
+        metodosAusentes.length === 0
+          ? "Linha digitável, PIX copia e cola e PDF enviados em mensagens separadas."
+          : `Enviei os meios disponíveis em mensagens separadas. Não estavam disponíveis: ${metodosAusentes.join(", ")}.`,
       sent_at: comprovante.sent_at,
     };
-    const { error: reciboErro } = await ctx.supabase.from("idempotency_keys")
+    const { error: reciboErro } = await ctx.supabase
+      .from("idempotency_keys")
       .update({ response_body: response, status_code: 200 })
       .eq("organization_id", ctx.organizationId)
       .eq("endpoint", ENDPOINT_ENVIO)

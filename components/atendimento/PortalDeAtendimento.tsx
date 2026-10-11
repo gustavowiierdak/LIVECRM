@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleHelp, CircleX, Menu, Plus, Send, ShieldCheck, WalletCards } from "lucide-react";
+import {
+  CircleHelp,
+  CircleX,
+  Download,
+  FileText,
+  Menu,
+  Plus,
+  Send,
+  ShieldCheck,
+  WalletCards,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
@@ -58,6 +68,18 @@ function descricaoDoSetor(id: SetorId, t: (texto: string) => string): string {
   if (id === "financeiro") return t("Faturas, pagamentos e segunda via.");
   if (id === "cancelamento") return t("Solicite o encerramento do seu plano.");
   return t("Internet, Wi-Fi e equipamentos.");
+}
+
+function pdfDaMensagem(item: MensagemWebchat): string | null {
+  if (item.type !== "document" || item.media_mime !== "application/pdf" || !item.media_url) {
+    return null;
+  }
+  try {
+    const url = new URL(item.media_url);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function PainelDeSetores({
@@ -607,16 +629,39 @@ export function PortalDeAtendimento({
                             minute: "2-digit",
                           })}
                         </span>
-                        <p
-                          className={cn(
-                            "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
-                            item.direction === "visitor"
-                              ? "rounded-br-md border border-border bg-surface"
-                              : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
-                          )}
-                        >
-                          {item.body}
-                        </p>
+                        {pdfDaMensagem(item) ? (
+                          <a
+                            href={pdfDaMensagem(item) ?? undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex min-w-64 items-center gap-3 rounded-2xl rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)] px-4 py-3 text-left text-text shadow-sm transition-opacity hover:opacity-85"
+                            aria-label={`${item.body} ${t("Baixar PDF")}`}
+                          >
+                            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--atendimento-accent)] text-white">
+                              <FileText size={20} aria-hidden />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm leading-5 font-medium">
+                                {item.body}
+                              </span>
+                              <span className="mt-1 flex items-center gap-1 text-xs text-text-muted">
+                                <Download size={13} aria-hidden />
+                                {t("Baixar PDF")}
+                              </span>
+                            </span>
+                          </a>
+                        ) : (
+                          <p
+                            className={cn(
+                              "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
+                              item.direction === "visitor"
+                                ? "rounded-br-md border border-border bg-surface"
+                                : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
+                            )}
+                          >
+                            {item.body}
+                          </p>
+                        )}
                       </div>
                     ),
                   )

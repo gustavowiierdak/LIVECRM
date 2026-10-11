@@ -153,6 +153,33 @@ describe("PortalDeAtendimento", () => {
     );
   });
 
+  it("mostra a fatura PDF como documento para baixar", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith("/session"))
+        return Response.json({ data: { sector: "financeiro", active: true } });
+      return Response.json({
+        data: [
+          {
+            id: "pdf-1",
+            direction: "operator",
+            type: "document",
+            body: "Segunda via da sua fatura.",
+            media_url: "https://faturas.example/segunda-via.pdf",
+            media_mime: "application/pdf",
+            created_at: "2026-10-10T12:00:00Z",
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    const link = await screen.findByRole("link", { name: /Segunda via.*Baixar PDF/ });
+    expect(link).toHaveAttribute("href", "https://faturas.example/segunda-via.pdf");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it("retoma a sessão por cookie após recarregar, sem reutilizar o código", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith("/session"))
