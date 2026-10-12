@@ -1,9 +1,21 @@
+import type { Metadata } from "next";
 import { LogotipoDoProduto } from "@/components/branding/MarcaDoProduto";
 import { marcaEhADoProduto } from "@/lib/branding";
 import { cssDaMarca, ESCOPO_DA_FACHADA } from "@/lib/branding/css";
 import { marcaDaFachada } from "@/lib/branding/fachada";
+import { corDoIconeDaOrganizacao } from "@/lib/branding/icone";
 import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const marca = await marcaDaFachada();
+  if (marca.origens.cor !== "organizacao") return {};
+
+  const cor = corDoIconeDaOrganizacao(marca);
+  return {
+    icons: { icon: { url: `/icon?v=${cor.slice(1)}`, type: "image/png", sizes: "64x64" } },
+  };
+}
 
 /**
  * A casca das telas de acesso — login, cadastro, recuperação, MFA, confirmar acesso.

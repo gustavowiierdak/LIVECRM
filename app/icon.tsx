@@ -2,7 +2,10 @@ import { ImageResponse } from "next/og";
 
 import { marcaEhADoProduto } from "@/lib/branding";
 import { CORES_DA_MARCA, SIMBOLO } from "@/lib/branding/desenho";
+import { iconeBolinha } from "@/lib/branding/icone-bolinha";
 import { letraDoIcone } from "@/lib/branding/icone";
+import { corDoIconeDaOrganizacao } from "@/lib/branding/icone";
+import { marcaDaFachada } from "@/lib/branding/fachada";
 import { marcaDaSaida, NEUTROS_DE_SAIDA } from "@/lib/branding/saida";
 
 /**
@@ -76,6 +79,11 @@ export const size = { width: 64, height: 64 };
 export const contentType = "image/png";
 
 export default async function Icon() {
+  const fachada = await marcaDaFachada();
+  if (fachada.origens.cor === "organizacao") {
+    return iconeBolinha(corDoIconeDaOrganizacao(fachada), CACHE["cache-control"]);
+  }
+
   const marca = await marcaDaSaida(null);
 
   if (marcaEhADoProduto({ name: marca.nome, logoUrl: marca.logoUrl })) {

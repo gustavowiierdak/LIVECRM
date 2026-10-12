@@ -1,4 +1,5 @@
 import { InterfaceRefresh } from "@/hooks/auth/InterfaceRefresh";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { isMfaEnrolled, loadAuthUser, requiresMfa, resolveActiveOrg } from "@/lib/auth/server";
@@ -13,7 +14,9 @@ import { MfaEnrollGate } from "@/components/auth/MfaEnrollGate";
 import { cssDaMarca, ESCOPO_DA_ORGANIZACAO } from "@/lib/branding/css";
 import { cssDaExtensaoDeTema, linhaBrutaDeTema, temaAplicavel } from "@/lib/extensions/tema";
 import { marcaDaInstalacao } from "@/lib/branding/instalacao";
+import { corDoIconeDaOrganizacao, urlDoIconeDaOrganizacao } from "@/lib/branding/icone";
 import { resolverMarcaDaOrganizacao } from "@/lib/branding/organizacao";
+import { marcaResolvidaDaSaida } from "@/lib/branding/saida";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { modulosLigados } from "@/lib/instalacao/modulos";
@@ -31,6 +34,21 @@ import { listarConexoesCaidas, type ConexaoCaida } from "@/lib/channels/health";
 import { VoiceCallProvider } from "@/components/voice/VoiceCallContext";
 import { ProvedorDaOcupacaoDoRodape } from "@/lib/ui/rodape-ocupado";
 import { acessoFoiRevogado } from "@/lib/auth/vinculo-revogado";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const user = await loadAuthUser();
+  if (!user) return {};
+  const activeOrg = await resolveActiveOrg(user);
+  if (!activeOrg) return {};
+
+  const marca = await marcaResolvidaDaSaida(activeOrg.orgId);
+  const cor = corDoIconeDaOrganizacao(marca);
+  return {
+    icons: {
+      icon: { url: urlDoIconeDaOrganizacao(cor), type: "image/png", sizes: "64x64" },
+    },
+  };
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();

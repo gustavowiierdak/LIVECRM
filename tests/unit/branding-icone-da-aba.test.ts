@@ -1,9 +1,19 @@
+// @vitest-environment node
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { isPublicPath, PUBLIC_PATHS } from "@/lib/auth/public-paths";
-import { ICONE_DESENHADO, iconeDaAba, letraDoIcone } from "@/lib/branding/icone";
+import { iconeBolinha } from "@/lib/branding/icone-bolinha";
+import {
+  ICONE_DESENHADO,
+  corDoIconeDaOrganizacao,
+  iconeDaAba,
+  letraDoIcone,
+  urlDoIconeDaOrganizacao,
+} from "@/lib/branding/icone";
+import { resolverMarcaDaOrganizacao } from "@/lib/branding/organizacao";
+import { lerPng } from "../helpers/png-sintetico";
 
 const RAIZ = process.cwd();
 
@@ -117,5 +127,42 @@ describe("ícone da aba subido em /admin/marca (migration 0443)", () => {
   it("sem base de storage conhecida, não monta URL relativa — cai no desenhado", () => {
     // Uma URL relativa (`/storage/v1/...`) iria ao próprio app e voltaria 404.
     expect(iconeDaAba(CAMINHO, "")).toBe("/icon");
+  });
+});
+
+describe("bolinha do favicon em Configurações → Marca", () => {
+  it("usa exatamente a cor salva pela organização, não o accent derivado", () => {
+    const marca = resolverMarcaDaOrganizacao(
+      { branding: { accent_hex: "#66007a" } },
+      { accent_hex: "#506a48" },
+      {},
+    );
+    expect(marca.origens.cor).toBe("organizacao");
+    expect(corDoIconeDaOrganizacao(marca)).toBe("#66007a");
+    expect(urlDoIconeDaOrganizacao(corDoIconeDaOrganizacao(marca))).toBe(
+      "/app/icone-da-marca?v=66007a",
+    );
+  });
+
+  it("troca a URL quando a pessoa salva outra cor", () => {
+    const primeira = urlDoIconeDaOrganizacao("#66007a");
+    const segunda = urlDoIconeDaOrganizacao("#0a74c8");
+    expect(segunda).not.toBe(primeira);
+  });
+
+  it("sem cor própria conserva a cor da instalação", () => {
+    const marca = resolverMarcaDaOrganizacao(null, { accent_hex: "#506a48" }, {});
+    expect(corDoIconeDaOrganizacao(marca)).toBe("#506a48");
+  });
+
+  it("gera PNG circular transparente com a cor exata no centro", async () => {
+    const resposta = iconeBolinha("#66007a", "private, no-store");
+    expect(resposta.headers.get("content-type")).toMatch(/^image\/png/);
+    expect(resposta.headers.get("cache-control")).toBe("private, no-store");
+    const png = lerPng(new Uint8Array(await resposta.arrayBuffer()));
+    expect([png.largura, png.altura]).toEqual([64, 64]);
+    expect([...png.rgba.subarray(0, 4)]).toEqual([0, 0, 0, 0]);
+    const centro = (32 * png.largura + 32) * 4;
+    expect([...png.rgba.subarray(centro, centro + 4)]).toEqual([102, 0, 122, 255]);
   });
 });
