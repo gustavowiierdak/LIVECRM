@@ -72,6 +72,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   });
 
   if (error) {
+    if (error.code === "23514") return fail("unprocessable_entity", t("Você não está vinculado ao setor desta conversa. Peça à gestão para vincular você em Equipe → Setores."), 422, { requestId });
     return fail("internal_error", error.message, 500, { requestId });
   }
   const row = data?.[0];

@@ -37,6 +37,24 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Setores atualizados.": { es: "Sectores actualizados." },
+  "Carregando setores…": { es: "Cargando sectores…" },
+  "Não foi possível carregar os setores. Recarregue a página.": { es: "No se pudieron cargar los sectores. Recarga la página." },
+  "Vincule as pessoas às filas em que vão atender. Uma pessoa pode participar de mais de um setor. Sem atendentes vinculados, a conversa permanece na fila do setor para a gestão acompanhar.": { es: "Vincula a las personas con las colas que atenderán. Una persona puede participar en varios sectores. Sin agentes vinculados, la conversación permanece en la cola del sector para que la gerencia la supervise." },
+  "Criar setores de atendimento": { es: "Crear sectores de atención" },
+  "atendente(s) vinculado(s)": { es: "agente(s) vinculado(s)" },
+  "Sem atendentes vinculados — os clientes aguardam nesta fila.": { es: "Sin agentes vinculados: los clientes esperan en esta cola." },
+  "Atendentes de": { es: "Agentes de" },
+  "Salvar vínculos": { es: "Guardar vínculos" },
+  "Setores": { es: "Sectores" },
+  "Filtrar por setor": { es: "Filtrar por sector" },
+  "Todos os setores": { es: "Todos los sectores" },
+  "Escolha um atendente ou encaminhe à fila de um setor. A mudança fica registrada no histórico.": { es: "Elige un agente o deriva a la cola de un sector. El cambio queda registrado en el historial." },
+  "Fila do setor": { es: "Cola del sector" },
+  "Escolha o setor": { es: "Elige el sector" },
+  "A IA será pausada. Sem atendente disponível, a conversa permanece na fila do setor até alguém assumir.": { es: "La IA se pausará. Sin un agente disponible, la conversación permanece en la cola del sector hasta que alguien la asuma." },
+  "Você não está vinculado ao setor desta conversa. Peça à gestão para vincular você em Equipe → Setores.": { es: "No estás vinculado al sector de esta conversación. Pide a la gerencia que te vincule en Equipo → Sectores." },
+  "O atendente não está vinculado ao setor. Transfira para o setor correto ou peça à gestão para ajustar o vínculo.": { es: "El agente no está vinculado al sector. Transfiere al sector correcto o pide a la gerencia que ajuste el vínculo." },
   "Escolha o canal em que ele atende. O rascunho está salvo; habilite um canal em Conexões e volte aqui para publicar.":
     {
       es: "Elige el canal en el que atiende. El borrador está guardado; habilita un canal en Conexiones y vuelve aquí para publicarlo.",

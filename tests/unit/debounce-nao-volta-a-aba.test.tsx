@@ -20,6 +20,7 @@ const activeOrgRef: { current: ActiveOrg | null } = {
   current: { orgId: "org-1", name: "Org", role: "admin", visibility_mode: "all" },
 };
 
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ activeOrg: activeOrgRef.current }),
 }));

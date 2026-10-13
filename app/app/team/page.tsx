@@ -7,6 +7,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TeamMembersClient } from "./_components/TeamMembersClient";
+import { SetoresClient } from "./_components/SetoresClient";
 import { TeamInvitesClient } from "./_components/TeamInvitesClient";
 import { AttendantsClient } from "./_components/AttendantsClient";
 import { fusoUtilizavel } from "@/lib/tempo/fusos";
@@ -26,7 +27,7 @@ export const metadata: Metadata = { title: "Equipe" };
  * `aba` em português porque é o que aparece na barra de endereço de quem usa o
  * produto; os valores internos das abas seguem os do componente.
  */
-const ABAS: Record<string, string> = { membros: "members", atendimento: "attendants" };
+const ABAS: Record<string, string> = { membros: "members", atendimento: "attendants", setores: "setores" };
 
 export default async function TeamPage({
   searchParams,
@@ -66,6 +67,7 @@ export default async function TeamPage({
         <TabsList>
           <TabsTrigger value="members">{t("Membros")}</TabsTrigger>
           <TabsTrigger value="attendants">{t("Atendimento")}</TabsTrigger>
+          {isManager && <TabsTrigger value="setores">{t("Setores")}</TabsTrigger>}
         </TabsList>
         <TabsContent value="members" className="mt-4 flex flex-col gap-8">
           <TeamMembersClient currentUserId={user.id} canManage={isAdmin} />
@@ -100,6 +102,7 @@ export default async function TeamPage({
             </p>
           )}
         </TabsContent>
+        {isManager && <TabsContent value="setores" className="mt-4"><SetoresClient /></TabsContent>}
       </Tabs>
     </div>
   );

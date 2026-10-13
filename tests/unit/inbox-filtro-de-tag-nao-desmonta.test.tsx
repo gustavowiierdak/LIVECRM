@@ -29,6 +29,7 @@ import type { ChannelSession } from "@/hooks/channels/useChannelSessions";
 import type { ActiveOrg } from "@/lib/auth/types";
 
 const activeOrgRef: { current: ActiveOrg | null } = { current: null };
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ activeOrg: activeOrgRef.current }),
 }));

@@ -1,4 +1,5 @@
 "use client";
+import { SetorDaConversa } from "./SetorDaConversa";
 
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 
@@ -273,6 +274,7 @@ export function ConversationListItem({
       </div>
 
       <div className="min-w-0 flex-1">
+        <SetorDaConversa id={conversation.atendimento_setor_id} />
         {naFila && (
           <div className="mb-1 flex items-center gap-1.5">
             <span

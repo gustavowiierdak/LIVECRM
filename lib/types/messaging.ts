@@ -8,6 +8,7 @@ export interface Conversation {
   organization_id: string;
   contact_id: string;
   channel_session_id: string;
+  atendimento_setor_id?: string | null;
   channel: string;
   status: string;
   status_changed_at: string;

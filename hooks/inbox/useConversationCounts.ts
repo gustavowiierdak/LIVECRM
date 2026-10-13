@@ -40,6 +40,7 @@ export interface FiltrosDaContagem {
   /** E ou OU entre as etiquetas escolhidas (#1274). `e` é o padrão. */
   tagMode?: ModoDeEtiqueta;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
 }
 
 /**
@@ -60,6 +61,7 @@ export function useConversationCounts(
   // URL sem mudar o sentido do filtro.
   if (filtros.tagMode === "ou") qs.set("modo", "ou");
   if (filtros.channel_session_id) qs.set("channel_session_id", filtros.channel_session_id);
+  if (filtros.atendimento_setor_id) qs.set("atendimento_setor_id", filtros.atendimento_setor_id);
   const sufixo = qs.toString();
 
   return useQuery({

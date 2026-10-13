@@ -105,6 +105,7 @@ export interface ConversationsFilters {
    */
   unread?: boolean;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
   /**
    * A etiqueta, ou VÁRIAS (#1274).
    *
@@ -170,6 +171,7 @@ export function useConversationsRealtime(
       if (filters.search) qs.set("search", filters.search);
       if (filters.unread) qs.set("unread", "true");
       if (filters.channel_session_id) qs.set("channel_session_id", filters.channel_session_id);
+      if (filters.atendimento_setor_id) qs.set("atendimento_setor_id", filters.atendimento_setor_id);
       // `append`, e não `set` (#1274): o filtro aceita várias etiquetas e cada
       // uma viaja como um `tag` repetido — que é o que a rota lê com `getAll`.
       for (const marcador of marcadoresEscolhidos(

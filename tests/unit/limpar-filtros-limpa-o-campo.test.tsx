@@ -32,6 +32,7 @@ import type { InboxFiltersValue } from "@/components/inbox/InboxFilters";
  * medido. Quem mexer ali não será avisado por estes testes; o aviso está escrito
  * no próprio componente.
  */
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (s: string) => s }));
 vi.mock("@/hooks/channels/useChannelSessions", () => ({
   useChannelSessions: () => ({ data: [] }),

@@ -1,5 +1,6 @@
 "use client";
 import { useT } from "@/hooks/i18n/useT";
+import { useSetores } from "@/hooks/team/useSetores";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretLeft, CaretRight, MagnifyingGlass } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -71,6 +73,7 @@ export interface InboxFiltersValue {
   search: string;
   onlyUnread: boolean;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
   /**
    * A etiqueta escolhida, ou VÁRIAS (#1274).
    *
@@ -93,6 +96,7 @@ interface Props {
 
 export function InboxFilters({ value, onChange }: Props) {
   const t = useT();
+  const setores = useSetores();
   const [searchInput, setSearchInput] = useState(value.search);
   const tabsListRef = useRef<HTMLDivElement>(null);
   const [moreTabs, setMoreTabs] = useState({ left: false, right: false });
@@ -193,6 +197,7 @@ export function InboxFilters({ value, onChange }: Props) {
     tag: etiquetas,
     tagMode: value.tagMode,
     channel_session_id: value.channel_session_id,
+    atendimento_setor_id: value.atendimento_setor_id,
   });
 
   const tabs = activeOrg
@@ -400,8 +405,16 @@ export function InboxFilters({ value, onChange }: Props) {
           </button>
         </div>
 
-        {(showChannelSwitch || mostrarSeletorDeTag) && (
-          <div className="flex gap-2">
+        {(showChannelSwitch || mostrarSeletorDeTag || !!setores.data?.length) && (
+          <div className="flex flex-wrap gap-2">
+              {!!setores.data?.length && <Select value={value.atendimento_setor_id ?? "todos"}
+                onValueChange={(id) => onChange({ ...value, atendimento_setor_id: id === "todos" ? undefined : id })}>
+                <SelectTrigger aria-label={t("Filtrar por setor")} className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value="todos">{t("Todos os setores")}</SelectItem>
+                  {setores.data.map((s) => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>}
             {showChannelSwitch && (
               <Select
                 value={value.channel_session_id ?? "all"}

@@ -73,6 +73,7 @@ import { audit } from "@/lib/audit";
 import { encerrarConversaAposFatura, despedidaSimples } from "./encerramento-apos-fatura";
 import { encerrarConversaAposOs } from "./encerramento-apos-os";
 import { confirmouSolucaoIxc } from "@/lib/ixc/aviso-os";
+import { precisaFilaTecnica } from "@/lib/ixc/escalacao-tecnica";
 import { moverLeadParaEtapaDeHandoff } from "@/lib/leads/handoff-stage-move";
 import { detectUrgencySignal } from "../guardrails/sinal-de-urgencia";
 import { buildNativeMediaParts } from "./media-parts";
@@ -125,6 +126,7 @@ import {
   detectHumanHandoffRequest,
   isLeadInHandoff,
   performHumanHandoff,
+  requestHumanHandoffInputSchema,
 } from "./human-handoff";
 import {
   maybeCompact,
@@ -463,6 +465,8 @@ export const AGENT_TOOL_DEFS = {
     // é por isso que eles trazem exemplo em vez de definição.
     inputSchema: z
       .object({
+        setor: z.enum(["comercial", "agendamento", "suporte-tecnico", "cobranca", "sac"]).optional()
+          .describe("Destino humano: suporte-tecnico para problemas de conexão que precisam da equipe; cobranca para financeiro; comercial para vendas; agendamento para visitas; sac para demais solicitações. Omita para manter o setor atual. Não encerre o atendimento ao encaminhar."),
         por_que: z
           .string()
           .optional()
@@ -2603,6 +2607,36 @@ async function executarTurnoDoAgente(
   //    drain coalesce no job da primeira.
   const mensagemDoJob = currentInboundText ?? latestInboundSignal(openingContext.context.messages);
   const inboundsPendentes = inboundsNaoRespondidos(openingContext.context.messages);
+  const relatosAnteriores = openingContext.context.messages
+    .filter((m) => m.direction === "inbound" && m.body !== mensagemDoJob).slice(-3).map((m) => m.body);
+  const falhaFisicaIxc = precisaFilaTecnica(mensagemDoJob ?? "", relatosAnteriores);
+  if (!preview && falhaFisicaIxc) {
+    // Regra do provedor, ativada apenas com IXC e setor técnico configurados.
+    // Não transforma “LOS” de um negócio sem IXC em diagnóstico de internet.
+    const { rows: destinos } = await pool.query<{ id: string; nome: string }>(
+      `select s.id,s.nome from atendimento_setores s
+       where s.organization_id=$1 and s.slug='suporte-tecnico'
+       and exists(select 1 from erp_integrations i where i.organization_id=$1 and i.provider='ixc' and i.enabled)`,
+      [tenantId],
+    );
+    const destino = destinos[0];
+    if (destino) {
+      const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
+        ...avisoDaEscalacao().base, motivo: "pediu_humano", setorNome: destino.nome,
+      });
+      const briefing = montarBriefingDaPassagem({
+        checkpoint: previous, pendentesDoCliente: [...relatosAnteriores, ...inboundsPendentes],
+        motivo: { codigo: "critical_stage" },
+      });
+      await performHumanHandoff(pool, { tenantId, leadId, conversationId: input.conversationId }, {
+        reason: "critical_stage", setorId: destino.id,
+        conversationSummary: briefing.body,
+        passagem: { origem: "runtime_nativo", motivoCodigo: "critical_stage", briefing },
+        avisoAoLead: aviso, log: runLog,
+      });
+      return;
+    }
+  }
   if (
     !preview &&
     inboundsPendentes.some(
@@ -4033,8 +4067,17 @@ async function executarTurnoDoAgente(
             },
           };
         }
-        passouParaAEquipe = true;
         try {
+          const validado = requestHumanHandoffInputSchema.safeParse(raw);
+          if (!validado.success) return { ok: false, error: { code: "invalid_payload", message: "Confira os dados de encaminhamento e o setor." } };
+          let setorNome: string | undefined;
+          if (validado.data.setor) {
+            const { rows } = await pool.query<{ nome: string }>(
+              'select nome from atendimento_setores where organization_id=$1 and slug=$2', [tenantId, validado.data.setor],
+            );
+            if (!rows[0]) return { ok: false, error: { code: "invalid_payload", message: "Setor não configurado. Omita setor para manter a fila atual." } };
+            setorNome = rows[0].nome;
+          }
           // ═══ O PISO: se o modelo não falou, o sistema fala ═══
           //
           // A descrição da tool manda avisar o lead ANTES de chamá-la, e a
@@ -4057,6 +4100,7 @@ async function executarTurnoDoAgente(
             seq === 0
               ? await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
                   ...avisoDaEscalacao().base,
+                  setorNome,
                   motivo: "pediu_humano",
                 })
               : ({ avisado: true } as const);
@@ -4080,6 +4124,7 @@ async function executarTurnoDoAgente(
             raw,
           );
           if (!res.ok) return res; // erro de ensino (payload fora da whitelist)
+          passouParaAEquipe = true;
           return { ok: true, status: res.status, message: res.message };
         } catch (err) {
           noteRunError(err instanceof Error ? err : new Error(String(err)));

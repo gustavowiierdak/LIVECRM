@@ -146,6 +146,7 @@ export async function performHumanHandoff(
   ids: HandoffIds,
   opts: {
     reason: string;
+    setorId?: string;
     conversationSummary: string;
     inboxTitle?: string;
     /**
@@ -224,7 +225,11 @@ export async function performHumanHandoff(
   await guardServiceEffect();
   await db.query(
     `update conversations
-        set status = case when status = 'ai_handling' then 'pending' else status end,
+        set status = case when assigned_to_user_id is not null then status
+                          when status = 'ai_handling' then 'pending'
+                          when status = 'open' then 'pending' else status end,
+            atendimento_setor_id = coalesce($7::uuid, atendimento_setor_id),
+            assignee_kind = case when assigned_to_user_id is null then null else assignee_kind end,
             bot_silenced_until = $3,
             last_handoff_at = now(),
             last_handoff_reason = $4,
@@ -237,7 +242,7 @@ export async function performHumanHandoff(
             active_intent = null,
             active_agent_set_at = null
       where organization_id = $1 and id = $2`,
-    [ids.tenantId, ids.conversationId, SILENCE_INFINITY, opts.reason, CHAVE_DO_HANDOFF_TECNICO, marcaDaDerivacao],
+    [ids.tenantId, ids.conversationId, SILENCE_INFINITY, opts.reason, CHAVE_DO_HANDOFF_TECNICO, marcaDaDerivacao, opts.setorId ?? null],
   );
 
   // (c) Cancela os crons PENDENTES do lead (follow-ups agendados — F3-01/02). Idempotente,
@@ -347,6 +352,10 @@ export async function performHumanHandoff(
     });
   }
 
+  // Publica a distribuição depois do contexto da passagem estar persistido.
+  await guardServiceEffect();
+  await db.query('select public.fn_request_channel_routing($1,$2)', [ids.tenantId, ids.conversationId]);
+
   // PII fora do log — e agora de verdade. A linha anterior logava `opts.reason`,
   // que no caminho do caso escalado É O TEXTO QUE O ATENDENTE ESCREVEU sobre o
   // cliente: o comentário "PII fora do log" já era falso quando foi escrito. O
@@ -443,6 +452,7 @@ async function corpoDaCentral(
  * tentou, nem o que o cliente pediu com as palavras dele.
  */
 export const requestHumanHandoffInputSchema = z.strictObject({
+  setor: z.enum(["comercial", "agendamento", "suporte-tecnico", "cobranca", "sac"]).optional(),
   reason: z.string().min(1).max(500).optional(),
   por_que: z.string().min(1).max(500).optional(),
   o_que_tentei: z
@@ -516,6 +526,15 @@ export async function applyRequestHumanHandoff(
   // `por_que` vence `reason` porque `reason` é o sinônimo antigo — quem preenche
   // os dois está declarando o mesmo campo duas vezes.
   const declarado = parsed.data;
+  let setorId: string | undefined;
+  if (declarado.setor) {
+    const { rows } = await db.query<{ id: string }>(
+      'select id from atendimento_setores where organization_id=$1 and slug=$2',
+      [ids.tenantId, declarado.setor],
+    );
+    if (!rows[0]) return { ok: false, error: { code: 'invalid_payload', message: 'Setor não configurado. Omita setor para manter a fila atual.' } };
+    setorId = rows[0].id;
+  }
   const porQue = declarado.por_que ?? declarado.reason ?? null;
   const briefing = montarBriefingDaPassagem({
     checkpoint: opts.contextoDoTurno?.checkpoint ?? null,
@@ -543,6 +562,7 @@ export async function applyRequestHumanHandoff(
     : null;
 
   await performHumanHandoff(db, ids, {
+    ...(setorId ? { setorId } : {}),
     reason: porQue ?? 'requested_human',
     conversationSummary: briefing.body,
     passagem: { origem: 'ferramenta_do_modelo', motivoCodigo: 'requested_human', briefing },
@@ -555,7 +575,7 @@ export async function applyRequestHumanHandoff(
   // que "um atendente vai assumir" sem que ninguém tivesse olhado se havia
   // alguém — e o agente repassava essa promessa ao cliente. Agora a resposta
   // carrega o estado real da equipe, e o modelo não precisa lembrar de perguntar.
-  const { frase } = await expectativaDeAtendimento(db, ids.tenantId, new Date());
+  const { frase } = await expectativaDeAtendimento(db, ids.tenantId, new Date(), ids.conversationId);
 
   // ⚠️ A frase anterior era "encerre o turno AGORA, sem enviar mais mensagens ao
   // lead além do aviso" — e prometia uma saída que a PRIMEIRA linha de

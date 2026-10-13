@@ -95,6 +95,8 @@ export interface AvisoDeEscalacaoIds {
 }
 
 export interface AvisoDeEscalacaoOpts {
+  /** Nome do destino já validado no banco, nunca um destino inventado pelo modelo. */
+  setorNome?: string;
   motivo: MotivoDoAviso;
   channel: ChannelAdapter;
   /** `contacts.is_blocked` lido no contexto deste turno (fonte confiável). */
@@ -145,7 +147,7 @@ export async function avisarLeadDaEscalacao(
     idioma = null;
   }
   try {
-    const { quem } = await expectativaDeAtendimento(pool, ids.tenantId, opts.now);
+    const { quem } = await expectativaDeAtendimento(pool, ids.tenantId, opts.now, ids.conversationId);
     body = textoDoAviso(opts.motivo, quem, ids.leadId, idioma);
   } catch (err) {
     // `expectativaDeAtendimento` já tem rede própria; se ainda assim quebrar,
@@ -154,6 +156,10 @@ export async function avisarLeadDaEscalacao(
       error: err instanceof Error ? err.message.slice(0, 120) : 'erro desconhecido',
     });
     body = textoDoAviso(opts.motivo, null, ids.leadId, idioma);
+  }
+
+  if (opts.setorNome) {
+    body = `Vou encaminhar seu atendimento para a fila de ${opts.setorNome}, com o que você já informou, para a equipe continuar a análise. Aguarde por aqui; não precisa repetir os testes.`;
   }
 
   try {

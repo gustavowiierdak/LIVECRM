@@ -13,6 +13,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -26,8 +27,9 @@ import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useContinuarPorOutroNumero } from "@/hooks/inbox/useContinuarPorOutroNumero";
 import { useTransferConversation } from "@/hooks/inbox/useTransferConversation";
 import { outrosNumerosDoContato } from "@/lib/inbox/outros-numeros";
+import { useSetores } from "@/hooks/team/useSetores";
 
-export type AbaDeTransferencia = "atendente" | "numero";
+export type AbaDeTransferencia = "atendente" | "numero" | "setor";
 
 interface Props {
   conversationId: string;
@@ -76,6 +78,8 @@ export function ReassignDialog({
   const { user } = useAuth();
   const members = useAssignableMembers(open);
   const transfer = useTransferConversation();
+  const setores = useSetores(open);
+  const [setorId, setSetorId] = useState("");
   const continuar = useContinuarPorOutroNumero();
   const { data: sessoes } = useChannelSessions({ enabled: open && numero != null });
   const [toUserId, setToUserId] = useState<string>("");
@@ -86,11 +90,12 @@ export function ReassignDialog({
   const options = (members.data ?? []).filter((m) => m.user_id !== user.id);
   const numeros = numero ? outrosNumerosDoContato(sessoes, numero.channelSessionId) : [];
   const temAbaNumero = numero != null && numeros.length > 0;
-  const abaAtual = temAbaNumero ? aba : "atendente";
+  const abaAtual = aba === "numero" && !temAbaNumero ? "atendente" : aba;
 
   function close(v: boolean) {
     if (!v) {
       setToUserId("");
+      setSetorId("");
       setReason("");
       setParaSessao("");
       setAba(abaInicial);
@@ -118,23 +123,33 @@ export function ReassignDialog({
           <DialogTitle>{t("Transferir conversa")}</DialogTitle>
           <DialogDescription>
             {t(
-              "A transferência é imediata: o atendente escolhido vira o responsável agora e a mudança fica registrada no histórico.",
+              "Escolha um atendente ou encaminhe à fila de um setor. A mudança fica registrada no histórico.",
             )}
           </DialogDescription>
         </DialogHeader>
 
-        {temAbaNumero && (
+        {(temAbaNumero || !!setores.data?.length) && (
           <Tabs value={abaAtual} onValueChange={(v) => setAba(v as AbaDeTransferencia)}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="flex w-full">
               <TabsTrigger value="atendente">{t("Atendente")}</TabsTrigger>
-              <TabsTrigger value="numero" data-testid="aba-transferir-numero">
+              {!!setores.data?.length && <TabsTrigger value="setor">{t("Setor")}</TabsTrigger>}
+              {temAbaNumero && <TabsTrigger value="numero" data-testid="aba-transferir-numero">
                 {t("Número")}
-              </TabsTrigger>
+              </TabsTrigger>}
             </TabsList>
           </Tabs>
         )}
 
-        {abaAtual === "numero" && numero ? (
+        {abaAtual === "setor" ? (
+          <div className="flex flex-col gap-3">
+            <Label htmlFor="reassign-setor">{t("Fila do setor")}</Label>
+            <Select value={setorId} onValueChange={setSetorId}>
+              <SelectTrigger id="reassign-setor" className="w-full"><SelectValue placeholder={t("Escolha o setor")} /></SelectTrigger>
+              <SelectContent><SelectGroup>{setores.data?.map((s) => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}</SelectGroup></SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">{t("A IA será pausada. Sem atendente disponível, a conversa permanece na fila do setor até alguém assumir.")}</p>
+          </div>
+        ) : abaAtual === "numero" && numero ? (
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="reassign-numero">{t("Continuar pelo número")}</Label>
@@ -212,7 +227,11 @@ export function ReassignDialog({
           <Button variant="ghost" onClick={() => close(false)}>
             {t("Cancelar")}
           </Button>
-          {abaAtual === "numero" ? (
+          {abaAtual === "setor" ? (
+            <Button disabled={!setorId || transfer.isPending} onClick={() => transfer.mutate({ conversation_id: conversationId, setor_id: setorId }, { onSuccess: () => close(false) })}>
+              {t(transfer.isPending ? "Transferindo…" : "Encaminhar à fila")}
+            </Button>
+          ) : abaAtual === "numero" ? (
             <Button
               disabled={!paraSessao || !numero?.contactPhone || continuar.isPending}
               onClick={continuarPeloNumero}

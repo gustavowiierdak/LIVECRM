@@ -1,4 +1,5 @@
 "use client";
+import { SetorDaConversa } from "./SetorDaConversa";
 import { useState, type RefObject } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import Link from "next/link";
@@ -214,6 +215,7 @@ export function ConversationHeader({
         <div className="flex min-w-0 items-center gap-1.5">
           <ChannelLogo channel={conversation.channel_sessions} size={20} />
           <h2 className="min-w-0 truncate text-sm font-semibold" title={displayName}>{displayName}</h2>
+          <SetorDaConversa id={conversation.atendimento_setor_id} />
           <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[10px]">
             {t(STATUS_LABEL[status] ?? status)}
           </Badge>
