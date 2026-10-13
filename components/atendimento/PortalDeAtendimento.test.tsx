@@ -153,6 +153,29 @@ describe("PortalDeAtendimento", () => {
     );
   });
 
+  it("identifica cada autor, distingue IA e mantém fallback sem nome", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith("/session"))
+        return Response.json({ data: { sector: "suporte", active: true } });
+      return Response.json({ data: [
+        { id: "ana", direction: "operator", sender_kind: "human", sender_name: "Ana Souza", body: "Primeira resposta" },
+        { id: "joao", direction: "operator", sender_kind: "human", sender_name: "João Silva", body: "Após transferência" },
+        { id: "ai", direction: "operator", sender_kind: "ai", sender_name: "Suporte Técnico", body: "Resposta automática" },
+        { id: "legacy-ai", direction: "operator", sender_kind: "ai", body: "IA sem nome" },
+        { id: "legacy-human", direction: "operator", sender_kind: "human", sender_name: "  ", body: "Pessoa sem nome" },
+        { id: "visitor", direction: "visitor", sender_name: "Ignorar", body: "Cliente" },
+      ].map((m) => ({ ...m, created_at: "2026-10-13T12:00:00Z" })) });
+    }));
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByText(/^Ana Souza ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^João Silva ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Suporte Técnico · IA ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^IA ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Equipe ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Você ·/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ignorar/)).not.toBeInTheDocument();
+  });
+
   it("mostra a fatura PDF como documento para baixar", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith("/session"))

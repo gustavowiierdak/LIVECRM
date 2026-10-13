@@ -623,7 +623,11 @@ export function PortalDeAtendimento({
                         )}
                       >
                         <span className="text-xs font-medium text-text-muted">
-                          {item.direction === "visitor" ? t("Você") : t("Equipe")} ·{" "}
+                          {item.direction === "visitor"
+                            ? t("Você")
+                            : item.sender_kind === "ai"
+                              ? `${item.sender_name?.trim() || t("IA")}${item.sender_name?.trim() ? ` · ${t("IA")}` : ""}`
+                              : item.sender_name?.trim() || t("Equipe")} ·{" "}
                           {new Date(item.created_at).toLocaleTimeString(tagDoIdioma, {
                             hour: "2-digit",
                             minute: "2-digit",

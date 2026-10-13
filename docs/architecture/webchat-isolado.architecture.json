@@ -93,7 +93,7 @@
       "lane": "db",
       "col": 7,
       "type": "database",
-      "label": "webchat_messages por sessão; sem transporte WhatsApp"
+      "label": "webchat_messages por sessão; nome do autor humano/IA da mesma organização, sem e-mail; sem transporte WhatsApp"
     },
     {
       "id": "canonical",

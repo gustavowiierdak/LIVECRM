@@ -61,6 +61,43 @@ beforeAll(() => {
 });
 
 describe("documento PDF no atendimento web", () => {
+  it("expõe só o nome do autor da mensagem, com isolamento de organização", () => {
+    const ana = "06320000-7000-4000-8000-000000000001";
+    const outro = "06320000-7000-4000-8000-000000000002";
+    const agente = "06320000-8000-4000-8000-000000000001";
+    const externo = "06320000-8000-4000-8000-000000000002";
+    const outraOrg = "06320000-0000-4000-8000-000000000002";
+    sql(`
+      insert into organizations (id,slug,legal_name,display_name)
+        values ('${outraOrg}','outro-webchat-0636','Outra','Outra');
+      insert into auth.users (id,email,raw_user_meta_data) values
+        ('${ana}','ana@example.invalid','{"full_name":"Ana Souza","segredo":"privado"}'),
+        ('${outro}','outro@example.invalid','{"full_name":"Pessoa externa"}');
+      insert into user_organizations (organization_id,user_id,role) values
+        ('${ORG}','${ana}','agent'),('${outraOrg}','${outro}','agent');
+      insert into ai_agents (id,organization_id,name,system_prompt) values
+        ('${agente}','${ORG}','Suporte Técnico','Teste'),
+        ('${externo}','${outraOrg}','Agente externo','Teste');
+      insert into webchat_messages
+        (organization_id,source_conversation_id,visitor_session_id,direction,body,sent_by_user_id,metadata,idempotency_key)
+      values
+        ('${ORG}','${CONVERSATION}','${VISITOR}','operator','humano','${ana}','{}',gen_random_uuid()),
+        ('${ORG}','${CONVERSATION}','${VISITOR}','operator','externo','${outro}','{}',gen_random_uuid()),
+        ('${ORG}','${CONVERSATION}','${VISITOR}','operator','ia',null,'{"ai_actor_id":"${agente}"}',gen_random_uuid()),
+        ('${ORG}','${CONVERSATION}','${VISITOR}','operator','ia externa',null,'{"ai_actor_id":"${externo}"}',gen_random_uuid()),
+        ('${ORG}','${CONVERSATION}','${VISITOR}','operator','ia legada',null,'{"ai_actor_id":"invalido"}',gen_random_uuid());
+    `);
+    const mensagens = JSON.parse(sql(`select public.fn_ler_mensagens_webchat_visitante('${SESSION}','${ORIGIN}');`)) as Array<Record<string, unknown>>;
+    expect(mensagens.find((m) => m.body === "humano")).toMatchObject({ sender_kind: "human", sender_name: "Ana Souza" });
+    expect(mensagens.find((m) => m.body === "externo")).toMatchObject({ sender_kind: "human", sender_name: null });
+    expect(mensagens.find((m) => m.body === "ia")).toMatchObject({ sender_kind: "ai", sender_name: "Suporte Técnico" });
+    expect(mensagens.find((m) => m.body === "ia externa")).toMatchObject({ sender_name: null });
+    expect(mensagens.find((m) => m.body === "ia legada")).toMatchObject({ sender_name: null });
+    expect(JSON.stringify(mensagens)).not.toMatch(/example.invalid|privado|Pessoa externa|Agente externo/);
+    expect(sql(`select public.fn_ler_mensagens_webchat_visitante('${SESSION}','https://outro.example');`)).toBe("");
+    expect(sql(`select has_function_privilege('anon','public.fn_ler_mensagens_webchat_visitante(text,text)','EXECUTE');`)).toBe("f");
+  });
+
   it("espelha o anexo real e publica somente os campos seguros", () => {
     expect(
       JSON.parse(
