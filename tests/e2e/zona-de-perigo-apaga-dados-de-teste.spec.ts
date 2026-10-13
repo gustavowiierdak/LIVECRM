@@ -81,6 +81,9 @@ function bancoDeTeste() {
 }
 
 const TABELAS = [
+  "webchat_messages",
+  "webchat_visitor_sessions",
+  "webchat_handoffs",
   "messages",
   "conversations",
   "calendar_appointments",
@@ -130,8 +133,12 @@ test("o admin zera os dados da sua organização pela tela — e a vizinha não 
   // ── Precondição medida, não presumida ───────────────────────────────────
   const antesA = await contarTudo(z.org_a_id);
   const antesB = await contarTudo(z.org_b_id);
+  const antesCompartilhada = await contarTudo(creds.org_id);
   for (const tabela of TABELAS) {
-    expect(antesA[tabela], `o fixture de A não tem ${tabela} — a spec não provaria nada`).toBeGreaterThan(0);
+    expect(
+      antesA[tabela],
+      `o fixture de A não tem ${tabela} — a spec não provaria nada`,
+    ).toBeGreaterThan(0);
     expect(antesB[tabela], `o fixture de B não tem ${tabela}`).toBeGreaterThan(0);
   }
 
@@ -218,10 +225,9 @@ test("o admin zera os dados da sua organização pela tela — e a vizinha não 
   // A organização compartilhada do harness é uma terceira testemunha: ela não
   // é nem A nem B, e um DELETE sem filtro a levaria junto.
   const compartilhada = await contarTudo(creds.org_id);
-  expect(
-    compartilhada.contacts,
-    "os contatos da organização compartilhada do harness sumiram — o reset saiu do tenant",
-  ).toBeGreaterThan(0);
+  expect(compartilhada, "a organização compartilhada do harness mudou durante o reset").toEqual(
+    antesCompartilhada,
+  );
 
   // ── O rastro: a mutação está no audit log ───────────────────────────────
   const db = bancoDeTeste();

@@ -4949,6 +4949,7 @@
   "O nome digitado não confere com o nome da organização.": "输入的名称与组织名称不匹配。",
   "Digite o nome da organização para confirmar.": "输入组织名称以确认。",
   "Não consegui apagar os dados agora.": "现在无法删除数据。",
+  "O apagamento parou após excluir parte dos dados. Confira o registro de auditoria antes de tentar novamente.": "删除在部分数据被移除后中断。请先查看审计日志，再重试。",
   "Sua sessão expirou. Entre de novo para continuar.": "您的会话已过期。请重新登录以继续。",
   "Não consegui identificar sua empresa. Recarregue a página.": "无法识别您的企业。请刷新页面。",
   "Confirme o código do seu aplicativo de duas etapas e tente de novo.": "请确认两步验证应用中的代码，然后重试。",

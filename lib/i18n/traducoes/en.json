@@ -6859,6 +6859,7 @@
   "O nome digitado não confere com o nome da organização.": "The name you typed doesn't match the organization's name.",
   "Digite o nome da organização para confirmar.": "Type the organization's name to confirm.",
   "Não consegui apagar os dados agora.": "Couldn't delete the data right now.",
+  "O apagamento parou após excluir parte dos dados. Confira o registro de auditoria antes de tentar novamente.": "Deletion stopped after some data was removed. Check the audit log before trying again.",
   "Sua sessão expirou. Entre de novo para continuar.": "Your session expired. Sign in again to continue.",
   "Não consegui identificar sua empresa. Recarregue a página.": "Couldn't identify your company. Reload the page.",
   "Confirme o código do seu aplicativo de duas etapas e tente de novo.": "Confirm the code from your two-step verification app and try again.",

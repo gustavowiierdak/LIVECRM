@@ -67,7 +67,11 @@ vi.mock("@/lib/audit", () => ({
   }),
 }));
 vi.mock("@/lib/auth/server", () => ({
-  loadAuthUser: vi.fn(async () => ({ id: USER, is_platform_admin: ehPlatformAdmin, platform_admin_scope: ehPlatformAdmin ? escopo : null })),
+  loadAuthUser: vi.fn(async () => ({
+    id: USER,
+    is_platform_admin: ehPlatformAdmin,
+    platform_admin_scope: ehPlatformAdmin ? escopo : null,
+  })),
   resolveActiveOrg: vi.fn(async () => ({ orgId: ORG, name: NOME_DA_ORG, role: papel })),
   mfaEmDivida: vi.fn(async () => mfaPendente),
 }));
@@ -191,9 +195,12 @@ describe("zona de perigo: o apagamento não sai da própria organização", () =
     }
   });
 
-  it("apaga exatamente as sete raízes declaradas — nem tabela a mais, nem a menos", async () => {
+  it("apaga primeiro as mensagens e sessões web vinculadas às conversas", async () => {
     await apagarDadosOperacionaisDaOrganizacao({ confirmNome: NOME_DA_ORG });
     expect(delecoes.map((d) => d.tabela)).toEqual([
+      "webchat_messages",
+      "webchat_visitor_sessions",
+      "webchat_handoffs",
       "messages",
       "conversations",
       "calendar_appointments",
@@ -204,12 +211,27 @@ describe("zona de perigo: o apagamento não sai da própria organização", () =
     ]);
   });
 
-  it("contacts sai por último: as três FKs RESTRICT vêm antes dele", async () => {
+  it("respeita todas as FKs RESTRICT do atendimento web e do contato", async () => {
     await apagarDadosOperacionaisDaOrganizacao({ confirmNome: NOME_DA_ORG });
     const ordem = delecoes.map((d) => d.tabela);
+    const antesDe = (filho: string, pai: string) => {
+      expect(ordem.indexOf(filho)).toBeGreaterThan(-1);
+      expect(ordem.indexOf(filho)).toBeLessThan(ordem.indexOf(pai));
+    };
+    antesDe("webchat_messages", "webchat_visitor_sessions");
+    antesDe("webchat_visitor_sessions", "webchat_handoffs");
+    for (const filho of ["webchat_messages", "webchat_visitor_sessions", "webchat_handoffs"]) {
+      antesDe(filho, "conversations");
+    }
     const posContacts = ordem.indexOf("contacts");
     expect(posContacts).toBeGreaterThan(-1);
-    for (const restrita of ["messages", "conversations", "calendar_appointments"]) {
+    for (const restrita of [
+      "messages",
+      "conversations",
+      "calendar_appointments",
+      "webchat_visitor_sessions",
+      "webchat_handoffs",
+    ]) {
       expect(ordem.indexOf(restrita)).toBeGreaterThan(-1);
       expect(ordem.indexOf(restrita)).toBeLessThan(posContacts);
     }
@@ -326,7 +348,10 @@ describe("zona de perigo: o apagamento deixa rastro", () => {
     const r = await apagarDadosOperacionaisDaOrganizacao({ confirmNome: NOME_DA_ORG });
 
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe("db_error");
+    if (!r.ok) {
+      expect(r.error).toBe("db_error");
+      expect(r.partialCounts).toMatchObject({ messages: 7, conversations: 2 });
+    }
     // `contacts` vem depois de `crm_leads`: a parada precisa ser antes dele,
     // senão o teste não estaria exercitando parada nenhuma.
     expect(delecoes.map((d) => d.tabela)).not.toContain("contacts");

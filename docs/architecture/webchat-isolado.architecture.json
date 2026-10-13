@@ -150,6 +150,13 @@
       "col": 9,
       "type": "api",
       "label": "Export LGPD inclui webchat sem digests de sessão"
+    },
+    {
+      "id": "reset",
+      "lane": "app",
+      "col": 9,
+      "type": "api",
+      "label": "Zona de perigo: apaga mensagens, sessões e handoffs web antes da conversa; audita falha parcial"
     }
   ],
   "edges": [
@@ -221,6 +228,10 @@
     { "id": "e26", "from": "messages", "to": "canonical", "label": "Espelho só da conversa web própria" },
     { "id": "e27", "from": "canonical", "to": "agent", "label": "Despacha mensagem nova" },
     { "id": "e28", "from": "agent", "to": "agent-send", "label": "Resposta e ferramentas" },
-    { "id": "e29", "from": "agent-send", "to": "messages", "label": "Entrega na sessão web" }
+    { "id": "e29", "from": "agent-send", "to": "messages", "label": "Entrega na sessão web" },
+    { "id": "e30", "from": "operator", "to": "reset", "label": "Administrador confirma reset" },
+    { "id": "e31", "from": "reset", "to": "messages", "label": "Exclui primeiro as mensagens web" },
+    { "id": "e32", "from": "reset", "to": "handoff", "label": "Exclui sessões e depois handoffs" },
+    { "id": "e33", "from": "reset", "to": "audit", "label": "Registra conclusão ou etapa de falha" }
   ]
 }

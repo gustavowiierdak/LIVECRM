@@ -61,15 +61,20 @@ export function ZonaDePerigoDaOrganizacao({ displayName }: Props) {
         router.refresh();
         return;
       }
-      toast.error(t(ERRO_EM_PORTUGUES[resultado.error] ?? "Não consegui apagar os dados agora."));
+      const parcial = resultado.partialCounts;
+      const jaApagou = parcial && Object.values(parcial).some((quantidade) => quantidade > 0);
+      toast.error(
+        jaApagou
+          ? t(
+              "O apagamento parou após excluir parte dos dados. Confira o registro de auditoria antes de tentar novamente.",
+            )
+          : t(ERRO_EM_PORTUGUES[resultado.error] ?? "Não consegui apagar os dados agora."),
+      );
     });
   }
 
   return (
-    <Card
-      data-testid="zona-de-perigo"
-      className="max-w-2xl space-y-4 border-destructive/40 p-6"
-    >
+    <Card data-testid="zona-de-perigo" className="max-w-2xl space-y-4 border-destructive/40 p-6">
       <div>
         <h2 className="text-base font-semibold tracking-tight text-destructive">
           {t("Zona de perigo")}

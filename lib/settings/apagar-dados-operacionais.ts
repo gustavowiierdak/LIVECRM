@@ -13,12 +13,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * (cabeçalho da 0167) descreve como porta de adulteração.
  *
  * ── Por que a ORDEM é código e não estilo ────────────────────────────────────
- * Três FKs para `contacts` são ON DELETE RESTRICT (medido no baseline aplicado:
- * `messages.contact_id`, `conversations.contact_id`,
- * `calendar_appointments.contact_id`). Apagar `contacts` antes deles devolve
- * 23503 e o reset morre pela metade. O resto do grafo é CASCADE ou SET NULL, e
- * o Postgres cuida — por isso a lista abaixo é curta de propósito: ela é o
- * conjunto MÍNIMO de raízes, não a lista de tudo que some.
+ * O atendimento web mantém mensagens, sessões e handoffs próprios, com FKs
+ * RESTRICT para `conversations` e `contacts`. A sessão também restringe o
+ * handoff. Apagar a conversa antes dessas três tabelas devolve 23503 e deixa
+ * o reset pela metade. `messages`, `conversations` e
+ * `calendar_appointments` também restringem `contacts`.
  *
  * O que some junto, por CASCADE (não precisa estar na lista, e não deve):
  *   de `conversations` → agent_cases, conversation_notes,
@@ -42,6 +41,9 @@ interface Raiz {
 }
 
 export type TabelaOperacional =
+  | "webchat_messages"
+  | "webchat_visitor_sessions"
+  | "webchat_handoffs"
   | "messages"
   | "conversations"
   | "calendar_appointments"
@@ -55,10 +57,19 @@ export type TabelaOperacional =
   | "contacts";
 
 /**
- * A ordem é a do apagamento e é significativa: quem tem FK RESTRICT para
- * `contacts` precisa sair antes dele.
+ * A ordem é a do apagamento: mensagens web → sessões → handoffs → conversas
+ * → contatos. Cada filho com FK RESTRICT sai antes do pai.
  */
 export const RAIZES_DO_APAGAMENTO: readonly Raiz[] = [
+  {
+    tabela: "webchat_messages",
+    porque: "FK RESTRICT para conversations; depende de visitor_sessions",
+  },
+  {
+    tabela: "webchat_visitor_sessions",
+    porque: "FK RESTRICT para conversations, contacts e handoffs",
+  },
+  { tabela: "webchat_handoffs", porque: "FK RESTRICT para conversations e contacts" },
   { tabela: "messages", porque: "FK RESTRICT para contacts" },
   { tabela: "conversations", porque: "FK RESTRICT para contacts" },
   { tabela: "calendar_appointments", porque: "FK RESTRICT para contacts" },
@@ -77,10 +88,18 @@ export interface FalhaAoApagar {
 
 export type ResultadoDoApagamento =
   | { readonly ok: true; readonly counts: ContagensApagadas; readonly pdfsRemovidos: number }
-  | { readonly ok: false; readonly falha: FalhaAoApagar; readonly counts: ContagensApagadas; readonly pdfsRemovidos: number };
+  | {
+      readonly ok: false;
+      readonly falha: FalhaAoApagar;
+      readonly counts: ContagensApagadas;
+      readonly pdfsRemovidos: number;
+    };
 
 function contagensZeradas(): ContagensApagadas {
   return {
+    webchat_messages: 0,
+    webchat_visitor_sessions: 0,
+    webchat_handoffs: 0,
     messages: 0,
     conversations: 0,
     calendar_appointments: 0,
