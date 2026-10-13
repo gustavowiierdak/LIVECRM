@@ -26,10 +26,14 @@ interface Props {
 }
 
 function soDigitos(valor: string): string {
-  return valor.replace(/\D/g, "").slice(0, 11);
+  return valor.replace(/\D/g, "").slice(0, 14);
 }
 
-export function VinculoIxcDoContato({ contactId, readonly, initialLink }: Props) {
+export function VinculoIxcDoContato(props: Props) {
+  return <FormularioVinculoIxc key={props.contactId} {...props} />;
+}
+
+function FormularioVinculoIxc({ contactId, readonly, initialLink }: Props) {
   const t = useT();
   const [vinculoSalvo, setVinculoSalvo] = useState<{
     contactId: string;
@@ -38,29 +42,40 @@ export function VinculoIxcDoContato({ contactId, readonly, initialLink }: Props)
   const [aberto, setAberto] = useState(false);
   const [documento, setDocumento] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [opcoes, setOpcoes] = useState<{ id: string; nome: string }[]>([]);
   const vinculo = vinculoSalvo?.contactId === contactId ? vinculoSalvo.vinculo : initialLink;
 
   function fechar() {
     if (salvando) return;
     setAberto(false);
     setDocumento("");
+    setOpcoes([]);
   }
 
-  async function salvar() {
+  async function salvar(customerId?: string) {
     const cpf = soDigitos(documento);
-    if (cpf.length !== 11) return;
+    if (cpf.length !== 11 && cpf.length !== 14) return;
     setSalvando(true);
     try {
-      const resposta = await apiClient.post<{ data: VinculoIxcDoContato }>(
-        `/api/v1/contacts/${contactId}/ixc-link`,
-        { document: cpf },
-      );
+      const resposta = await apiClient.post<{
+        data:
+          | VinculoIxcDoContato
+          | { selection_required: true; clientes: { id: string; nome: string }[] };
+      }>(`/api/v1/contacts/${contactId}/ixc-link`, {
+        document: cpf,
+        ...(customerId ? { customer_id: customerId } : {}),
+      });
+      if ("selection_required" in resposta.data) {
+        setOpcoes(resposta.data.clientes);
+        return;
+      }
       setVinculoSalvo({ contactId, vinculo: resposta.data });
       setAberto(false);
       setDocumento("");
+      setOpcoes([]);
       toast.success(t("Cadastro do IXC vinculado ao contato."));
     } catch {
-      toast.error(t("Não foi possível vincular o cadastro. Confira o CPF e tente novamente."));
+      toast.error(t("Não foi possível vincular o cadastro. Confira o CPF/CNPJ e tente novamente."));
     } finally {
       setSalvando(false);
     }
@@ -68,17 +83,26 @@ export function VinculoIxcDoContato({ contactId, readonly, initialLink }: Props)
 
   return (
     <>
-      <div className="rounded-md border border-border bg-surface/40 p-2.5" data-testid="vinculo-ixc-contato">
+      <div
+        className="rounded-md border border-border bg-surface/40 p-2.5"
+        data-testid="vinculo-ixc-contato"
+      >
         <div className="flex items-start gap-2">
-          <IdentificationCard size={17} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+          <IdentificationCard
+            size={17}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-xs font-medium">
               {t("Cadastro IXC")}
-              {vinculo ? <CheckCircle size={13} weight="fill" className="text-success-fg" aria-hidden /> : null}
+              {vinculo ? (
+                <CheckCircle size={13} weight="fill" className="text-success-fg" aria-hidden />
+              ) : null}
             </div>
             {vinculo ? (
               <>
-                <div className="mt-1 wrap-anywhere text-xs font-medium">
+                <div className="mt-1 text-xs font-medium wrap-anywhere">
                   <span className="tabular-nums">{vinculo.customer_id}</span>
                   <span aria-hidden> · </span>
                   {vinculo.customer_name}
@@ -112,17 +136,24 @@ export function VinculoIxcDoContato({ contactId, readonly, initialLink }: Props)
       <Dialog open={aberto} onOpenChange={(open) => (open ? setAberto(true) : fechar())}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{vinculo ? t("Alterar cadastro do IXC") : t("Vincular cadastro do IXC")}</DialogTitle>
+            <DialogTitle>
+              {vinculo ? t("Alterar cadastro do IXC") : t("Vincular cadastro do IXC")}
+            </DialogTitle>
             <DialogDescription>
-              {t("Informe o CPF do titular. O cadastro encontrado no IXC ficará visível neste contato.")}
+              {t(
+                "Informe o CPF ou CNPJ do titular. Se houver vários cadastros, escolha o correto antes de vincular.",
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor={`ixc-document-${contactId}`}>{t("CPF do titular")}</Label>
+            <Label htmlFor={`ixc-document-${contactId}`}>{t("CPF/CNPJ do titular")}</Label>
             <Input
               id={`ixc-document-${contactId}`}
               value={documento}
-              onChange={(event) => setDocumento(soDigitos(event.target.value))}
+              onChange={(event) => {
+                setDocumento(soDigitos(event.target.value));
+                setOpcoes([]);
+              }}
               inputMode="numeric"
               autoComplete="off"
               placeholder="00000000000"
@@ -133,11 +164,34 @@ export function VinculoIxcDoContato({ contactId, readonly, initialLink }: Props)
               {t("A busca é exata e não altera o nome recebido pelo canal.")}
             </p>
           </div>
+          {opcoes.length > 0 ? (
+            <div className="space-y-2" aria-live="polite">
+              <p className="text-sm">{t("Selecione o cadastro correto:")}</p>
+              {opcoes.map((opcao) => (
+                <Button
+                  key={opcao.id}
+                  type="button"
+                  variant="outline"
+                  className="h-auto w-full justify-start text-left whitespace-normal"
+                  disabled={salvando}
+                  onClick={() => void salvar(opcao.id)}
+                >
+                  {opcao.id} · {opcao.nome}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={fechar} disabled={salvando}>
               {t("Cancelar")}
             </Button>
-            <Button type="button" onClick={() => void salvar()} disabled={soDigitos(documento).length !== 11 || salvando}>
+            <Button
+              type="button"
+              onClick={() => void salvar()}
+              disabled={
+                ![11, 14].includes(soDigitos(documento).length) || salvando || opcoes.length > 0
+              }
+            >
               {salvando ? t("Consultando…") : t("Consultar e vincular")}
             </Button>
           </DialogFooter>

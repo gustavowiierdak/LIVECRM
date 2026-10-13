@@ -25,6 +25,13 @@ const COMUNS = [
   "crm_request_human_handoff",
 ];
 
+const IDENTIFICACAO_PRIORITARIA =
+  " Antes de qualquer ação, aceite CPF ou CNPJ. Quando o IXC retornar vários cadastros, apresente ID/nome e pergunte qual é o correto; repita com customer_id. Quando houver vários contratos, pergunte o endereço e repita com contract_id. Nunca escolha o primeiro, misture faturas de contratos diferentes ou aplique o bloqueio de outro endereço. Se o cliente já informou esses dados, preserve a seleção nesta conversa.";
+const PAGAMENTO_PRIORITARIO =
+  " Se o cliente disser que já pagou e continua sem acesso, identifique o título exato e use crm_check_ixc_payment com o ID ERP da fatura. Comprovante ou ausência da fatura na Bemobi não confirma baixa. Se a ferramenta não confirmar, encaminhe a divergência ao financeiro com o resumo, sem prometer prazo. Se o título está recebido e o acesso segue bloqueado, verifique outros títulos/elegibilidade; nunca dê baixa manual. Ofereça desbloqueio de confiança apenas se elegível e use crm_request_ixc_trust_unlock somente após o sim explícito. Após a ação, confira se o acesso voltou; não conclua só pelo status ativo do contrato.";
+const SUPORTE_PRIORITARIO =
+  " Para diagnóstico técnico use crm_get_ixc_diagnostics no contrato escolhido. Considere as datas das medições: são os últimos registros do IXC, não prova ao vivo; não invente incidente regional. Não repita testes que já falharam. Persistindo sem conexão ou lentidão, consulte crm_list_ixc_service_orders. Se não existir O.S. aberta, confirme endereço, explique a necessidade, ofereça abrir ordem de serviço e aguarde o sim antes de crm_create_ixc_service_order, levando os testes e resultados em summary. Não prometa horário: a equipe confirma o agendamento. Em acompanhamento consulte novamente a O.S.; para reagendar/cancelar, envie à equipe o número e a preferência do cliente. Não encerre como resolvido enquanto a queixa continuar.";
+
 /** Só acrescenta ferramentas em rascunhos intactos do blueprint anterior. */
 const FERRAMENTAS_ANTERIORES: Record<string, readonly string[]> = {
   financeiro: [...COMUNS, "crm_list_bemobi_invoices"],
@@ -75,6 +82,8 @@ const BLUEPRINTS: Blueprint[] = [
       "crm_list_ixc_contracts",
       "crm_list_bemobi_invoices",
       "crm_send_bemobi_payment",
+      "crm_check_ixc_payment",
+      "crm_request_ixc_trust_unlock",
     ],
     intent: "financeiro",
     intentDescription:
@@ -103,6 +112,11 @@ const BLUEPRINTS: Blueprint[] = [
       "crm_send_bemobi_payment",
       "crm_describe_external_data",
       "crm_query_external_data",
+      "crm_get_ixc_diagnostics",
+      "crm_list_ixc_service_orders",
+      "crm_check_ixc_payment",
+      "crm_create_ixc_service_order",
+      "crm_watch_ixc_service_order",
     ],
     intent: "suporte_tecnico",
     intentDescription:
@@ -268,7 +282,16 @@ export async function provisionarEquipeProvedor(
         description: blueprint.description,
         priority: blueprint.priority,
         version: {
-          system_prompt: blueprint.prompt,
+          system_prompt:
+            blueprint.prompt +
+            IDENTIFICACAO_PRIORITARIA +
+            (["financeiro", "suporte_tecnico"].includes(blueprint.key)
+              ? PAGAMENTO_PRIORITARIO
+              : "") +
+            (blueprint.key === "suporte_tecnico"
+              ? SUPORTE_PRIORITARIO +
+                " Se a O.S. já existe, confirme qual corresponde à queixa e ative crm_watch_ixc_service_order. A criação também tenta ativar o acompanhamento: só prometa avisos quando acompanhamento_ativo=true. A finalização no IXC não prova que resolveu para o cliente. Após o aviso de finalização, aguarde e interprete a resposta: confirmação clara de que voltou permite despedir; agradecimento ou silêncio não. Se disser que continua ruim, retome diagnóstico e encaminhe com o histórico da O.S., sem repetir testes nem abrir outra ordem automaticamente."
+              : ""),
           provider,
           model: escolha.modelId,
           credential_id: null,

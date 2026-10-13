@@ -435,6 +435,12 @@ export async function encerrarChamadoPeloAgente(
        update agent_cases
           set status = $3, closed_at = now(), updated_at = now()
         where organization_id = $1 and id = $2 and status = any($6::text[])
+          and not exists (
+            select 1 from ixc_service_order_watches w
+            join conversations cv on cv.organization_id=w.organization_id and cv.id=w.conversation_id
+            where w.organization_id=$1 and w.conversation_id=agent_cases.conversation_id
+              and w.service_revision=cv.service_revision and w.state in ('active','awaiting_confirmation')
+          )
         returning id
      )
      insert into agent_case_events (organization_id, case_id, kind, actor_kind, body)

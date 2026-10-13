@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as IxcClientModule from "@/lib/ixc/client";
 
 const mocks = vi.hoisted(() => ({
   requireRole: vi.fn(),
@@ -17,13 +18,16 @@ vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: mocks.require
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: mocks.createAdminClient }));
 vi.mock("@/lib/ixc/integration", () => ({ carregarIntegracaoIxc: mocks.carregarIntegracaoIxc }));
-vi.mock("@/lib/ixc/client", () => ({
+vi.mock("@/lib/ixc/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof IxcClientModule>()),
   buscarClienteIxc: mocks.buscarClienteIxc,
-  IxcConnectionError: class IxcConnectionError extends Error {},
 }));
-vi.mock("@/lib/ixc/vinculo-do-contato", () => ({ vincularContatoAoIxc: mocks.vincularContatoAoIxc }));
+vi.mock("@/lib/ixc/vinculo-do-contato", () => ({
+  vincularContatoAoIxc: mocks.vincularContatoAoIxc,
+}));
 
 import { POST } from "./route";
+import { IxcClienteAmbiguoError } from "@/lib/ixc/client";
 
 const ORGANIZATION_ID = "22222222-2222-4222-8222-222222222222";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -88,15 +92,52 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/contacts/:id/ixc-link", () => {
+  it("aceita CNPJ sem truncar o documento", async () => {
+    const response = await POST(request("12.345.678/0001-99"), params());
+    expect(response.status).toBe(200);
+    expect(mocks.buscarClienteIxc).toHaveBeenCalledWith(
+      "https://ixc.test",
+      expect.any(String),
+      "12345678000199",
+      undefined,
+      undefined,
+    );
+  });
+  it("não vincula o primeiro cadastro quando o documento é duplicado", async () => {
+    mocks.buscarClienteIxc.mockRejectedValue(
+      new IxcClienteAmbiguoError([
+        { id: "1", razao: "Cliente A" },
+        { id: "2", razao: "Cliente B" },
+      ]),
+    );
+    const response = await POST(request(), params());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        selection_required: true,
+        clientes: [
+          { id: "1", nome: "Cliente A" },
+          { id: "2", nome: "Cliente B" },
+        ],
+      },
+    });
+    expect(mocks.vincularContatoAoIxc).not.toHaveBeenCalled();
+  });
   it("vincula a correspondência exata sob a organização e o usuário autenticados", async () => {
     const response = await POST(request(), params());
 
     expect(response.status).toBe(200);
     expect(mocks.carregarIntegracaoIxc).toHaveBeenCalledWith(
-      { admin: true }, ORGANIZATION_ID, "customers",
+      { admin: true },
+      ORGANIZATION_ID,
+      "customers",
     );
     expect(mocks.buscarClienteIxc).toHaveBeenCalledWith(
-      "https://ixc.test", "segredo-que-nao-sai-da-rota", "12345678909",
+      "https://ixc.test",
+      "segredo-que-nao-sai-da-rota",
+      "12345678909",
+      undefined,
+      undefined,
     );
     expect(mocks.vincularContatoAoIxc).toHaveBeenCalledWith(
       { admin: true },

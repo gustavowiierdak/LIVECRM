@@ -17,7 +17,7 @@ import {
 } from "@/lib/ixc/situacao-do-contrato";
 import { logger } from "@/lib/logger";
 
-import { confirmarDocumentoDoTurno } from "./documento-confirmado";
+import { confirmarDocumentoDoTurno, respostaCadastroAmbiguo } from "./documento-confirmado";
 
 import type { McpToolDefinition } from "../types";
 
@@ -30,7 +30,14 @@ const inputShape = {
     .trim()
     .min(11)
     .max(18)
-    .describe("CPF informado no atendimento e validado pelo cadastro ou pelo número da conversa."),
+    .describe("CPF ou CNPJ informado no atendimento e conferido no cadastro."),
+  customer_id: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional()
+    .describe(
+      "Cadastro escolhido pelo cliente quando houver mais de um para o documento. Nunca escolha o primeiro automaticamente.",
+    ),
 };
 
 function mensagemIntegracao(reason: string) {
@@ -47,6 +54,8 @@ function mensagemIntegracao(reason: string) {
 }
 
 function falhaIxc(error: unknown) {
+  const ambiguidade = respostaCadastroAmbiguo(error);
+  if (ambiguidade) return ambiguidade;
   return {
     erro: "ixc_indisponivel",
     mensagem:
@@ -229,7 +238,12 @@ export const crmGetIxcCustomer: McpToolDefinition<typeof inputShape> = {
   redigirParaAuditoria: () => ({ document: "[redigido]" }),
   motivoDoVazio,
   handler: async (input, ctx) => {
-    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
+    const confirmado = await confirmarDocumentoDoTurno(
+      ctx,
+      input.document,
+      "cadastro",
+      input.customer_id,
+    );
     if (!confirmado.ok) return confirmado.resposta;
     const integracao = await carregarIntegracaoIxc(ctx.supabase, ctx.organizationId, "customers");
     if (!integracao.ok)
@@ -239,6 +253,8 @@ export const crmGetIxcCustomer: McpToolDefinition<typeof inputShape> = {
         integracao.baseUrl,
         integracao.token,
         confirmado.document,
+        undefined,
+        confirmado.customerId,
       );
       if (!cliente) return { encontrado: false, cliente: null };
       return {
@@ -257,22 +273,38 @@ export const crmGetIxcCustomer: McpToolDefinition<typeof inputShape> = {
   },
 };
 
-export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
+const contratosInputShape = {
+  ...inputShape,
+  contract_id: z
+    .string()
+    .regex(/^\d{1,20}$/)
+    .optional()
+    .describe(
+      "Contrato/endereço escolhido pelo cliente. Obrigatório para concluir o diagnóstico quando houver vários contratos.",
+    ),
+};
+
+export const crmListIxcContracts: McpToolDefinition<typeof contratosInputShape> = {
   name: "crm_list_ixc_contracts",
   description:
     "Consulta os contratos e a situação de acesso do cliente atual no IXC após CPF confirmado. " +
     "Sempre use antes do diagnóstico técnico quando o cliente disser que está sem internet, " +
     "com acesso bloqueado ou suspenso. O campo bloqueio_financeiro já traduz o código do IXC: " +
-    "se for true em contrato ativo, a falta de acesso é financeira e não uma falha técnica. " +
+    "Quando houver vários contratos, pergunte o endereço e consulte novamente com contract_id. Nunca aplique o bloqueio de um contrato aos demais. " +
     "Não informe valores nem gere cobranças por esta ferramenta; faturas e meios de pagamento vêm da Bemobi.",
-  inputSchema: inputShape,
+  inputSchema: contratosInputShape,
   category: "read",
   requiresRole: "agent",
   requiresScope: "mcp:read",
   redigirParaAuditoria: () => ({ document: "[redigido]" }),
   motivoDoVazio,
   handler: async (input, ctx) => {
-    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
+    const confirmado = await confirmarDocumentoDoTurno(
+      ctx,
+      input.document,
+      "cadastro",
+      input.customer_id,
+    );
     if (!confirmado.ok) return confirmado.resposta;
     const integracao = await carregarIntegracaoIxc(ctx.supabase, ctx.organizationId, "customers");
     if (!integracao.ok)
@@ -285,28 +317,56 @@ export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
         integracao.baseUrl,
         integracao.token,
         confirmado.document,
+        undefined,
+        confirmado.customerId,
       );
       if (!cliente) return { encontrado: false, total: 0, contratos: [] };
       const encontrados = await listarContratosIxc(contratos.baseUrl, contratos.token, cliente.id);
+      if (input.contract_id && !encontrados.some((contrato) => contrato.id === input.contract_id)) {
+        return {
+          erro: "contrato_fora_do_cliente",
+          mensagem: "Escolha um contrato retornado para o cadastro confirmado.",
+        };
+      }
       const classificados = encontrados.map((contrato) => ({
         contrato,
         acesso: situacaoDoContratoIxc(contrato),
         desbloqueio: elegibilidadeDesbloqueioConfiancaIxc(contrato),
       }));
       const bloqueadosFinanceiro = classificados.filter(({ acesso }) => acesso.bloqueioFinanceiro);
+      const escolhido = input.contract_id
+        ? classificados.find(({ contrato }) => contrato.id === input.contract_id)
+        : classificados.length === 1
+          ? classificados[0]
+          : undefined;
       return {
         encontrado: true,
         cliente_id: cliente.id,
         total: encontrados.length,
-        bloqueio_financeiro: bloqueadosFinanceiro.length > 0,
+        contrato_selecionado: escolhido?.contrato.id ?? null,
+        precisa_selecionar_contrato: !escolhido && encontrados.length > 1,
+        bloqueio_financeiro:
+          !escolhido || escolhido.acesso.situacao === "desconhecido"
+            ? null
+            : escolhido.acesso.bloqueioFinanceiro,
         contratos_bloqueados_financeiro: bloqueadosFinanceiro.length,
-        diagnostico:
-          bloqueadosFinanceiro.length > 0
-            ? "bloqueio_financeiro_confirmado"
-            : "sem_bloqueio_financeiro_no_ixc",
+        diagnostico: !escolhido
+          ? "contrato_nao_selecionado"
+          : escolhido.acesso.situacao === "desconhecido"
+            ? "situacao_desconhecida"
+            : escolhido.acesso.bloqueioFinanceiro
+              ? "bloqueio_financeiro_confirmado"
+              : "sem_bloqueio_financeiro_no_ixc",
         contratos: classificados.map(({ contrato, acesso, desbloqueio }) => ({
           id: contrato.id,
           descricao: contrato.contrato ?? null,
+          endereco:
+            (contrato.endereco_padrao_cliente === "S"
+              ? [cliente.endereco, cliente.numero, cliente.bairro, cliente.complemento]
+              : [contrato.endereco, contrato.numero, contrato.bairro, contrato.complemento]
+            )
+              .filter(Boolean)
+              .join(", ") || null,
           status: contrato.status ?? null,
           status_internet: contrato.status_internet ?? null,
           situacao_acesso: acesso.situacao,
@@ -315,10 +375,13 @@ export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
           contrato_suspenso: contrato.contrato_suspenso ?? null,
           desbloqueio_confianca: desbloqueio,
         })),
-        aviso:
-          bloqueadosFinanceiro.length > 0
-            ? "O IXC confirmou bloqueio financeiro em contrato ativo e essa é a causa da falta de acesso. Não conduza testes técnicos. Confira desbloqueio_confianca.disponivel_para_solicitar: se true, ofereça o desbloqueio e aguarde um sim explícito; depois use crm_request_ixc_trust_unlock. Em seguida consulte a Bemobi e envie a fatura vencida."
-            : "Resultado interno: prossiga diretamente com o diagnóstico técnico. Não mencione ao cliente a ausência de bloqueio financeiro nem a consulta financeira realizada.",
+        aviso: !escolhido
+          ? "Peça ao cliente para escolher o contrato/endereço e consulte novamente com contract_id antes de diagnosticar, desbloquear ou abrir uma O.S."
+          : escolhido.acesso.situacao === "desconhecido"
+            ? "O IXC não informou uma situação de acesso reconhecida. Não afirme ausência de bloqueio; continue a apuração ou peça ajuda humana."
+            : escolhido.acesso.bloqueioFinanceiro
+              ? "O IXC confirmou bloqueio financeiro em contrato ativo e essa é a causa da falta de acesso. Não conduza testes técnicos. Confira desbloqueio_confianca.disponivel_para_solicitar: se true, ofereça o desbloqueio e aguarde um sim explícito; depois use crm_request_ixc_trust_unlock. Em seguida consulte a Bemobi e envie a fatura vencida."
+              : "Resultado interno: prossiga diretamente com o diagnóstico técnico. Não mencione ao cliente a ausência de bloqueio financeiro nem a consulta financeira realizada.",
       };
     } catch (error) {
       return falhaIxc(error);
@@ -329,6 +392,7 @@ export const crmListIxcContracts: McpToolDefinition<typeof inputShape> = {
 const desbloquearInputShape = {
   conversation_id: z.string().uuid().describe("A conversa deste turno."),
   document: inputShape.document,
+  customer_id: inputShape.customer_id,
   contract_id: z
     .string()
     .regex(/^\d{1,20}$/)
@@ -371,6 +435,12 @@ export const crmRequestIxcTrustUnlock: McpToolDefinition<typeof desbloquearInput
     return typeof erro === "string" ? erro : null;
   },
   handler: async (input, ctx) => {
+    if (ctx.conversationIdDoTurno && input.conversation_id !== ctx.conversationIdDoTurno) {
+      return {
+        erro: "conversa_fora_do_turno",
+        mensagem: "O desbloqueio deve usar a conversa que recebeu esta autorização.",
+      };
+    }
     const { data: conversa } = await ctx.supabase
       .from("conversations")
       .select("contact_id")
@@ -384,7 +454,12 @@ export const crmRequestIxcTrustUnlock: McpToolDefinition<typeof desbloquearInput
       };
     }
 
-    const confirmado = await confirmarDocumentoDoTurno(ctx, input.document);
+    const confirmado = await confirmarDocumentoDoTurno(
+      ctx,
+      input.document,
+      "cadastro",
+      input.customer_id,
+    );
     if (!confirmado.ok) return confirmado.resposta;
     const clientes = await carregarIntegracaoIxc(ctx.supabase, ctx.organizationId, "customers");
     if (!clientes.ok) {
@@ -397,7 +472,13 @@ export const crmRequestIxcTrustUnlock: McpToolDefinition<typeof desbloquearInput
 
     let contratoEscolhido;
     try {
-      const cliente = await buscarClienteIxc(clientes.baseUrl, clientes.token, confirmado.document);
+      const cliente = await buscarClienteIxc(
+        clientes.baseUrl,
+        clientes.token,
+        confirmado.document,
+        undefined,
+        confirmado.customerId,
+      );
       if (!cliente) {
         return { erro: "cliente_nao_encontrado", mensagem: "o cliente não foi encontrado no IXC." };
       }
@@ -527,10 +608,10 @@ export const crmRequestIxcTrustUnlock: McpToolDefinition<typeof desbloquearInput
         action: "ixc.trust_unlock_executed",
         organizationId: ctx.organizationId,
         resourceType: "ixc_contract",
-        resourceId: input.contract_id,
         requestId: ctx.requestId,
         ...ator,
         metadata: {
+          contract_id: input.contract_id,
           conversation_id: input.conversation_id,
           actor_type: ctx.actor.type,
           consent_verified_from_latest_inbound: true,

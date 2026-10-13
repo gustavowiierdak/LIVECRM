@@ -30,6 +30,13 @@ import { crmGetPipelineForecast, crmListPipelines } from "./pipelines";
 import { crmSendWhatsappMessage } from "./messages";
 import { crmListBemobiInvoices, crmSendBemobiPayment } from "./bemobi";
 import { crmGetIxcCustomer, crmListIxcContracts, crmRequestIxcTrustUnlock } from "./ixc";
+import {
+  crmGetIxcDiagnostics,
+  crmListIxcServiceOrders,
+  crmCheckIxcPayment,
+  crmCreateIxcServiceOrder,
+  crmWatchIxcServiceOrder,
+} from "./ixc-suporte";
 import { crmStartConversationAndSend } from "./start-conversation";
 import { crmAssignConversation, crmManageTags, crmGetQueueStatus } from "./governance";
 import {
@@ -110,6 +117,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListBemobiInvoices,
   crmGetIxcCustomer,
   crmListIxcContracts,
+  crmGetIxcDiagnostics,
+  crmListIxcServiceOrders,
+  crmCheckIxcPayment,
   crmGetQueueStatus,
   crmListLeads,
   crmGetLead,
@@ -159,6 +169,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSendWhatsappMessage,
   crmSendBemobiPayment,
   crmRequestIxcTrustUnlock,
+  crmCreateIxcServiceOrder,
+  crmWatchIxcServiceOrder,
   crmStartConversationAndSend,
   crmCreateConversationDraft,
   crmAssignConversation,

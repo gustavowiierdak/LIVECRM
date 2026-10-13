@@ -46,6 +46,8 @@ export type DonoDoCampo =
   | "alvo_de_tag"
   /** `lead_id`: quem guarda é `negocioDaEscritaDoTurno`, em `tools.ts`. */
   | "negocio"
+  /** Identificador externo: o handler confere documento do turno e cadeia cliente/contrato. */
+  | "externo_no_handler"
   /** Não é registro de cliente: funil, etapa, usuário, fluxo. */
   | "configuracao";
 
@@ -65,10 +67,24 @@ export const ESCOPO_DAS_ESCRITAS: Readonly<Record<string, Readonly<Record<string
     crm_assign_conversation: { conversation_id: "conversa", to_user_id: "configuracao" },
     crm_manage_tags: { target_id: "alvo_de_tag" },
     crm_send_whatsapp_message: { conversation_id: "conversa" },
-    crm_send_bemobi_payment: { conversation_id: "conversa", invoice_id: "configuracao" },
+    crm_send_bemobi_payment: {
+      conversation_id: "conversa",
+      invoice_id: "externo_no_handler",
+      contract_id: "externo_no_handler",
+    },
     crm_request_ixc_trust_unlock: {
       conversation_id: "conversa",
-      contract_id: "configuracao",
+      contract_id: "externo_no_handler",
+      customer_id: "externo_no_handler",
+    },
+    crm_create_ixc_service_order: {
+      customer_id: "externo_no_handler",
+      contract_id: "externo_no_handler",
+    },
+    crm_watch_ixc_service_order: {
+      customer_id: "externo_no_handler",
+      contract_id: "externo_no_handler",
+      order_id: "externo_no_handler",
     },
     crm_request_human_handoff: { conversation_id: "conversa", target_user_id: "configuracao" },
     crm_resume_ai_attendance: { conversation_id: "conversa" },
@@ -154,6 +170,7 @@ async function campoEhDoContato(
   switch (dono) {
     case "negocio":
     case "configuracao":
+    case "externo_no_handler":
       return true;
     case "contato":
       return id.toLowerCase() === contato.toLowerCase();

@@ -46,6 +46,38 @@ describe("consultas IXC para o agente", () => {
     vi.mocked(carregarIntegracaoIxc).mockResolvedValue(INTEGRACAO);
   });
 
+  it("não aplica bloqueio de um endereço ao outro e exige seleção", async () => {
+    vi.mocked(buscarClienteIxc).mockResolvedValue({ id: "42" });
+    vi.mocked(listarContratosIxc).mockResolvedValue([
+      { id: "7", id_cliente: "42", status: "A", status_internet: "CA", endereco: "Rua A" },
+      { id: "8", id_cliente: "42", status: "A", status_internet: "A", endereco: "Rua B" },
+    ]);
+    const { ctx } = contexto();
+    expect(await crmListIxcContracts.handler({ document: CPF }, ctx)).toMatchObject({
+      precisa_selecionar_contrato: true,
+      bloqueio_financeiro: null,
+    });
+    expect(
+      await crmListIxcContracts.handler({ document: CPF, contract_id: "8" }, ctx),
+    ).toMatchObject({
+      contrato_selecionado: "8",
+      bloqueio_financeiro: false,
+      precisa_selecionar_contrato: false,
+    });
+    expect(
+      await crmListIxcContracts.handler({ document: CPF, contract_id: "9" }, ctx),
+    ).toMatchObject({ erro: "contrato_fora_do_cliente" });
+  });
+
+  it("status ausente não é ausência de bloqueio", async () => {
+    vi.mocked(buscarClienteIxc).mockResolvedValue({ id: "42" });
+    vi.mocked(listarContratosIxc).mockResolvedValue([{ id: "7", id_cliente: "42" }]);
+    expect(await crmListIxcContracts.handler({ document: CPF }, contexto().ctx)).toMatchObject({
+      bloqueio_financeiro: null,
+      diagnostico: "situacao_desconhecida",
+    });
+  });
+
   it("recusa chamada externa sem contato do turno, antes de acessar integração", async () => {
     const { ctx } = contexto(hashCpf(CPF), null);
     await expect(crmGetIxcCustomer.handler({ document: CPF }, ctx)).resolves.toMatchObject({

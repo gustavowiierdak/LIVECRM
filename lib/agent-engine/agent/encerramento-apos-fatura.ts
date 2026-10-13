@@ -124,6 +124,12 @@ export async function encerrarConversaAposFatura(
                    and nova_entrada.sent_at < $4
               )
               and not exists (
+                select 1 from ixc_service_order_watches os
+                 where os.organization_id = $1 and os.conversation_id = $2
+                   and os.service_revision = (select service_revision from conversations where id=$2 and organization_id=$1)
+                   and os.state in ('active','awaiting_confirmation')
+              )
+              and not exists (
                 select 1 from agent_cases ac
                  where ac.organization_id = $1
                    and ac.conversation_id = $2

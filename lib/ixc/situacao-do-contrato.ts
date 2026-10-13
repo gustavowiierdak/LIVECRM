@@ -33,7 +33,7 @@ function codigo(valor: string | null | undefined): string {
 /**
  * Traduz os códigos operacionais do IXC antes que cheguem ao modelo.
  *
- * `CA` é o status de acesso "Financeiro em atraso" do contrato. O contrato
+ * `CA` é bloqueio automático; `FA` é financeiro em atraso no IXC. O contrato
  * precisa continuar ativo: um código antigo num contrato já encerrado não pode
  * virar um diagnóstico atual para o assinante.
  */
@@ -44,10 +44,14 @@ export function situacaoDoContratoIxc(
   const acesso = codigo(contrato.status_internet);
   const suspenso = codigo(contrato.contrato_suspenso);
 
+  if (!status) return { situacao: "desconhecido", bloqueioFinanceiro: false };
   if (status !== "A") {
-    return { situacao: "contrato_inativo", bloqueioFinanceiro: false };
+    return {
+      situacao: ["P", "I", "N", "D"].includes(status) ? "contrato_inativo" : "desconhecido",
+      bloqueioFinanceiro: false,
+    };
   }
-  if (acesso === "CA") {
+  if (acesso === "CA" || acesso === "FA") {
     return { situacao: "bloqueado_financeiro", bloqueioFinanceiro: true };
   }
   if (suspenso === "S") {

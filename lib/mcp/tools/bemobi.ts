@@ -90,13 +90,22 @@ const listarInputShape = {
     .trim()
     .min(11)
     .max(18)
-    .describe("CPF informado pelo próprio cliente para confirmar a identidade financeira."),
+    .describe("CPF ou CNPJ informado pelo próprio cliente para confirmar a identidade financeira."),
+  contract_id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe(
+      "Contrato/endereço escolhido pelo cliente no IXC. Quando informado, só lista faturas deste contrato.",
+    ),
 };
 
 export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> = {
   name: "crm_list_bemobi_invoices",
   description:
-    "Consulta as faturas do cliente atual na Bemobi. Use somente depois que o cliente informar o CPF. " +
+    "Consulta as faturas do cliente atual na Bemobi. Aceita CPF ou CNPJ. Se o contrato foi escolhido no suporte, informe contract_id para não misturar endereços. " +
     "O CPF deve estar vinculado ao contato ou ser encontrado no IXC neste turno; nunca tente o documento de outra pessoa.",
   inputSchema: listarInputShape,
   category: "read",
@@ -118,7 +127,10 @@ export const crmListBemobiInvoices: McpToolDefinition<typeof listarInputShape> =
       return { erro: integracao.reason, mensagem: mensagemIntegracao(integracao.reason) };
     }
     try {
-      const faturas = await listarFaturasBemobi(integracao.apiKey, confirmado.document);
+      const encontradas = await listarFaturasBemobi(integracao.apiKey, confirmado.document);
+      const faturas = input.contract_id
+        ? encontradas.filter((fatura) => String(fatura.erpContractId ?? "") === input.contract_id)
+        : encontradas;
       return {
         total: faturas.length,
         faturas: faturas.map((fatura) => ({
@@ -151,7 +163,8 @@ const enviarInputShape = {
     .trim()
     .min(11)
     .max(18)
-    .describe("O mesmo CPF confirmado usado para listar as faturas deste cliente."),
+    .describe("O mesmo CPF ou CNPJ confirmado usado para listar as faturas deste cliente."),
+  contract_id: listarInputShape.contract_id,
   invoice_id: z
     .string()
     .trim()
@@ -291,6 +304,13 @@ export const crmSendBemobiPayment: McpToolDefinition<typeof enviarInputShape> = 
       return {
         erro: "fatura_fora_do_contato",
         mensagem: "a fatura escolhida não pertence ao CPF confirmado deste cliente.",
+      };
+    }
+    if (input.contract_id && String(faturaDoContato.erpContractId ?? "") !== input.contract_id) {
+      return {
+        erro: "fatura_fora_do_contrato",
+        mensagem:
+          "A fatura não foi confirmada para o contrato/endereço escolhido. Confira a seleção antes de enviar.",
       };
     }
 

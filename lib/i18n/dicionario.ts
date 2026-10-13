@@ -19584,6 +19584,20 @@ export const DICIONARIO: Traducoes = {
     es: "Ventana cancelada. Lo que ya pausó sigue pausado.",
   },
   "Não foi possível cancelar a janela.": { es: "No se pudo cancelar la ventana." },
+  "Destino das ordens de serviço": { es: "Destino de las órdenes de servicio" },
+  "Informe os nomes exatos cadastrados no IXC. O sistema confere os identificadores antes de abrir a O.S. O agendamento fica com a equipe. Salve na opção Salvar conexão.": { es: "Indique los nombres exactos registrados en IXC. El sistema verifica los identificadores antes de abrir la orden. El equipo confirma la cita. Guarde con la opción Guardar conexión." },
+  "Não foi possível vincular o cadastro. Confira o CPF/CNPJ e tente novamente.": { es: "No se pudo vincular el registro. Revise el CPF/CNPJ e inténtelo de nuevo." },
+  "Informe o CPF ou CNPJ do titular. Se houver vários cadastros, escolha o correto antes de vincular.": { es: "Indique el CPF o CNPJ del titular. Si hay varios registros, elija el correcto antes de vincularlo." },
+  "CPF/CNPJ do titular": { es: "CPF/CNPJ del titular" },
+  "Selecione o cadastro correto:": { es: "Seleccione el registro correcto:" },
+  "Assunto para falta de conexão": { es: "Asunto para falta de conexión" },
+  "Assunto para lentidão": { es: "Asunto para lentitud" },
+  "Setor responsável": { es: "Departamento responsable" },
+  "Criar ordens de serviço": { es: "Crear órdenes de servicio" },
+  "Autoriza abrir O.S. nos assuntos e setor definidos abaixo": { es: "Autoriza abrir órdenes con los asuntos y el departamento definidos abajo" },
+  "Acompanhar e avisar sobre O.S.": { es: "Seguir y notificar órdenes de servicio" },
+  "Consulta a cada 5 minutos: avisa agendamento, mudança de horário e finalização; só encerra após o cliente confirmar a solução. Falhas ficam na central da equipe.": { es: "Consulta cada 5 minutos: avisa citas, cambios de horario y finalización; solo cierra cuando el cliente confirma la solución. Los fallos quedan en la central del equipo." },
+  "Consulta de conexão e medições de sinal registradas no IXC": { es: "Consulta de conexión y mediciones de señal registradas en IXC" },
 };
 
 /**

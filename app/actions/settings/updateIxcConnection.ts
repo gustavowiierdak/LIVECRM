@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { recursosIxcSchema } from "@/lib/ixc/configuracao";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
@@ -17,12 +18,7 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptWebhookSecret, encryptWebhookSecret } from "@/lib/webhooks/secrets";
 
-const recursosSchema = z.object({
-  customers: z.boolean(),
-  contracts: z.boolean(),
-  receivables: z.boolean(),
-  service_orders: z.boolean(),
-});
+const recursosSchema = recursosIxcSchema;
 
 const entradaSchema = z.object({
   base_url: z.string().trim().min(1).max(500),
@@ -46,13 +42,13 @@ export type IxcActionError =
   | IxcErrorCode;
 
 export type IxcActionResult =
-  | { ok: true; total?: number | null }
-  | { ok: false; error: IxcActionError; message?: string };
+  { ok: true; total?: number | null } | { ok: false; error: IxcActionError; message?: string };
 
 async function contextoAdministrativo(exigirMfa: boolean) {
   const user = await loadAuthUser();
   if (!user) return { ok: false as const, error: "unauthenticated" as const };
-  if (supportWriteError(user.support)) return { ok: false as const, error: "forbidden_role" as const };
+  if (supportWriteError(user.support))
+    return { ok: false as const, error: "forbidden_role" as const };
   const org = await resolveActiveOrg(user);
   if (!org) return { ok: false as const, error: "forbidden_tenant" as const };
   if (!podeAdministrarEmpresa(user, org)) {

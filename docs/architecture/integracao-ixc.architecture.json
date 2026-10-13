@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Integração segura com IXC",
-    "subtitle": "Configuração por empresa, confirmação exata do CPF e vínculo visível entre contato e cadastro IXC",
+    "subtitle": "CPF/CNPJ, seleção de cadastro e contrato, diagnóstico técnico, baixa e O.S. com consentimento",
     "output": "integracao-ixc.html",
     "quality_profile": "standard"
   },
@@ -15,6 +15,9 @@
   ],
   "mainPath": ["settings", "action", "vault", "client", "ixc", "status"],
   "nodes": [
+    { "id": "monitor", "lane": "app", "label": "Cron de O.S.: origem imutável, permissão, CAS e recibo antes do aviso" },
+    { "id": "watch", "lane": "db", "label": "ixc_service_order_watches: snapshot, revisão do atendimento e pendência visível" },
+    { "id": "confirmacao", "lane": "humano", "label": "Cliente confirma que voltou; silêncio/agradecimento não encerram" },
     { "id": "settings", "lane": "humano", "label": "Dados e acesso › IXC: URL, token e grupos" },
     { "id": "action", "lane": "app", "label": "Server Action: admin, MFA, tenant e auditoria" },
     { "id": "vault", "lane": "db", "label": "erp_integrations: segredo cifrado e deny-all" },
@@ -69,9 +72,43 @@
       "id": "agente",
       "lane": "humano",
       "label": "Rascunhos Financeiro, Suporte e Relacionamento; publicação manual"
+    },
+    {
+      "id": "selecao",
+      "lane": "humano",
+      "label": "Cliente escolhe cadastro/contrato; atendente pode corrigir vínculo"
+    },
+    {
+      "id": "diagnostico",
+      "lane": "externo",
+      "label": "RADIUS, últimas medições de ONU e baixa de título; campos mínimos"
+    },
+    {
+      "id": "os",
+      "lane": "externo",
+      "label": "O.S.: consulta antes de criar, assunto/setor configurados, sem prometer agenda"
+    },
+    {
+      "id": "revisao",
+      "lane": "humano",
+      "label": "agent_inbox_items: confirmar agendamento ou revisar resultado incerto"
     }
   ],
   "edges": [
+    { "id": "os-1", "from": "os", "to": "watch", "label": "Criação ou seleção explícita da O.S. desta queixa" },
+    { "id": "os-2", "from": "watch", "to": "monitor", "label": "Próxima consulta reservada; nunca reabre atendimento" },
+    { "id": "os-3", "from": "monitor", "to": "os", "label": "Estado e agenda reais por ID e contrato" },
+    { "id": "os-4", "from": "monitor", "to": "confirmacao", "label": "Canal canônico; aviso de finalização pergunta se resolveu" },
+    { "id": "os-5", "from": "monitor", "to": "revisao", "label": "Pausa humana, falha ou entrega incerta têm dono na central" },
+    { "id": "os-6", "from": "confirmacao", "to": "watch", "label": "Confirmação + resposta entregue resolvem; demais respostas mantêm pendência" },
+    { "id": "os-7", "from": "settings", "to": "monitor", "label": "Administrador pode pausar avisos a qualquer momento" },
+    { "id": "p1-1", "from": "identidade", "to": "selecao", "label": "Duplicidade exige escolha" },
+    { "id": "p1-2", "from": "selecao", "to": "tools", "label": "Escopo do cadastro e endereço escolhido" },
+    { "id": "p1-3", "from": "tools", "to": "diagnostico", "label": "Consulta por contrato/título, sem credenciais no retorno" },
+    { "id": "p1-4", "from": "diagnostico", "to": "agente", "label": "Próximo passo baseado em evidência; desconhecido não é sucesso" },
+    { "id": "p1-5", "from": "consentimento", "to": "os", "label": "Confirmação real + reserva idempotente antes de criar" },
+    { "id": "p1-6", "from": "os", "to": "revisao", "label": "Número da O.S. para agenda; resultado incerto para revisão" },
+    { "id": "p1-7", "from": "revisao", "to": "agente", "label": "Pessoa confirma agenda/resolve e pode devolver ao automático" },
     { "id": "e1", "from": "settings", "to": "action", "label": "Salvar ou testar" },
     { "id": "e2", "from": "action", "to": "vault", "label": "Cifrar e persistir por organização" },
     { "id": "e3", "from": "vault", "to": "client", "label": "Decifrar somente no servidor" },

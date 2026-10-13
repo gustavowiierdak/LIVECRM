@@ -6,6 +6,7 @@ import type { LookupFunction } from "node:net";
 
 import ipaddr from "ipaddr.js";
 import { z } from "zod";
+import { documentoIxcValido, formatarDocumentoIxc, normalizarDocumentoIxc } from "./documento";
 
 const IXC_TIMEOUT_MS = 10_000;
 const IXC_RESPONSE_LIMIT = 256 * 1024;
@@ -216,12 +217,17 @@ const clienteIxcSchema = z
     ativo: z.string().nullish(),
     telefone_celular: z.string().nullish(),
     whatsapp: z.string().nullish(),
+    endereco: z.string().nullish(),
+    numero: z.string().nullish(),
+    bairro: z.string().nullish(),
+    complemento: z.string().nullish(),
   })
   .passthrough();
 const contratoIxcSchema = z
   .object({
     id: identificadorIxc,
     id_cliente: identificadorIxc,
+    id_filial: identificadorIxc.nullish(),
     contrato: z.string().nullish(),
     status: z.string().nullish(),
     status_internet: z.string().nullish(),
@@ -231,12 +237,26 @@ const contratoIxcSchema = z
     desbloqueio_confianca_ativo: z.string().nullish(),
     restricao_auto_desbloqueio: z.string().nullish(),
     dt_ult_des_bloq_conf: z.string().nullish(),
+    endereco: z.string().nullish(),
+    numero: z.string().nullish(),
+    bairro: z.string().nullish(),
+    complemento: z.string().nullish(),
+    endereco_padrao_cliente: z.string().nullish(),
   })
   .passthrough();
 
 export type IxcCustomer = Pick<
   z.infer<typeof clienteIxcSchema>,
-  "id" | "razao" | "fantasia" | "ativo" | "telefone_celular" | "whatsapp"
+  | "id"
+  | "razao"
+  | "fantasia"
+  | "ativo"
+  | "telefone_celular"
+  | "whatsapp"
+  | "endereco"
+  | "numero"
+  | "bairro"
+  | "complemento"
 >;
 export type IxcContract = z.infer<typeof contratoIxcSchema>;
 
@@ -244,13 +264,27 @@ function somenteDigitos(valor: string): string {
   return valor.replace(/\D/g, "");
 }
 
-async function consultarRegistrosIxc(
+export async function consultarRegistrosIxc(
   baseUrl: string,
   token: string,
-  entidade: "cliente" | "cliente_contrato",
-  campo: "cnpj_cpf" | "id_cliente",
+  entidade:
+    | "cliente"
+    | "cliente_contrato"
+    | "radusuarios"
+    | "radpop_radio_cliente_fibra"
+    | "fn_areceber"
+    | "su_oss_chamado"
+    | "su_oss_assunto"
+    | "empresa_setor",
+  campo: "cnpj_cpf" | "id_cliente" | "id_contrato" | "id_contrato_kit" | "id" | "assunto" | "setor",
   query: string,
-  transportar: (input: IxcTransportInput) => Promise<string>,
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
 ): Promise<unknown[]> {
   const origem = normalizarBaseIxc(baseUrl);
   const url = new URL(`/webservice/v1/${entidade}`, origem);
@@ -317,8 +351,17 @@ async function consultarRegistrosIxc(
   }
 }
 
-/** A resposta do IXC só é aceita quando o CPF devolvido coincide com o confirmado. */
-export async function buscarClienteIxc(
+export class IxcClienteAmbiguoError extends Error {
+  constructor(public readonly clientes: IxcCustomer[]) {
+    super(
+      "Há mais de um cadastro para este documento. Peça ao cliente para escolher o cadastro correto.",
+    );
+    this.name = "IxcClienteAmbiguoError";
+  }
+}
+
+/** Consulta ambas as máscaras e nunca escolhe silenciosamente o primeiro cadastro. */
+export async function buscarClientesIxc(
   baseUrl: string,
   token: string,
   cpf: string,
@@ -329,14 +372,12 @@ export async function buscarClienteIxc(
     signal,
     ixcsoft,
   }) => postar(url, token, body, signal, ixcsoft),
-): Promise<IxcCustomer | null> {
-  const documento = somenteDigitos(cpf);
-  if (documento.length !== 11)
-    throw new IxcConnectionError("unexpected_response", "Informe um CPF confirmado.");
-  const consultas = [
-    documento,
-    `${documento.slice(0, 3)}.${documento.slice(3, 6)}.${documento.slice(6, 9)}-${documento.slice(9)}`,
-  ];
+): Promise<IxcCustomer[]> {
+  const documento = normalizarDocumentoIxc(cpf);
+  if (!documentoIxcValido(documento))
+    throw new IxcConnectionError("unexpected_response", "Informe um CPF ou CNPJ confirmado.");
+  const consultas = [documento, formatarDocumentoIxc(documento)];
+  const clientes = new Map<string, IxcCustomer>();
   for (const query of consultas) {
     const registros = await consultarRegistrosIxc(
       baseUrl,
@@ -351,18 +392,39 @@ export async function buscarClienteIxc(
       if (!parsed.success)
         throw new IxcConnectionError("unexpected_response", "O IXC retornou um cliente inválido.");
       if (somenteDigitos(parsed.data.cnpj_cpf) === documento) {
-        return {
+        clientes.set(parsed.data.id, {
           id: parsed.data.id,
           razao: parsed.data.razao,
           fantasia: parsed.data.fantasia,
           ativo: parsed.data.ativo,
           telefone_celular: parsed.data.telefone_celular,
           whatsapp: parsed.data.whatsapp,
-        };
+          ...(parsed.data.endereco
+            ? {
+                endereco: parsed.data.endereco,
+                numero: parsed.data.numero,
+                bairro: parsed.data.bairro,
+                complemento: parsed.data.complemento,
+              }
+            : {}),
+        });
       }
     }
   }
-  return null;
+  return [...clientes.values()];
+}
+
+export async function buscarClienteIxc(
+  baseUrl: string,
+  token: string,
+  documento: string,
+  transportar?: (input: IxcTransportInput) => Promise<string>,
+  clienteId?: string,
+): Promise<IxcCustomer | null> {
+  const clientes = await buscarClientesIxc(baseUrl, token, documento, transportar);
+  if (clienteId) return clientes.find((cliente) => cliente.id === clienteId) ?? null;
+  if (clientes.length > 1) throw new IxcClienteAmbiguoError(clientes);
+  return clientes[0] ?? null;
 }
 
 export async function listarContratosIxc(
@@ -399,6 +461,78 @@ export async function listarContratosIxc(
 
 export type IxcTrustUnlockResult =
   { ok: true; message: string | null } | { ok: false; message: string };
+
+/** Inserção documentada em formulario.php?form=su_oss_chamado; sem marcar agenda. */
+export async function criarOrdemIxc(
+  baseUrl: string,
+  token: string,
+  input: {
+    clienteId: string;
+    contratoId: string;
+    filialId: string;
+    assuntoId: string;
+    setorId: string;
+    resumo: string;
+  },
+  transportar: (input: IxcTransportInput) => Promise<string> = ({
+    url,
+    token,
+    body,
+    signal,
+    ixcsoft,
+  }) => postar(url, token, body, signal, ixcsoft),
+): Promise<{ id: string }> {
+  const dados = z
+    .object({
+      clienteId: identificadorIxc,
+      contratoId: identificadorIxc,
+      filialId: identificadorIxc,
+      assuntoId: identificadorIxc,
+      setorId: identificadorIxc,
+      resumo: z.string().trim().min(10).max(5000),
+    })
+    .parse(input);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IXC_TIMEOUT_MS);
+  try {
+    const raw = await transportar({
+      url: new URL("/webservice/v1/su_oss_chamado", normalizarBaseIxc(baseUrl)),
+      token,
+      ixcsoft: "",
+      signal: controller.signal,
+      body: JSON.stringify({
+        tipo: "C",
+        id_cliente: dados.clienteId,
+        id_contrato_kit: dados.contratoId,
+        id_filial: dados.filialId,
+        id_assunto: dados.assuntoId,
+        setor: dados.setorId,
+        origem_endereco: "CC",
+        prioridade: "N",
+        status: "A",
+        mensagem: dados.resumo,
+      }),
+    });
+    const resultado = z
+      .object({ type: z.literal("success"), id: identificadorIxc })
+      .safeParse(JSON.parse(raw));
+    if (!resultado.success || resultado.data.id === "0") {
+      throw new IxcConnectionError(
+        "unexpected_response",
+        "O IXC não confirmou a criação da O.S. com um identificador.",
+      );
+    }
+    return { id: resultado.data.id };
+  } catch (error) {
+    if (error instanceof IxcConnectionError) throw error;
+    throw new IxcConnectionError(
+      controller.signal.aborted ? "timeout" : "connection_failed",
+      "Não foi possível confirmar a criação da O.S. Não repita sem conferir o IXC.",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 /**
  * Executa o recurso próprio do IXC para desbloqueio de confiança.

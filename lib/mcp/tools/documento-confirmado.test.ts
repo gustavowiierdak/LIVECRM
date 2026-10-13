@@ -19,7 +19,8 @@ vi.mock("@/lib/ixc/vinculo-do-contato", () => ({
       typeof metadata.ixc_customer_name !== "string" ||
       typeof metadata.ixc_linked_at !== "string" ||
       (metadata.ixc_linked_by !== "automatico" && metadata.ixc_linked_by !== "atendente")
-    ) return null;
+    )
+      return null;
     return {
       customer_id: metadata.ixc_customer_id,
       customer_name: metadata.ixc_customer_name,
@@ -35,22 +36,26 @@ vi.mock("@/lib/channels/sessao-transporta-whatsapp", () => ({
 const CPF = "12345678909";
 const IXC = { ok: true as const, baseUrl: "https://ixc.example", token: "secreto" };
 
-function contexto(input: {
-  cpfHash?: string | null;
-  linked?: boolean;
-  sourceJobId?: string;
-  conversationIdDoTurno?: string;
-  conversationContactId?: string;
-  sessionProvider?: string;
-} = {}) {
+function contexto(
+  input: {
+    cpfHash?: string | null;
+    linked?: boolean;
+    sourceJobId?: string;
+    conversationIdDoTurno?: string;
+    conversationContactId?: string;
+    sessionProvider?: string;
+  } = {},
+) {
   const contato = {
     cpf_hash: input.cpfHash ?? null,
-    source_metadata: input.linked ? {
-      ixc_customer_id: "42",
-      ixc_customer_name: "Cliente",
-      ixc_linked_at: "2026-10-09T12:00:00.000Z",
-      ixc_linked_by: "automatico",
-    } : {},
+    source_metadata: input.linked
+      ? {
+          ixc_customer_id: "42",
+          ixc_customer_name: "Cliente",
+          ixc_linked_at: "2026-10-09T12:00:00.000Z",
+          ixc_linked_by: "automatico",
+        }
+      : {},
   };
   const consulta = {
     select: vi.fn(),
@@ -63,7 +68,10 @@ function contexto(input: {
     select: vi.fn(),
     eq: vi.fn(),
     maybeSingle: vi.fn().mockResolvedValue({
-      data: { contact_id: input.conversationContactId ?? "contato-1", channel_session_id: "sessao-1" },
+      data: {
+        contact_id: input.conversationContactId ?? "contato-1",
+        channel_session_id: "sessao-1",
+      },
     }),
   };
   conversa.select.mockReturnValue(conversa);
@@ -71,7 +79,9 @@ function contexto(input: {
   const sessao = {
     select: vi.fn(),
     eq: vi.fn(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: { provider: input.sessionProvider ?? "mensagens" } }),
+    maybeSingle: vi
+      .fn()
+      .mockResolvedValue({ data: { provider: input.sessionProvider ?? "mensagens" } }),
   };
   sessao.select.mockReturnValue(sessao);
   sessao.eq.mockReturnValue(sessao);
@@ -94,6 +104,44 @@ function contexto(input: {
 }
 
 describe("confirmação de documento no turno", () => {
+  it("aceita CNPJ já confirmado pelo mesmo hash e preserva cadastro escolhido", async () => {
+    const { ctx } = contexto({ cpfHash: hashCpf("12345678000195"), linked: true });
+    expect(await confirmarDocumentoDoTurno(ctx, "12.345.678/0001-95")).toMatchObject({
+      ok: true,
+      document: "12345678000195",
+      customerId: "42",
+    });
+  });
+
+  it("não substitui automaticamente um vínculo existente por outro ID", async () => {
+    const { ctx } = contexto({ cpfHash: hashCpf(CPF), linked: true });
+    expect(await confirmarDocumentoDoTurno(ctx, CPF, "cadastro", "99")).toMatchObject({
+      ok: false,
+    });
+    expect(buscarClienteIxc).not.toHaveBeenCalled();
+  });
+
+  it("cadastro ambíguo vira pergunta, sem vincular o primeiro", async () => {
+    const erro = Object.assign(new Error("ambíguo"), {
+      name: "IxcClienteAmbiguoError",
+      clientes: [
+        { id: "1", razao: "Matriz" },
+        { id: "2", razao: "Filial" },
+      ],
+    });
+    vi.mocked(buscarClienteIxc).mockRejectedValue(erro);
+    expect(await confirmarDocumentoDoTurno(contexto().ctx, CPF)).toMatchObject({
+      ok: false,
+      resposta: {
+        erro: "selecionar_cadastro_ixc",
+        clientes: [
+          { id: "1", nome: "Matriz" },
+          { id: "2", nome: "Filial" },
+        ],
+      },
+    });
+    expect(vincularContatoAoIxc).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(carregarIntegracaoIxc).mockResolvedValue(IXC);
@@ -111,7 +159,11 @@ describe("confirmação de documento no turno", () => {
 
   it("aceita o CPF já vinculado ao IXC e não repete a consulta", async () => {
     const { ctx } = contexto({ cpfHash: hashCpf(CPF), linked: true });
-    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({ ok: true, document: CPF });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({
+      ok: true,
+      document: CPF,
+      customerId: "42",
+    });
     expect(carregarIntegracaoIxc).not.toHaveBeenCalled();
   });
 
@@ -133,16 +185,26 @@ describe("confirmação de documento no turno", () => {
       telefone_celular: "(62) 99999-8888",
       whatsapp: null,
     });
-    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({ ok: true, document: CPF });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({
+      ok: true,
+      document: CPF,
+      customerId: "42",
+    });
     expect(carregarIntegracaoIxc).toHaveBeenCalledWith(ctx.supabase, "org-1", "customers");
     expect(buscarClienteIxc).toHaveBeenCalledWith(IXC.baseUrl, IXC.token, CPF);
     expect(consulta.eq).toHaveBeenCalledWith("organization_id", "org-1");
     expect(consulta.eq).toHaveBeenCalledWith("id", "contato-1");
     expect(conversa.eq).toHaveBeenCalledWith("id", "conversa-1");
     expect(sessao.eq).toHaveBeenCalledWith("id", "sessao-1");
-    expect(vincularContatoAoIxc).toHaveBeenCalledWith(ctx.supabase, expect.objectContaining({
-      organizationId: "org-1", contactId: "contato-1", document: CPF, origem: "automatico",
-    }));
+    expect(vincularContatoAoIxc).toHaveBeenCalledWith(
+      ctx.supabase,
+      expect.objectContaining({
+        organizationId: "org-1",
+        contactId: "contato-1",
+        document: CPF,
+        origem: "automatico",
+      }),
+    );
   });
 
   it("usa o CPF confirmado no IXC sem exigir coincidência de telefone", async () => {
@@ -155,7 +217,11 @@ describe("confirmação de documento no turno", () => {
       telefone_celular: "(62) 98888-7777",
       whatsapp: null,
     });
-    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({ ok: true, document: CPF });
+    await expect(confirmarDocumentoDoTurno(ctx, CPF)).resolves.toEqual({
+      ok: true,
+      document: CPF,
+      customerId: "42",
+    });
     expect(vincularContatoAoIxc).toHaveBeenCalledTimes(1);
   });
 
@@ -172,20 +238,29 @@ describe("confirmação de documento no turno", () => {
     await expect(confirmarDocumentoDoTurno(ctx, CPF, "fatura")).resolves.toEqual({
       ok: true,
       document: CPF,
+      customerId: "42",
     });
   });
 
   it("aceita e vincula CPF confirmado no IXC no atendimento web", async () => {
     const { ctx } = contexto({ sessionProvider: "webchat" });
     vi.mocked(buscarClienteIxc).mockResolvedValue({
-      id: "42", razao: "Titular", fantasia: null, ativo: "S",
-      telefone_celular: null, whatsapp: null,
+      id: "42",
+      razao: "Titular",
+      fantasia: null,
+      ativo: "S",
+      telefone_celular: null,
+      whatsapp: null,
     });
     await expect(confirmarDocumentoDoTurno(ctx, CPF, "fatura")).resolves.toEqual({
-      ok: true, document: CPF,
+      ok: true,
+      document: CPF,
+      customerId: "42",
     });
     await expect(confirmarDocumentoDoTurno(ctx, CPF, "cadastro")).resolves.toEqual({
-      ok: true, document: CPF,
+      ok: true,
+      document: CPF,
+      customerId: "42",
     });
   });
 

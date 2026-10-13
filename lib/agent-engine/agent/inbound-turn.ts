@@ -71,6 +71,8 @@ import { criarConferidorDeAfirmacoes } from "@/lib/ai/decisao/afirmacao-de-fato"
 import { createAdminClient } from "@/lib/supabase/admin";
 import { audit } from "@/lib/audit";
 import { encerrarConversaAposFatura, despedidaSimples } from "./encerramento-apos-fatura";
+import { encerrarConversaAposOs } from "./encerramento-apos-os";
+import { confirmouSolucaoIxc } from "@/lib/ixc/aviso-os";
 import { moverLeadParaEtapaDeHandoff } from "@/lib/leads/handoff-stage-move";
 import { detectUrgencySignal } from "../guardrails/sinal-de-urgencia";
 import { buildNativeMediaParts } from "./media-parts";
@@ -5509,6 +5511,47 @@ async function executarTurnoDoAgente(
       throw new JobSettledError(
         "cap de envio atingido — job reagendado para a próxima abertura, sem mensagem enviada",
       );
+    }
+
+    if (
+      liveJob().kind === "inbound_turn" &&
+      input.inboundMessageId &&
+      inboundsPendentes.length === 1 &&
+      confirmouSolucaoIxc(currentInboundText ?? "") &&
+      !turnoDescartado &&
+      !identidadeFinanceiraRecusada
+    ) {
+      const resposta = [...outcomes]
+        .reverse()
+        .find((item) => (item.kind === "sent" || item.kind === "already_sent") && item.messageId);
+      if (
+        resposta &&
+        (resposta.kind === "sent" || resposta.kind === "already_sent") &&
+        resposta.messageId
+      ) {
+        try {
+          const fechada = await encerrarConversaAposOs(pool, {
+            organizationId: tenantId,
+            conversationId: input.conversationId,
+            inboundMessageId: input.inboundMessageId,
+            replyMessageId: resposta.messageId,
+          });
+          if (fechada)
+            await audit({
+              action: "conversation.closed",
+              organizationId: tenantId,
+              resourceType: "conversation",
+              resourceId: input.conversationId,
+              requestId: liveJob().id,
+              metadata: { reason: "ixc_os_customer_confirmed_resolution", job_id: liveJob().id },
+            });
+        } catch {
+          runLog.warn(
+            "confirmação de solução da O.S. indisponível — atendimento permanece aberto",
+            { conversation_id: input.conversationId },
+          );
+        }
+      }
     }
 
     // A despedida depois da segunda via é um fim de CONVERSA, não quitação da

@@ -134,6 +134,10 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // O desbloqueio opera pela conversa do turno e por contrato do IXC, não por
   // negócio. O handler revalida posse, elegibilidade e consentimento explícito.
   crm_request_ixc_trust_unlock: "sem_funil",
+  // O.S. pertence ao contrato/atendimento, não a um funil comercial.
+  // O handler confere documento, cliente, contrato e conversa do turno.
+  crm_create_ixc_service_order: "sem_funil",
+  crm_watch_ixc_service_order: "sem_funil",
   // Abre conversa nova (contato pode nem ter negócio ainda) e manda a primeira
   // mensagem — não recebe `lead_id` nem `pipeline_id`. Como as de configuração
   // logo abaixo, a barreira dela é OUTRA: `requiresRole: manager` +
