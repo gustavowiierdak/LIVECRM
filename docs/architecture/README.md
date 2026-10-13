@@ -16,6 +16,7 @@ ser fonte sem ninguém decidir isso.
 
 | arquivo | escopo |
 |---|---|
+| `convites-sem-smtp.architecture.json` | convite privado, cadastro público fechado no GoTrue, criação de conta sem e-mail e aceite da equipe |
 | `webchat-isolado.architecture.json` | opt-in por empresa, código único, sessão retomável, encerramento visível e mensagens separadas do WhatsApp |
 | `integracao-ixc.architecture.json` | conexão IXC por empresa, segredo server-side, teste mínimo e diagnóstico visível |
 | `integracao-bemobi.architecture.json` | conexão Bemobi/7AZ por empresa, faturas escopadas ao contato, envio determinístico e equipe de atendimento em rascunho |

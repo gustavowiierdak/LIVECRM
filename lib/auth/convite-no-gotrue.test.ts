@@ -16,17 +16,24 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 const admin = vi.hoisted(() => ({
   createUser: vi.fn(),
   deleteUser: vi.fn(),
   resend: vi.fn(),
+  signInWithPassword: vi.fn(),
+  from: vi.fn(),
+  select: vi.fn(),
+  eq: vi.fn(),
+  maybeSingle: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: vi.fn(() => ({ auth: { admin: { createUser: admin.createUser, deleteUser: admin.deleteUser } } })),
+  createAdminClient: vi.fn(() => ({
+    auth: { admin: { createUser: admin.createUser, deleteUser: admin.deleteUser } },
+    from: admin.from,
+  })),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -100,7 +107,80 @@ describe("lerConfigPublicaDoGoTrue", () => {
 
 describe("criarContaDeConvite", () => {
   beforeEach(() => {
-    vi.mocked(createClient).mockResolvedValue({ auth: { resend: admin.resend } } as never);
+    vi.mocked(createClient).mockResolvedValue({ auth: {
+      resend: admin.resend,
+      signInWithPassword: admin.signInWithPassword,
+    } } as never);
+    admin.from.mockReturnValue({ select: admin.select });
+    admin.select.mockReturnValue({ eq: admin.eq });
+    admin.eq.mockReturnValue({ eq: admin.eq, maybeSingle: admin.maybeSingle });
+    admin.maybeSingle.mockResolvedValue({ data: { revoked_at: null, accepted_at: null }, error: null });
+  });
+
+  async function entradaSemEmail() {
+    const { signInviteToken } = await import("@/lib/auth/invite-token");
+    return {
+      ...entrada,
+      semEmail: true,
+      inviteToken: signInviteToken({
+        invite_id: "00000000-0000-4000-8000-000000000004",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        email: entrada.email,
+        role: "agent",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    };
+  }
+
+  it("sem SMTP: valida convite, cria usuário confirmado e abre sessão sem enviar e-mail", async () => {
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-sem-email" } }, error: null });
+    admin.signInWithPassword.mockResolvedValue({ error: null });
+
+    const dados = await entradaSemEmail();
+    const resultado = await (await convite()).criarContaDeConvite(dados);
+
+    expect(resultado).toEqual({ ok: true, sessao_ativa: true });
+    expect(admin.from).toHaveBeenCalledWith("team_invites");
+    expect(admin.eq).toHaveBeenCalledWith("organization_id", "00000000-0000-4000-8000-000000000001");
+    expect(admin.createUser).toHaveBeenCalledWith(expect.objectContaining({
+      email: entrada.email,
+      email_confirm: true,
+      user_metadata: { invite_token: dados.inviteToken, full_name: entrada.fullName },
+    }));
+    expect(admin.signInWithPassword).toHaveBeenCalledWith({ email: entrada.email, password: entrada.password });
+    expect(admin.resend).not.toHaveBeenCalled();
+  });
+
+  it("sem SMTP: convite revogado não cria conta", async () => {
+    admin.maybeSingle.mockResolvedValue({ data: { revoked_at: new Date().toISOString(), accepted_at: null }, error: null });
+
+    const resultado = await (await convite()).criarContaDeConvite(await entradaSemEmail());
+
+    expect(resultado).toEqual({ ok: false, motivo: "convite_revogado" });
+    expect(admin.createUser).not.toHaveBeenCalled();
+  });
+
+  it("sem SMTP: falha no login desfaz a conta confirmada", async () => {
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-falhou" } }, error: null });
+    admin.signInWithPassword.mockResolvedValue({ error: { message: "login indisponível" } });
+    admin.deleteUser.mockResolvedValue({ error: null });
+
+    const resultado = await (await convite()).criarContaDeConvite(await entradaSemEmail());
+
+    expect(resultado).toEqual({ ok: false, motivo: "autenticacao_falhou", detalhe: "login indisponível" });
+    expect(admin.deleteUser).toHaveBeenCalledWith("u-falhou");
+    expect(admin.resend).not.toHaveBeenCalled();
+  });
+
+  it("sem SMTP: exceção no login também desfaz a conta confirmada", async () => {
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-excecao" } }, error: null });
+    admin.signInWithPassword.mockRejectedValue(new Error("rede indisponível"));
+    admin.deleteUser.mockResolvedValue({ error: null });
+
+    const resultado = await (await convite()).criarContaDeConvite(await entradaSemEmail());
+
+    expect(resultado).toEqual({ ok: false, motivo: "autenticacao_falhou", detalhe: "rede indisponível" });
+    expect(admin.deleteUser).toHaveBeenCalledWith("u-excecao");
   });
 
   it("cria pela admin API com o convite no user_metadata e manda o e-mail", async () => {

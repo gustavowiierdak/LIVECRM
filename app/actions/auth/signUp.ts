@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/schemas";
 import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { criarContaDeConvite, lerConfigPublicaDoGoTrue } from "@/lib/auth/convite-no-gotrue";
+import { getSmtpConfig } from "@/lib/email/config";
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
@@ -55,6 +56,7 @@ export type SignUpResult =
         | "rate_limited"
         | "signup_failed"
         | "somente_convite"
+        | "convite_invalido"
         | "conta_ja_existe";
       details?: Record<string, unknown>;
     };
@@ -123,7 +125,8 @@ export async function signUp(
   // direto, e sem esta guarda o modo `so_convite` seria decoração. A ordem
   // importa — só se pergunta a política DEPOIS de o convite ter sido validado
   // acima, senão um convite legítimo seria barrado.
-  if (convite === null && (await modoDeCadastro()) === "so_convite") {
+  const modo = await modoDeCadastro();
+  if (convite === null && modo === "so_convite") {
     await audit({
       action: "auth.signup_failed",
       metadata: { email_hash: hashEmail(parsed.data.email), reason: "somente_convite" },
@@ -139,20 +142,24 @@ export async function signUp(
   // Com `disable_signup` ligado no GoTrue — é o que fecha `POST /auth/v1/signup`
   // para quem tem a anon key do navegador, o buraco que esta issue abre — o
   // `supabase.auth.signUp()` de baixo também é recusado, inclusive para quem
-  // TEM convite. Só se entra aqui quando o próprio GoTrue diz que está fechado
-  // (`GET /auth/v1/settings`, público); nos outros casos — instalação aberta e
-  // até `so_convite` que ainda não sincronizou — o caminho de baixo continua
-  // exatamente o de antes.
+  // TEM convite. Também se entra aqui em instalação própria, só por convite e
+  // sem SMTP: se a leitura dos settings falhar, não podemos cair no fluxo de
+  // e-mail que sabemos não funcionar.
   //
   // A ordem em relação à trava de política acima continua sendo a mesma: sem
   // convite válido não se chega aqui.
-  if (convite !== null && (await lerConfigPublicaDoGoTrue())?.disable_signup === true) {
+  const smtp = convite !== null && modo === "so_convite" && process.env.SINGLE_SERVER === "1"
+    ? await getSmtpConfig()
+    : null;
+  const semEmail = smtp !== null && (!smtp.host || !smtp.fromEmail);
+  if (convite !== null && (semEmail || (await lerConfigPublicaDoGoTrue())?.disable_signup === true)) {
     const criada = await criarContaDeConvite({
       email: parsed.data.email,
       password: parsed.data.password,
       inviteToken: convite,
       fullName: (parsed.data as SignupComConviteInput).full_name,
       emailRedirectTo: `${origin}/auth/confirm?type=signup`,
+      semEmail,
     });
 
     if (!criada.ok) {
@@ -173,12 +180,13 @@ export async function signUp(
       });
       if (criada.motivo === "conta_ja_existe") return { ok: false, error: "conta_ja_existe" };
       if (criada.motivo === "rate_limited") return { ok: false, error: "rate_limited" };
+      if (criada.motivo === "convite_revogado") return { ok: false, error: "convite_invalido" };
       return { ok: false, error: "signup_failed" };
     }
 
     await audit({
       action: "auth.signup_requested",
-      metadata: { email_hash: hashEmail(parsed.data.email), via: "admin_convite" },
+      metadata: { email_hash: hashEmail(parsed.data.email), via: "admin_convite", sem_email: semEmail },
       requestId,
       ip,
       userAgent,

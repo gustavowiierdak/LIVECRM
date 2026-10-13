@@ -28,16 +28,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
+import { getSmtpConfig } from "@/lib/email/config";
 
 // O client admin que `criarContaDeConvite` usa quando o GoTrue está com o
 // cadastro público fechado (#1653). Hoisted porque o factory do `vi.mock` roda
 // antes das declarações deste arquivo.
-const admin = vi.hoisted(() => ({ createUser: vi.fn(), deleteUser: vi.fn() }));
+const admin = vi.hoisted(() => ({ createUser: vi.fn(), deleteUser: vi.fn(), from: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(() => ({
     auth: { admin: { createUser: admin.createUser, deleteUser: admin.deleteUser } },
+    from: admin.from,
   })),
 }));
+vi.mock("@/lib/email/config", () => ({ getSmtpConfig: vi.fn() }));
 
 vi.mock("next/headers", () => ({ headers: vi.fn() }));
 // Mockada aqui em vez de deixar bater no banco: a política é lida em TODO
@@ -240,6 +243,7 @@ describe("signUp — convite com o cadastro público do GoTrue fechado (#1653)",
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("com convite: cria a conta pela ADMIN API e manda o e-mail de confirmação", async () => {
@@ -265,6 +269,47 @@ describe("signUp — convite com o cadastro público do GoTrue fechado (#1653)",
     // O caminho que o GoTrue recusa quando `disable_signup` está ligado não é
     // nem chamado — quem cria a conta é o client admin.
     expect(signUpDoProvedor).not.toHaveBeenCalled();
+  });
+
+  it("VPS sem SMTP e só por convite: cria conta confirmada e abre sessão", async () => {
+    vi.stubEnv("SINGLE_SERVER", "1");
+    goTrueCom(true);
+    vi.mocked(getSmtpConfig).mockResolvedValue({ host: "", fromEmail: "" } as never);
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { signInWithPassword: vi.fn(async () => ({ error: null })) },
+    } as never);
+    admin.from.mockReturnValue({
+      select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+    });
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-sem-smtp" } }, error: null });
+    const { token, entrada: corpo } = await conviteValido();
+
+    const { signUp } = await import("./signUp");
+    const res = await signUp(corpo, token);
+
+    expect(res).toEqual({ ok: true, sessao_ativa: true });
+    expect(admin.createUser).toHaveBeenCalledWith(expect.objectContaining({ email_confirm: true }));
+    expect(resend).not.toHaveBeenCalled();
+    expect(signUpDoProvedor).not.toHaveBeenCalled();
+  });
+
+  it("VPS sem SMTP: uma falha na consulta aos settings não exige e-mail impossível", async () => {
+    vi.stubEnv("SINGLE_SERVER", "1");
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("settings indisponíveis"); }));
+    vi.mocked(getSmtpConfig).mockResolvedValue({ host: "", fromEmail: "" } as never);
+    vi.mocked(createClient).mockResolvedValue({
+      auth: { signInWithPassword: vi.fn(async () => ({ error: null })) },
+    } as never);
+    admin.from.mockReturnValue({
+      select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+    });
+    admin.createUser.mockResolvedValue({ data: { user: { id: "u-sem-settings" } }, error: null });
+    const { token, entrada: corpo } = await conviteValido();
+
+    const { signUp } = await import("./signUp");
+    expect(await signUp(corpo, token)).toEqual({ ok: true, sessao_ativa: true });
+    expect(signUpDoProvedor).not.toHaveBeenCalled();
+    expect(admin.createUser).toHaveBeenCalledWith(expect.objectContaining({ email_confirm: true }));
   });
 
   it("CONTROLE — GoTrue aberto: o convite continua no signUp de sempre", async () => {
