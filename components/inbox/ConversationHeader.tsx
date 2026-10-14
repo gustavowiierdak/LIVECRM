@@ -1,5 +1,6 @@
 "use client";
 import { SetorDaConversa } from "./SetorDaConversa";
+import { ConversationActionsPlacement } from "./ConversationActionsPlacement";
 import { useRef, useState, type RefObject } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import Link from "next/link";
@@ -57,6 +58,7 @@ import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 
 interface Props {
+  actionsTarget?: HTMLElement | null;
   conversation: ConversationWithContact;
   /**
    * A busca DENTRO da conversa (#1793): abre um campo que filtra só as
@@ -97,6 +99,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function ConversationHeader({
+  actionsTarget,
   conversation,
   onAbrirConversa,
   onBuscar,
@@ -217,8 +220,8 @@ export function ConversationHeader({
       </header>
     );
   return (
-    // Two predictable rows: identity/reading tools, then the existing service
-    // actions. Both can shrink and wrap; no action or permission is duplicated.
+    // Identity stays above the transcript. Service controls move to the desktop
+    // inspector, retaining the same hooks, permissions and confirmation dialogs.
     <header className="crm-conversation-header flex min-w-0 flex-wrap items-stretch border-b border-border bg-background">
       <div className="crm-conversation-heading flex w-full min-w-0 flex-wrap items-center gap-3">
         <div className="crm-conversation-identity flex min-w-0 flex-1 items-center gap-3">
@@ -368,6 +371,7 @@ export function ConversationHeader({
           )}
         </div>
       </div>
+      <ConversationActionsPlacement target={actionsTarget}>
       <div className="crm-conversation-controls flex w-full min-w-0 flex-col gap-2">
         <div
           className="crm-conversation-actions flex min-w-0 flex-wrap items-center gap-1.5"
@@ -535,6 +539,7 @@ export function ConversationHeader({
           </Badge>
         )}
       </div>
+      </ConversationActionsPlacement>
       <ReassignDialog
         conversationId={conversation.id}
         open={reassignOpen}

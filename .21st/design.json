@@ -22,6 +22,11 @@
   "decisions": [
     {
       "date": "2026-10-13",
+      "scope": "Conversation workspace refinement",
+      "decision": "Supersedes phase 3's wrapping desktop action bar: move the same mounted controls into a fixed inspector footer at 1280px, retaining inline controls below that breakpoint. Compact identity and avatar, minimize the web channel strip and omit the redundant single active session picker. Preserve themes, real metadata, action gates, dialogs, media and composer capabilities. User screenshots are the reference; 21st CLI is unavailable."
+    },
+    {
+      "date": "2026-10-13",
       "scope": "Operator start, phase 6",
       "decision": "Use OPA's compact count-card hierarchy for the unselected workspace, spanning conversation and contact columns while preserving the queue. Show only canonical RLS-scoped counts for Fila, Minhas, Automático and Fechadas; shortcuts clear auxiliary filters to match their unfiltered counts. Unknown/error is not zero. Reuse query cache, Button, icons, search and keyboard-help dialog. Desktop Conversas returns to overview; mobile still opens directly on the queue. No synthetic charts, time metrics, status or new claim behavior."
     },

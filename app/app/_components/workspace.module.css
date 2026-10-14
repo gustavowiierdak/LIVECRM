@@ -273,7 +273,7 @@
 }
 
 .workspace :global(.crm-conversation-heading) {
-  padding: 12px 16px;
+  padding: 8px 12px;
 }
 
 .workspace :global(.crm-conversation-identity) {
@@ -300,6 +300,35 @@
 .workspace :global(.crm-conversation-tools) button {
   min-width: 32px;
   min-height: 32px;
+}
+
+/* The transcript is the primary working surface. One mounted set of service
+   controls moves to the inspector on desktop; narrow screens keep it inline. */
+.workspace :global(.crm-service-dock) {
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-controls) {
+  padding: 12px;
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-actions) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-actions) button {
+  min-width: 0;
+  padding: 8px;
+  white-space: normal;
+  font-size: 12px;
+}
+
+.workspace :global(.crm-service-dock) [data-testid="devolver-ao-automatico"],
+.workspace :global(.crm-service-dock) [data-testid="pausar-o-automatico"] {
+  grid-column: 1 / -1;
 }
 
 @media (pointer: coarse) {
@@ -608,7 +637,7 @@
 .workspace :global(.crm-webchat-channel) {
   flex-wrap: nowrap;
   gap: 4px;
-  padding: 6px 16px;
+  padding: 2px 12px;
   background: var(--color-surface);
 }
 
@@ -618,7 +647,25 @@
 }
 
 .workspace :global(.crm-channel-description) {
-  font-size: 10px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.workspace :global(.crm-webchat-channel) h2 {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.workspace :global(.crm-webchat-channel) > div:first-child > span {
+  width: 20px;
+  height: 20px;
+  background: transparent;
 }
 
 .workspace :global(.crm-webchat-session) {
@@ -641,9 +688,9 @@
 }
 
 :global(:root):has(.workspace) :global(.crm-contact-avatar) {
-  width: 104px;
-  height: 104px;
-  margin-bottom: 6px;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 2px;
 }
 
 @media (min-width: 768px) {

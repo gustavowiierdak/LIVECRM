@@ -143,7 +143,8 @@ test.describe("atendimento web público até a Inbox", () => {
       const painel = page.getByRole("region", { name: "Atendimento web" });
       await expect(painel.getByText(primeiraMensagem)).toBeVisible({ timeout: 30_000 });
       const cabecalho = page.locator(".crm-conversation-header");
-      const acoes = cabecalho.getByRole("group", { name: "Ações do atendimento" });
+      const acoes = page.getByRole("group", { name: "Ações do atendimento" });
+      await expect(page.locator(".crm-service-dock").getByRole("button", { name: "Fechar", exact: true })).toBeVisible();
       await expect(cabecalho.getByRole("heading", { name: nomeCliente })).toBeVisible();
       for (const name of ["Assumir", "Transferir", "Lembrar", "Fechar", "Arquivar"])
         await expect(acoes.getByRole("button", { name, exact: true })).toBeVisible();

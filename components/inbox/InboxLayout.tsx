@@ -216,6 +216,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const focusSearch = () => queueRef.current?.querySelector<HTMLInputElement>("input")?.focus();
   /** A ficha do contato como painel deslizante — só existe abaixo do `xl`. */
   const [fichaAberta, setFichaAberta] = useState(false);
+  const [actionsTarget, setActionsTarget] = useState<HTMLDivElement | null>(null);
   /**
    * A busca dentro da conversa (#1793) pertence à CONVERSA em que foi aberta.
    * Guardar o id junto fecha a busca em qualquer troca — clique, atalho j/k,
@@ -708,6 +709,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             {/* `key`: trocar de conversa desmonta a confirmação de Fechar/Arquivar
                 aberta — senão o clique de dentro agiria sobre a conversa nova. */}
             <ConversationHeader
+              actionsTarget={actionsTarget}
               key={selectedConversation.id}
               conversation={selectedConversation}
               onAbrirConversa={handleSelect}
@@ -841,8 +843,11 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         )}
       </div>
 
-      {selectedId && <div className="hidden h-full min-h-0 min-w-0 xl:block">
+      {selectedId && <div className="crm-contact-column hidden h-full min-h-0 min-w-0 xl:flex xl:flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden">
         <CRMSidePanel conversation={selectedConversation} />
+        </div>
+        <div ref={setActionsTarget} className="crm-service-dock shrink-0" />
       </div>}
 
       {/*

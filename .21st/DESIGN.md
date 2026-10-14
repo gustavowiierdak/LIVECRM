@@ -1,5 +1,19 @@
 # Operator workspace
 
+## Conversation refinement — 2026-10-13
+
+- User screenshots supersede phase 3's full desktop action row. Use a single portal
+  for the existing service controls into the fixed inspector footer at 1280px;
+  retain inline controls on smaller viewports. Dialogs and mutations stay owned by
+  ConversationHeader; no duplicate control instances or new business rules.
+- Compact the contact avatar and header. Web channel description remains accessible;
+  the session selector appears for multiple sessions or an ended session.
+- Existing tokens, theme and UI primitives retained. 21st CLI unavailable locally.
+- Living-system scope: presentation only, no schema, API, routing or permissions changes.
+- Validation: header/web component tests, typecheck, existing public-web E2E including
+  reply, private note, dialogs, responsive layouts and light/dark accessibility.
+  Initial E2E run hit an unrelated queue-count setup race; repetition passed.
+
 ## Phase 8 — final polish and regression
 
 Completed locally on 2026-10-13. The first browser regression reproduced missing focus return from keyboard help, low-contrast selected-row timestamps, invalid nested description-list markup in service metadata and a hidden editor at 320×568. The dark-theme accessibility pass also caught outgoing timestamps at 4.4:1. Fixes preserve the original controls: controlled help captures its opener and restores focus on close, metadata uses direct dt/dd pairs, time labels use stronger existing text tokens, and short mobile headers scroll within a bounded area so the transcript and editor retain space. No actions are removed. Existing desktop/normal-height mobile layout is unchanged.

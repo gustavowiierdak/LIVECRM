@@ -373,7 +373,7 @@ export function WebchatOperatorPanel({
         </div>
       ) : (
         <div className={cn("min-h-0", primary ? "flex flex-1 flex-col" : "mt-3 grid gap-2")}>
-          <label
+          {(!primary || sessions.length > 1 || !sessions[0]?.active) && <label
             className={cn(
               "crm-webchat-session text-xs font-medium",
               primary
@@ -403,7 +403,7 @@ export function WebchatOperatorPanel({
                 </option>
               ))}
             </select>
-          </label>
+          </label>}
 
           <div
             className={cn(
