@@ -252,7 +252,7 @@ test.describe("atendimento web público até a Inbox", () => {
       await page.screenshot({ path: `${evidencia}/07-operador-escuro.png`, fullPage: true });
       expect.soft((await new AxeBuilder({ page }).include(".crm-inbox").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
 
-      await page.getByRole("button", { name: "Conversas", exact: true }).click();
+      await page.getByRole("button", { name: "Voltar à visão geral" }).click();
       await expect(inicio).toBeVisible();
       await expect(page.getByRole("complementary", { name: "Ficha do contato" })).toHaveCount(0);
       await page.screenshot({ path: `${evidencia}/14-inicio-operador-escuro.png`, fullPage: true });

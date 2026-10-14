@@ -105,11 +105,12 @@ export interface InboxFiltersValue {
 interface Props {
   value: InboxFiltersValue;
   onChange: (next: InboxFiltersValue) => void;
+  onReturnHome?: () => void;
   /** Explicit clear also cancels text that has not reached the debounce yet. */
   searchResetVersion?: number;
 }
 
-export function InboxFilters({ value, onChange, searchResetVersion = 0 }: Props) {
+export function InboxFilters({ value, onChange, onReturnHome, searchResetVersion = 0 }: Props) {
   const t = useT();
   const rail = useInboxRail();
   const inRail = Boolean(rail?.desktop && rail.queues);
@@ -374,7 +375,19 @@ export function InboxFilters({ value, onChange, searchResetVersion = 0 }: Props)
     <div className="crm-inbox-filters border-b border-border bg-background">
       <div className="crm-queue-heading flex items-baseline justify-between gap-2 px-3 pt-2">
         <h1 className="text-xs font-semibold">{t(INBOX_TABS.find((tab) => tab.value === value.tab)?.label ?? "Fila")}</h1>
-        <span className="text-[11px] text-muted-foreground">{t("Atendimentos")}</span>
+        {onReturnHome ? (
+          <button
+            type="button"
+            onClick={onReturnHome}
+            className="rounded-sm text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            aria-label={t("Voltar à visão geral")}
+            title={t("Voltar à visão geral")}
+          >
+            {t("Atendimentos")}
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">{t("Atendimentos")}</span>
+        )}
       </div>
       <div className="space-y-2 px-3 pt-2 pb-2">
         <div className="flex items-center gap-1">

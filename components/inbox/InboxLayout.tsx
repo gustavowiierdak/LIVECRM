@@ -638,7 +638,12 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
           colunas.lista,
         )}
       >
-        <InboxFilters value={filterValue} onChange={setFilterValue} searchResetVersion={searchResetVersion} />
+        <InboxFilters
+          value={filterValue}
+          onChange={setFilterValue}
+          onReturnHome={selectedId ? () => handleSelect(null) : undefined}
+          searchResetVersion={searchResetVersion}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -677,7 +682,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
           conversa, e só aparece quando há uma.
         */}
         {selectedId && (
-          <div className="flex items-center gap-1 border-b border-border px-1 py-1">
+          <div className="flex items-center gap-1 border-b border-border px-1 py-1 md:hidden">
             <Button
               variant="ghost"
               size="sm"
