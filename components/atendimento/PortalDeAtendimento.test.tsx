@@ -61,12 +61,9 @@ describe("PortalDeAtendimento", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /Financeiro/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Cancelamento/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Financeiro/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /Suporte técnico/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Cancelamento/ })).not.toBeInTheDocument();
   });
 
   it("cliente abre o link e envia a primeira mensagem sem código", async () => {
@@ -100,9 +97,15 @@ describe("PortalDeAtendimento", () => {
       />,
     );
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Escolher assunto" })).not.toBeInTheDocument();
+    const iniciar = screen.getByRole("button", { name: "Iniciar atendimento" });
+    expect(iniciar).toBeDisabled();
     await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
     await user.type(screen.getByRole("textbox", { name: "Como podemos ajudar?" }), message.body);
-    await user.click(screen.getByRole("button", { name: "Iniciar atendimento" }));
+    expect(iniciar).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: /Suporte técnico/ }));
+    expect(iniciar).toBeEnabled();
+    await user.click(iniciar);
     expect(await screen.findByText(message.body)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/public/webchat/start",
@@ -154,18 +157,47 @@ describe("PortalDeAtendimento", () => {
   });
 
   it("identifica cada autor, distingue IA e mantém fallback sem nome", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-      if (String(input).endsWith("/session"))
-        return Response.json({ data: { sector: "suporte", active: true } });
-      return Response.json({ data: [
-        { id: "ana", direction: "operator", sender_kind: "human", sender_name: "Ana Souza", body: "Primeira resposta" },
-        { id: "joao", direction: "operator", sender_kind: "human", sender_name: "João Silva", body: "Após transferência" },
-        { id: "ai", direction: "operator", sender_kind: "ai", sender_name: "Suporte Técnico", body: "Resposta automática" },
-        { id: "legacy-ai", direction: "operator", sender_kind: "ai", body: "IA sem nome" },
-        { id: "legacy-human", direction: "operator", sender_kind: "human", sender_name: "  ", body: "Pessoa sem nome" },
-        { id: "visitor", direction: "visitor", sender_name: "Ignorar", body: "Cliente" },
-      ].map((m) => ({ ...m, created_at: "2026-10-13T12:00:00Z" })) });
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith("/session"))
+          return Response.json({ data: { sector: "suporte", active: true } });
+        return Response.json({
+          data: [
+            {
+              id: "ana",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "Ana Souza",
+              body: "Primeira resposta",
+            },
+            {
+              id: "joao",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "João Silva",
+              body: "Após transferência",
+            },
+            {
+              id: "ai",
+              direction: "operator",
+              sender_kind: "ai",
+              sender_name: "Suporte Técnico",
+              body: "Resposta automática",
+            },
+            { id: "legacy-ai", direction: "operator", sender_kind: "ai", body: "IA sem nome" },
+            {
+              id: "legacy-human",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "  ",
+              body: "Pessoa sem nome",
+            },
+            { id: "visitor", direction: "visitor", sender_name: "Ignorar", body: "Cliente" },
+          ].map((m) => ({ ...m, created_at: "2026-10-13T12:00:00Z" })),
+        });
+      }),
+    );
     render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
     expect(await screen.findByText(/^Ana Souza ·/)).toBeInTheDocument();
     expect(screen.getByText(/^João Silva ·/)).toBeInTheDocument();
@@ -365,7 +397,7 @@ describe("PortalDeAtendimento", () => {
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Novo atendimento" }));
     expect(screen.queryByText("Conversa antiga")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Financeiro/ }));
+    await user.click(screen.getByRole("radio", { name: /Financeiro/ }));
     await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
     await user.type(
       screen.getByRole("textbox", { name: "Como podemos ajudar?" }),

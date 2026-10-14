@@ -71,7 +71,6 @@ function descricaoDoSetor(id: SetorId, t: (texto: string) => string): string {
   return t("Internet, Wi-Fi e equipamentos.");
 }
 
-
 function PainelDeSetores({
   setores,
   setorAtual,
@@ -189,7 +188,7 @@ function PainelDeStatus({
   ativo,
   encerrado,
 }: {
-  readonly setor: Setor;
+  readonly setor: Setor | null;
   readonly ativo: boolean;
   readonly encerrado: boolean;
 }) {
@@ -224,8 +223,12 @@ function PainelDeStatus({
         <p className="text-xs font-semibold tracking-[0.12em] text-text-subtle uppercase">
           {ativo ? t("Assunto atual") : t("Assunto escolhido")}
         </p>
-        <p className="mt-2 text-sm font-medium text-text">{tituloDoSetor(setor.id, t)}</p>
-        <p className="mt-1 text-xs leading-5 text-text-muted">{descricaoDoSetor(setor.id, t)}</p>
+        <p className="mt-2 text-sm font-medium text-text">
+          {setor ? tituloDoSetor(setor.id, t) : t("Escolha o assunto no formulário")}
+        </p>
+        {setor ? (
+          <p className="mt-1 text-xs leading-5 text-text-muted">{descricaoDoSetor(setor.id, t)}</p>
+        ) : null}
       </div>
       <div className="mt-auto flex gap-2 border-t border-border pt-5 text-xs leading-5 text-text-muted">
         <ShieldCheck
@@ -254,6 +257,10 @@ export function PortalDeAtendimento({
   const t = useT();
   const tagDoIdioma = useTagDeIdioma();
   const [setorAtual, setSetorAtual] = useState<SetorId>(setoresPermitidos?.[0] ?? "suporte");
+  const [assuntoInicial, setAssuntoInicial] = useState<SetorId | null>(
+    setoresPermitidos?.length === 1 ? (setoresPermitidos[0] ?? null) : null,
+  );
+  const [menuAberto, setMenuAberto] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [nome, setNome] = useState("");
   const [primeiraMensagem, setPrimeiraMensagem] = useState("");
@@ -269,6 +276,7 @@ export function PortalDeAtendimento({
     ? SETORES.filter((item) => setoresPermitidos.includes(item.id))
     : SETORES;
   const setor = SETORES.find((item) => item.id === setorAtual) ?? SETORES[0];
+  const setorExibido = publicId && !ativo && !assuntoInicial ? null : setor;
   const css = {
     "--atendimento-accent": accent,
     "--atendimento-accent-soft": `${accent}16`,
@@ -281,6 +289,8 @@ export function PortalDeAtendimento({
     setMensagens([]);
     setRascunho("");
     setPrimeiraMensagem("");
+    setAssuntoInicial(setoresPermitidos?.length === 1 ? (setoresPermitidos[0] ?? null) : null);
+    setMenuAberto(false);
     setErro(null);
   };
   const painel = (
@@ -411,7 +421,7 @@ export function PortalDeAtendimento({
   };
 
   const iniciar = async () => {
-    if (!publicId) return;
+    if (!publicId || !assuntoInicial || ocupado) return;
     setOcupado(true);
     setErro(null);
     const geracao = geracaoDaConversa.current;
@@ -423,7 +433,7 @@ export function PortalDeAtendimento({
         body: JSON.stringify({
           public_id: publicId,
           name: nome.trim(),
-          sector: setorAtual,
+          sector: assuntoInicial,
           body: primeiraMensagem.trim(),
           idempotency_key: randomId(),
         }),
@@ -528,36 +538,47 @@ export function PortalDeAtendimento({
           </div>
 
           <div className="flex items-center gap-2 lg:hidden">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button size="icon" variant="ghost" aria-label={t("Escolher assunto")}>
-                  <Menu aria-hidden />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                data-theme="light"
-                style={css}
-                className="w-[min(88vw,23rem)] p-5 text-text"
-              >
-                <SheetHeader className="pr-8 text-left">
-                  <SheetTitle>{t("Escolha o assunto")}</SheetTitle>
-                  <SheetDescription>
-                    {ativo
-                      ? t("Para mudar de assunto, inicie um novo atendimento.")
-                      : t("O setor é escolhido antes de uma conversa ser criada.")}
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="mt-6">{painel}</div>
-              </SheetContent>
-            </Sheet>
+            {ativo || !publicId ? (
+              <Sheet open={menuAberto} onOpenChange={setMenuAberto}>
+                <SheetTrigger asChild>
+                  <Button size="icon" variant="ghost" aria-label={t("Escolher assunto")}>
+                    <Menu aria-hidden />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  data-theme="light"
+                  style={css}
+                  className="w-[min(88vw,23rem)] p-5 text-text"
+                >
+                  <SheetHeader className="pr-8 text-left">
+                    <SheetTitle>{t("Escolha o assunto")}</SheetTitle>
+                    <SheetDescription>
+                      {ativo
+                        ? t("Para mudar de assunto, inicie um novo atendimento.")
+                        : t("O setor é escolhido antes de uma conversa ser criada.")}
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-6">{painel}</div>
+                </SheetContent>
+              </Sheet>
+            ) : null}
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:h-[calc(100dvh-5rem)] lg:grid-cols-[minmax(16rem,0.95fr)_minmax(0,3fr)_minmax(17rem,0.95fr)]">
-          <aside className="hidden border-r border-border bg-surface px-6 py-8 lg:block">
-            {painel}
-          </aside>
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 lg:h-[calc(100dvh-5rem)]",
+            publicId && !ativo
+              ? "lg:grid-cols-[minmax(0,3fr)_minmax(17rem,0.95fr)]"
+              : "lg:grid-cols-[minmax(16rem,0.95fr)_minmax(0,3fr)_minmax(17rem,0.95fr)]",
+          )}
+        >
+          {ativo || !publicId ? (
+            <aside className="hidden border-r border-border bg-surface px-6 py-8 lg:block">
+              {painel}
+            </aside>
+          ) : null}
 
           <section
             aria-labelledby="titulo-conversa"
@@ -565,18 +586,24 @@ export function PortalDeAtendimento({
           >
             <div className="flex items-center gap-4 border-b border-border px-5 py-5 sm:px-8">
               <span className="grid size-11 place-items-center rounded-full bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
-                <setor.Icone size={20} aria-hidden />
+                {setorExibido ? (
+                  <setorExibido.Icone size={20} aria-hidden />
+                ) : (
+                  <CircleHelp size={20} aria-hidden />
+                )}
               </span>
               <div>
                 <h1 id="titulo-conversa" className="text-base font-semibold text-text">
-                  {tituloDoSetor(setor.id, t)}
+                  {setorExibido ? tituloDoSetor(setorExibido.id, t) : t("Atendimento online")}
                 </h1>
                 <p className="mt-0.5 text-sm text-text-muted">
                   {encerrado
                     ? t("Atendimento encerrado")
                     : ativo
                       ? t("Atendimento em andamento")
-                      : descricaoDoSetor(setor.id, t)}
+                      : setorExibido
+                        ? descricaoDoSetor(setorExibido.id, t)
+                        : t("Escolha o assunto para começar.")}
                 </p>
               </div>
             </div>
@@ -617,7 +644,8 @@ export function PortalDeAtendimento({
                             ? t("Você")
                             : item.sender_kind === "ai"
                               ? `${item.sender_name?.trim() || t("IA")}${item.sender_name?.trim() ? ` · ${t("IA")}` : ""}`
-                              : item.sender_name?.trim() || t("Equipe")} ·{" "}
+                              : item.sender_name?.trim() || t("Equipe")}{" "}
+                          ·{" "}
                           {new Date(item.created_at).toLocaleTimeString(tagDoIdioma, {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -663,13 +691,15 @@ export function PortalDeAtendimento({
                 <div ref={fimDaConversa} aria-hidden />
               </div>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center px-5 py-10 sm:px-8">
+              <div className="flex flex-1 flex-col items-center justify-start px-5 py-8 sm:px-8 lg:justify-center">
                 <div className="w-full max-w-lg">
                   <h2 className="text-2xl font-semibold tracking-tight text-text">
                     {t("Vamos iniciar seu atendimento")}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-text-muted">
-                    {descricaoDoSetor(setor.id, t)}
+                    {setorExibido
+                      ? descricaoDoSetor(setorExibido.id, t)
+                      : t("Informe seus dados e escolha o assunto para começar.")}
                   </p>
                   {publicId ? (
                     <div className="mt-7 space-y-4 text-left">
@@ -687,6 +717,46 @@ export function PortalDeAtendimento({
                         maxLength={80}
                         className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--atendimento-accent)]"
                       />
+                      <fieldset className="space-y-2">
+                        <legend className="mb-2 text-sm font-medium text-text">
+                          {t("Assunto do atendimento")}
+                        </legend>
+                        {setores.map(({ id, Icone }) => (
+                          <label
+                            key={id}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition-colors",
+                              "focus-within:ring-2 focus-within:ring-[var(--atendimento-accent)]",
+                              assuntoInicial === id
+                                ? "border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]"
+                                : "border-border bg-surface hover:border-[var(--atendimento-accent)]",
+                            )}
+                          >
+                            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
+                              <Icone size={19} aria-hidden />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-semibold text-text">
+                                {tituloDoSetor(id, t)}
+                              </span>
+                              <span className="block text-xs text-text-muted">
+                                {descricaoDoSetor(id, t)}
+                              </span>
+                            </span>
+                            <input
+                              type="radio"
+                              name="assunto-atendimento"
+                              value={id}
+                              checked={assuntoInicial === id}
+                              onChange={() => {
+                                setAssuntoInicial(id);
+                                setSetorAtual(id);
+                              }}
+                              className="size-4 shrink-0 accent-[var(--atendimento-accent)]"
+                            />
+                          </label>
+                        ))}
+                      </fieldset>
                       <label
                         htmlFor="primeira-mensagem"
                         className="block text-sm font-medium text-text"
@@ -704,7 +774,12 @@ export function PortalDeAtendimento({
                       <Button
                         type="button"
                         onClick={() => void iniciar()}
-                        disabled={ocupado || nome.trim().length < 2 || !primeiraMensagem.trim()}
+                        disabled={
+                          ocupado ||
+                          !assuntoInicial ||
+                          nome.trim().length < 2 ||
+                          !primeiraMensagem.trim()
+                        }
                       >
                         {t("Iniciar atendimento")}
                       </Button>
@@ -783,7 +858,7 @@ export function PortalDeAtendimento({
           </section>
 
           <div className="hidden lg:block">
-            <PainelDeStatus setor={setor} ativo={ativo} encerrado={encerrado} />
+            <PainelDeStatus setor={setorExibido} ativo={ativo} encerrado={encerrado} />
           </div>
         </div>
       </section>
