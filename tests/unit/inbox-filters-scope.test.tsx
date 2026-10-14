@@ -46,7 +46,7 @@ vi.mock("@/hooks/contacts/useContactTagVocabulary", () => ({
   useContactTagVocabulary: () => ({ data: tagsDoContatoRef.current }),
 }));
 vi.mock("@/hooks/inbox/useConversationCounts", () => ({
-  useConversationCounts: () => ({ data: { unassigned: 3, mine: 2, all: 5 } }),
+  useConversationCounts: () => ({ data: { unassigned: 3, mine: 2, all: 5, closed: 7 } }),
 }));
 
 const VALUE: InboxFiltersValue = { tab: "unassigned", search: "", onlyUnread: false };
@@ -108,6 +108,18 @@ describe("visibleInboxTabs (lógica pura de visões)", () => {
 });
 
 describe("InboxFilters render — 3 visões + escopo", () => {
+  it("Fechadas abre o histórico sem contador de notificação, mesmo com conversas encerradas", () => {
+    setOrg("manager", "all");
+    const onChange = vi.fn();
+    render(<InboxFilters value={VALUE} onChange={onChange} />);
+    const fechadas = screen.getByRole("tab", { name: /Fechadas/ });
+    expect(fechadas).toHaveTextContent(/^Fechadas$/);
+    expect(fechadas.querySelector(".crm-queue-count")).toBeNull();
+    fireEvent.mouseDown(fechadas, { button: 0, ctrlKey: false });
+    expect(onChange).toHaveBeenCalledWith({ ...VALUE, tab: "closed" });
+    expect(screen.getByRole("tab", { name: /Fila/ })).toHaveTextContent("3");
+  });
+
   it("centraliza a aba selecionada e indica as abas fora da coluna", () => {
     setOrg("manager", "all");
     let onResize: ResizeObserverCallback = () => {};

@@ -245,7 +245,7 @@ export function InboxFilters({ value, onChange, searchResetVersion = 0 }: Props)
     ai: counts?.automatico,
     mine: counts?.mine,
     all: counts?.all,
-    closed: counts?.closed,
+    // Histórico encerrado não é pendência: sem badge de notificação na aba.
     archived: counts?.archived,
   };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
