@@ -732,6 +732,11 @@
     padding: 8px 12px;
     gap: 12px;
   }
+  .workspace :global(.crm-navigation.w-60) :global(.crm-rail-tools) > div {
+    flex-direction: row;
+    justify-content: space-evenly;
+    margin-bottom: 8px;
+  }
   .workspace :global(.crm-queue-tabs) [role="tablist"] {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
