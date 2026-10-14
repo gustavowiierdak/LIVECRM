@@ -107,10 +107,10 @@ function montar(barra: InboxFiltersValue) {
   );
 }
 
-/** O número que o operador vê na aba "Todas" — o badge é o `<span>` da aba. */
+/** O número que o operador vê na aba "Todas", sem confundir com seu rótulo. */
 function contadorDaAbaTodas(): string | null {
   const aba = screen.getByRole("tab", { name: /Todas/ });
-  return aba.querySelector("span")?.textContent ?? null;
+  return aba.querySelector(".crm-queue-count")?.textContent ?? null;
 }
 
 function perguntasDe(url: string): string[] {

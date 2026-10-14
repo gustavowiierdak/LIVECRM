@@ -53,7 +53,10 @@ vi.mock("@/hooks/contacts/usePersonalContact", () => ({
   useMarkPersonalContact: () => ({ mutate: marcarMutate, isPending: false }),
   useUnmarkPersonalContact: () => ({ mutate: desmarcarMutate, isPending: false }),
 }));
-vi.mock("@/components/kanban/OwnerBadge", () => ({ OwnerBadge: () => null }));
+vi.mock("@/components/kanban/OwnerBadge", async (importOriginal) => ({
+  ...(await importOriginal<typeof OwnerBadgeModule>()),
+  OwnerBadge: () => null,
+}));
 vi.mock("@/components/inbox/ReassignDialog", () => ({ ReassignDialog: () => null }));
 vi.mock("@/components/inbox/SnoozeButton", () => ({ SnoozeButton: () => null }));
 vi.mock("@/components/inbox/JanelaSelo", () => ({ JanelaSelo: () => null }));
@@ -164,3 +167,4 @@ describe("gate do botão pessoal no cabeçalho", () => {
     unmount();
   });
 });
+import type * as OwnerBadgeModule from "@/components/kanban/OwnerBadge";

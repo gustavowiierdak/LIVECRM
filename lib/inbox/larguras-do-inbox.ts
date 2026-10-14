@@ -20,7 +20,7 @@
  *      empurrar a conversa para fora da tela).
  *
  *   2. MEMÓRIA POR FAIXA, não por breakpoint de CSS. `md`, `xl` e `2xl` têm
- *      padrões DIFERENTES (300/272/300 na lista), então uma largura só de
+ *      padrões DIFERENTES (300/320/351 na lista), então uma largura só de
  *      "desktop" brigaria entre notebook e monitor: quem estica a lista no
  *      notebook a estica a 500px e, no 27", a mesma chave derrubaria a
  *      conversa. Cada faixa guarda a sua.
@@ -62,8 +62,8 @@ export const PASSO_TECLADO = 16;
 
 /** Da faixa maior para a menor: `find` devolve a primeira que cabe. */
 export const FAIXAS: readonly Faixa[] = [
-  { id: "2xl", min: 1536, lista: 300, ficha: 320, temFicha: true },
-  { id: "xl", min: 1280, lista: 272, ficha: 296, temFicha: true },
+  { id: "2xl", min: 1536, lista: 351, ficha: 347, temFicha: true },
+  { id: "xl", min: 1280, lista: 320, ficha: 320, temFicha: true },
   { id: "md", min: 768, lista: 300, ficha: 300, temFicha: false },
 ];
 

@@ -1,7 +1,10 @@
 "use client";
 import type { ReactNode } from "react";
+import styles from "./workspace.module.css";
+import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TopBar } from "@/components/shell/TopBar";
+import { InboxRailProvider } from "@/components/shell/InboxRail";
 import { BarraInferior } from "@/components/shell/BarraInferior";
 import { BarraDeProgressoNavegacao } from "@/components/shell/BarraDeProgressoNavegacao";
 import { useSinalDePresenca } from "@/hooks/atendimento/useSinalDePresenca";
@@ -51,7 +54,8 @@ export function AppShell({ sidebarCollapsed, podeAtender, children }: AppShellPr
       sumindo. Princípio 2 de `docs/design-system/screen-flow/07-responsive-strategy.md`,
       escrito em abril de 2026 e aplicado em 6 lugares de 33 até aqui.
     */
-    <div className="flex min-h-dvh w-full bg-background">
+    <InboxRailProvider>
+    <div className={cn(styles.workspace, "flex min-h-dvh w-full bg-background")}>
       <BarraDeProgressoNavegacao />
       <div className="hidden md:block">
         <Sidebar collapsed={sidebarCollapsed} />
@@ -98,7 +102,7 @@ export function AppShell({ sidebarCollapsed, podeAtender, children }: AppShellPr
           peça fixa quem cobre isso é o terceiro termo do `max()` do contrato.
         */}
         <main
-          className="flex-1 overflow-auto p-4 pb-area-segura sm:p-6"
+          className={cn(styles.content, "flex-1 overflow-auto p-4 pb-area-segura sm:p-6")}
           style={estiloDaReserva(ocupacaoDoRodape)}
           data-rodape-ocupado={ocupacaoDoRodape}
         >
@@ -120,5 +124,6 @@ export function AppShell({ sidebarCollapsed, podeAtender, children }: AppShellPr
       */}
       <BarraInferior />
     </div>
+    </InboxRailProvider>
   );
 }

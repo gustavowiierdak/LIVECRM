@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { ArrowRight, CaretDoubleLeft, CaretDoubleRight, CaretDown, Gear } from "@/lib/ui/icons";
+import { ArrowRight, CaretDoubleLeft, CaretDoubleRight, CaretDown, Gear, List } from "@/lib/ui/icons";
+import { useInboxRail } from "./InboxRail";
 import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
@@ -41,6 +42,9 @@ export function SidebarContent({
   // escolha de idioma virar algo visível no primeiro clique.
   const t = useT();
   const pathname = usePathname();
+  const rail = useInboxRail();
+  const inbox = pathname === "/app/inbox" && showCollapseControl && rail !== null;
+  const compactInbox = inbox && collapsed;
   const [isPending, startTransition] = useTransition();
   const { user, activeOrg } = useAuth();
   const todos = sidebarGroups(
@@ -100,7 +104,7 @@ export function SidebarContent({
    * `process.env`, e essas duas fontes passaram a divergir quando o layout raiz
    * começou a injetar a marca do BANCO. Divergência entre SSR e cliente aqui não
    * é detalhe: com logo no banco e `APP_LOGO_URL` vazio, o servidor desenhava o
-   * `<span>` de baixo e o cliente desenhava o `<img>` — React #418 em toda tela.
+   * span de baixo e o cliente desenhava a imagem — React #418 em toda tela.
    * Hoje a marca vem por PROP do servidor (`useMarcaDaInstalacao`), pela mesma
    * rota de `activeOrg`, e os dois lados leem o mesmo objeto por construção.
    */
@@ -133,7 +137,14 @@ export function SidebarContent({
           collapsed ? "justify-center" : "justify-start",
         )}
       >
-        {(logo || logoEscuro) && !collapsed ? (
+        {compactInbox ? (
+          <button type="button" disabled={isPending}
+            onClick={() => startTransition(() => toggleSidebar(collapsed))}
+            aria-label={t("Expandir sidebar")} title={t("Expandir sidebar")}
+            className="flex h-10 w-10 items-center justify-center rounded-md hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring">
+            <List size={23} aria-hidden />
+          </button>
+        ) : (logo || logoEscuro) && !collapsed ? (
           // Sem arte própria para o escuro, preserva a proteção de contraste.
           <div
             className={cn(
@@ -141,13 +152,13 @@ export function SidebarContent({
               !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
             )}
           >
-            {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
+            {/* Imagem nativa em vez de next/image: a URL vem de quem hospeda
               (banco ou .env), e next/image exige allowlist de domínios fechada em
               build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
               Altura fixa e largura livre porque a arte enviada tem proporção
               desconhecida; forçar as duas distorceria o logo de quem configurou. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logo}
                 alt={nome}
@@ -179,7 +190,7 @@ export function SidebarContent({
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
         )}
-        {collapsed && !marcaDoProduto && (
+        {collapsed && !marcaDoProduto && !compactInbox && (
           <span aria-hidden className="text-lg font-bold text-primary">
             {/* Spread e não `[0]`: nome começando com emoji ou acento composto
                 quebraria no meio do code point. Mesma regra de `resolveBranding`
@@ -235,7 +246,14 @@ export function SidebarContent({
         trocar N destinos do menu por um único link de hub devolve (N-1)×32px.
       */}
       <nav className="flex-1 space-y-2 overflow-y-auto p-2" aria-label={t("Navegação principal")}>
+        {inbox && <div ref={rail?.setQueues} className="crm-rail-queues border-b pb-2" />}
         {grupos.map(({ group, items }) => {
+          // O menu expandido continua expondo TODO o catálogo autorizado.
+          // No atendimento, a faixa recolhida prioriza só os atalhos operacionais.
+          const visiveis = compactInbox
+            ? items.filter((item) => ["/app/agenda", "/app/contacts", "/app/calls", "/app/radar"].includes(item.href))
+            : items;
+          if (compactInbox && visiveis.length === 0) return null;
           const tituloId = `nav-grupo-${group.id}`;
           // Recolhido o sidebar inteiro (rail de 64px), o grupo sempre mostra
           // seus itens — não há onde desenhar cabeçalho nem seta para fechá-lo.
@@ -273,7 +291,7 @@ export function SidebarContent({
                   aria-label={collapsed ? t(group.label) : undefined}
                   className="space-y-1"
                 >
-                  {items.map((item) => {
+                  {visiveis.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                     const Icon = item.icon;
                     return (
@@ -281,6 +299,7 @@ export function SidebarContent({
                         <Link
                           href={item.href}
                           title={collapsed ? t(item.label) : undefined}
+                          aria-label={collapsed ? t(item.label) : undefined}
                           aria-current={isActive ? "page" : undefined}
                           onClick={onNavigate}
                           className={cn(
@@ -304,11 +323,12 @@ export function SidebarContent({
                       </li>
                     );
                   })}
-                  {group.hub && (
+                  {group.hub && !compactInbox && (
                     <li>
                       <Link
                         href={group.hub.href}
                         title={collapsed ? t(group.hub.label) : undefined}
+                        aria-label={collapsed ? t(group.hub.label) : undefined}
                         aria-current={pathname === group.hub.href ? "page" : undefined}
                         onClick={onNavigate}
                         className={cn(
@@ -331,10 +351,12 @@ export function SidebarContent({
         })}
       </nav>
       <div className="border-t p-2">
+        {inbox && <div ref={rail?.setTools} className="crm-rail-tools" />}
         {rodape && (
           <Link
             href={rodape.href}
             title={collapsed ? t(rodape.label) : undefined}
+            aria-label={collapsed ? t(rodape.label) : undefined}
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
             onClick={onNavigate}
             className={cn(
@@ -349,8 +371,8 @@ export function SidebarContent({
             {!collapsed && <span className="truncate">{t(rodape.label)}</span>}
           </Link>
         )}
-        <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />
-        {showCollapseControl && (
+        {!compactInbox && <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />}
+        {showCollapseControl && !compactInbox && (
           <button
             type="button"
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
@@ -408,7 +430,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         // `duration-base` em vez do `duration-200` literal: 200ms é o mesmo
         // número, mas vindo de `--duration-base`. A Lei de movimento fecha a
         // tabela de durações, e número solto é o que a faz apodrecer.
-        "sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r bg-card transition-[width] duration-base",
+        "crm-navigation sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r bg-card transition-[width] duration-base",
         collapsed ? "w-16" : "w-60",
       )}
     >

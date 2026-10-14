@@ -217,6 +217,7 @@ test.describe("filtro por marcador, pela tela", () => {
     await marcar(page, "Adicionar tag ao contato", "/contacts/", tagDoContato);
 
     // 3. O seletor oferece a UNIÃO dos dois vocabulários.
+    await page.getByRole("button", { name: "Filtros de atendimento" }).click();
     const seletor = page.getByRole("button", { name: "Filtrar por tag" });
     await seletor.click();
     await expect(page.getByRole("menuitemcheckbox", { name: tagDaConversa, exact: true })).toBeVisible({
@@ -388,6 +389,7 @@ test.describe("filtro por marcador, pela tela", () => {
     await marcar(page, "Adicionar tag ao contato", "/contacts/", tagDoContato);
 
     // 3. O seletor oferece a UNIÃO dos dois vocabulários.
+    await page.getByRole("button", { name: "Filtros de atendimento" }).click();
     const seletor = page.getByRole("button", { name: "Filtrar por tag" });
     await seletor.click();
     await expect(page.getByRole("menuitemcheckbox", { name: tagDaConversa, exact: true })).toBeVisible({

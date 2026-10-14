@@ -98,6 +98,7 @@ test("gestão vincula atendente, encaminha à fila e filtra o setor", async ({ p
           ).data,
       )
       .toMatchObject({ status: "pending", bot_silenced_until: "infinity" });
+    await page.getByRole("button", { name: "Filtros de atendimento" }).click();
     await page.getByRole("combobox", { name: "Filtrar por setor" }).click();
     await page.getByRole("option", { name: "Suporte Técnico", exact: true }).click();
     const setores = (await page.request.get("/api/v1/team/setores")).json();
@@ -109,6 +110,10 @@ test("gestão vincula atendente, encaminha à fila e filtra o setor", async ({ p
     );
     expect(result.status()).toBe(200);
     expect((await result.json()).data.map((c: { id: string }) => c.id)).toContain(conv);
+    // A disconnected-channel banner must not push the inbox beyond the viewport.
+    await expect.poll(() => page.locator(".crm-inbox").evaluate(
+      (el) => Math.ceil(el.getBoundingClientRect().bottom) - window.innerHeight,
+    )).toBeLessThanOrEqual(0);
     await page.screenshot({ path: "/tmp/livecrm-setores-fila.png", fullPage: true });
   } finally {
     // Só fixtures locais deste teste. Nenhuma mensagem é enviada a um provedor.

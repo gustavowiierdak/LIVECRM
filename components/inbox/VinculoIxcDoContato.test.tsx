@@ -31,7 +31,7 @@ describe("vínculo IXC no cartão do contato", () => {
           linked_by: "atendente",
         },
       });
-    render(<VinculoIxcDoContato contactId="contato-1" readonly={false} initialLink={null} />);
+    render(<VinculoIxcDoContato contactId="contato-1" readonly={false} initialLink={null} compact />);
     fireEvent.click(screen.getByRole("button", { name: "Vincular cadastro do IXC" }));
     fireEvent.change(screen.getByLabelText("CPF/CNPJ do titular"), {
       target: { value: "12.345.678/0001-95" },
@@ -92,7 +92,7 @@ describe("vínculo IXC no cartão do contato", () => {
   });
 
   it("em acompanhamento somente leitura exibe o vínculo sem permitir alteração", () => {
-    render(<VinculoIxcDoContato contactId="contato-1" readonly initialLink={null} />);
+    render(<VinculoIxcDoContato contactId="contato-1" readonly initialLink={null} compact />);
     expect(screen.getByText("Nenhum cadastro do IXC vinculado.")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Vincular cadastro do IXC" }),

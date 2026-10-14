@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +35,7 @@ interface Props {
   conversationId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  returnFocusRef?: RefObject<HTMLButtonElement | null>;
   /** Aba em que o diálogo abre. A faixa de número fora do ar abre em "numero". */
   abaInicial?: AbaDeTransferencia;
   /**
@@ -71,6 +72,7 @@ export function ReassignDialog({
   conversationId,
   open,
   onOpenChange,
+  returnFocusRef,
   abaInicial = "atendente",
   numero,
 }: Props) {
@@ -118,8 +120,16 @@ export function ReassignDialog({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent
+        className="crm-inbox-dialog sm:max-w-md"
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef?.current?.isConnected) {
+            event.preventDefault();
+            returnFocusRef.current.focus();
+          }
+        }}
+      >
+        <DialogHeader className="crm-dialog-header">
           <DialogTitle>{t("Transferir conversa")}</DialogTitle>
           <DialogDescription>
             {t(
@@ -223,7 +233,7 @@ export function ReassignDialog({
         </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="crm-dialog-footer">
           <Button variant="ghost" onClick={() => close(false)}>
             {t("Cancelar")}
           </Button>

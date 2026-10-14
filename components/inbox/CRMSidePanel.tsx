@@ -13,12 +13,12 @@ import { useT } from "@/hooks/i18n/useT";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ChipDeEtiqueta } from "@/components/tags/ChipDeEtiqueta";
-import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Tag, Receipt, Users, ArrowRight } from "@/lib/ui/icons";
+import { Tag, Receipt, Users, ArrowRight, Copy, Phone, CalendarBlank, CalendarPlus } from "@/lib/ui/icons";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -37,6 +37,8 @@ import { PROXIMO_PASSO_DA_MENSAGEM_NOVA } from "@/lib/atendimento/proximo-passo-
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { VinculoIxcDoContato } from "./VinculoIxcDoContato";
+import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
+import { SetorDaConversa } from "./SetorDaConversa";
 
 interface Props {
   conversation: ConversationWithContact | null;
@@ -684,18 +686,36 @@ export function CRMSidePanel({ conversation }: Props) {
   }
 
   return (
-    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4">
+    <aside aria-label={t("Ficha do contato")} className="crm-contact-panel flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4">
       <section>
-        <h3 className="text-xs font-semibold text-text">
+        <h3 className="sr-only">
           {t("Contato")}
         </h3>
-        <Card className="mt-2 space-y-2 p-3 text-sm">
-          <div className="font-medium">{displayName}</div>
-          {contact?.phone_number && (
-            <div className="text-xs text-muted-foreground">{phoneForDisplay(contact.phone_number)}</div>
-          )}
+        <div className="crm-contact-profile flex flex-col gap-3 text-sm">
+          <div className="crm-contact-identity flex flex-col items-center gap-2 py-3 text-center">
+            <Avatar className="crm-contact-avatar size-24 text-2xl" aria-hidden>
+              {contactId && contact?.avatar_storage_path && !contact.is_anonymized && (
+                <AvatarImage src={`/api/v1/contacts/${contactId}/avatar`} alt="" />
+              )}
+              <AvatarFallback>{displayName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div className="crm-contact-name font-semibold wrap-anywhere">{displayName}</div>
+            {contact?.phone_number && (
+              <div className="crm-contact-phone flex max-w-full items-center gap-1 text-xs text-muted-foreground">
+                <Phone size={14} className="shrink-0" aria-hidden />
+                <span className="select-text wrap-anywhere">{phoneForDisplay(contact.phone_number)}</span>
+                <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={t("Copiar telefone")}
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(contact.phone_number!); toast.success(t("Telefone copiado.")); }
+                    catch { toast.error(t("Não foi possível copiar — selecione e copie manualmente.")); }
+                  }}>
+                  <Copy size={14} aria-hidden />
+                </Button>
+              </div>
+            )}
+          </div>
           {contactId && !contact?.is_anonymized ? (
-            <VinculoIxcDoContato contactId={contactId} readonly={readonly} initialLink={vinculoIxc} />
+            <VinculoIxcDoContato contactId={contactId} readonly={readonly} initialLink={vinculoIxc} compact />
           ) : null}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -704,8 +724,20 @@ export function CRMSidePanel({ conversation }: Props) {
               ))}
             </div>
           )}
-          <div className="flex flex-wrap gap-2 pt-1">
-            {contactId&&conversation?<Link className="underline" href={`/app/agenda?contato=${contactId}&conversa=${conversation.id}`}>{t("Marcar compromisso")}</Link>:null}
+          <div className="crm-contact-actions grid grid-cols-2 gap-2 pt-1" role="group" aria-label={t("Ações do contato")}>
+            {contactId && (
+              <Button asChild size="sm" className="col-span-2 w-full justify-between">
+                <Link href={`/app/contacts/${contactId}`}>
+                  {t("Ver contato")}
+                  <ArrowRight size={14} aria-hidden />
+                </Link>
+              </Button>
+            )}
+            {contactId && <Button asChild variant="outline" size="sm" className="col-span-2 w-full justify-center">
+              <Link href={`/app/agenda?contato=${contactId}&conversa=${conversation.id}`}>
+                <CalendarPlus size={14} aria-hidden />{t("Marcar compromisso")}
+              </Link>
+            </Button>}
             <Button
               size="sm"
               variant="outline"
@@ -726,25 +758,29 @@ export function CRMSidePanel({ conversation }: Props) {
               <Users size={12} className="mr-1" weight="regular" aria-hidden />
               {leadDialogOpen && defaultPipeline.isLoading ? t("Carregando…") : t("Novo Lead")}
             </Button>
-            {contactId && (
-              <Button asChild size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                <Link href={`/app/contacts/${contactId}`}>
-                  {t("Ver contato")}
-                  <ArrowRight size={12} className="ml-1" weight="regular" aria-hidden />
-                </Link>
-              </Button>
-            )}
           </div>
           {tagEditorOpen && contactId && <ContactTagsEditor contactId={contactId} orgId={conversation.organization_id} tags={tags} />}
-        </Card>
+        </div>
       </section>
 
-      <LeadEnrichment
-        data={summaryContactId === contactId && !erro && !contact?.is_anonymized ? enrichment : null}
-        loading={sectionsLoading}
-        error={erro || (summaryContactId === contactId && enrichmentError)}
-        onRetry={recarregar}
-      />
+      <section className="crm-contact-service" aria-label={t("Dados do atendimento")}>
+        <dl className="space-y-2 text-xs">
+          {(conversation.service_started_at || conversation.created_at) && (
+            <div>
+              <dt className="flex items-center gap-2 text-muted-foreground">
+                <CalendarBlank size={16} className="shrink-0" aria-hidden />
+                {t(conversation.service_started_at ? "Início do atendimento" : "Conversa criada em")}
+              </dt>
+              <dd className="pl-6"><time dateTime={conversation.service_started_at || conversation.created_at}>{shortDate(conversation.service_started_at || conversation.created_at, localeDaData)}</time></dd>
+            </div>
+          )}
+          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("Canal")}</dt>
+            <dd className="min-w-0 text-right wrap-anywhere">{conversation.channel === "webchat" ? t("Atendimento web") : rotuloDoCanalDaConversa(conversation.channel_sessions, t) || "—"}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("Responsável")}</dt>
+            <dd className="min-w-0 text-right wrap-anywhere">{conversation.assigned_to_user_id ? conversation.assigned_to_user_name || t("Atendente") : t("Sem responsável")}</dd></div>
+        </dl>
+        {conversation.atendimento_setor_id && <div className="mt-3 flex justify-center"><SetorDaConversa id={conversation.atendimento_setor_id} /></div>}
+      </section>
 
       {contactId && defaultPipeline.data && (
         <NewLeadDialog
@@ -837,11 +873,15 @@ export function CRMSidePanel({ conversation }: Props) {
       <Separator />
 
       <section data-testid="inbox-memoria">
+        <details className="crm-contact-disclosure" open={fatos.length > 0 || historico.length > 0 || erro}>
+        <summary>
         <h3 className="text-xs font-semibold">{t("Memória do contato")}</h3>
+        </summary>
         <p className="mt-1 text-xs text-muted-foreground">{t("Fatos duráveis registrados nas notas. Pendências pertencem à demanda vigente.")}</p>
         {!sectionsLoading && fatos.map((f) => <details key={f.id} className="mt-2 text-xs"><summary className="wrap-anywhere">{f.headline}</summary><p className="mt-1 whitespace-pre-wrap wrap-anywhere">{f.body}</p></details>)}
         {!sectionsLoading && fatos.length === 0 && <p className="mt-2 text-xs text-muted-foreground">{t("Nenhum fato durável registrado.")}</p>}
         {!sectionsLoading && historico.length > 0 && <div className="mt-3 text-xs"><h4>{t("Histórico encerrado — sem tarefas pendentes")}</h4>{historico.map((h) => <p key={h.id}>{t(DESFECHO_LEGIVEL[h.desfecho] ?? h.desfecho)}{h.fechada_em ? ` · ${shortDate(h.fechada_em, localeDaData)}` : ""}</p>)}</div>}
+        </details>
       </section>
       <Separator />
 
@@ -850,9 +890,12 @@ export function CRMSidePanel({ conversation }: Props) {
       {contactId && !contact?.is_anonymized && <RoteirosDoContato contactId={contactId} variante="painel" />}
 
       <section data-testid="inbox-campos-lead">
+        <details className="crm-contact-disclosure" open={Boolean(leads?.length) || erro}>
+        <summary>
         <h3 className="text-xs font-semibold text-text">
           {t("Leads recentes")}
         </h3>
+        </summary>
         {sectionsLoading ? (
           <Skeleton className="mt-2 h-14 w-full" />
         ) : leads && leads.length > 0 ? (
@@ -865,14 +908,18 @@ export function CRMSidePanel({ conversation }: Props) {
         ) : (
           <SemLista vazio="Sem leads." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
         )}
+        </details>
       </section>
 
       <Separator />
 
       <section>
+        <details className="crm-contact-disclosure" open={Boolean(orders?.length) || erro}>
+        <summary>
         <h3 className="text-xs font-semibold text-text">
           {t("Pedidos recentes")}
         </h3>
+        </summary>
         {sectionsLoading ? (
           <Skeleton className="mt-2 h-14 w-full" />
         ) : orders && orders.length > 0 ? (
@@ -897,14 +944,18 @@ export function CRMSidePanel({ conversation }: Props) {
         ) : (
           <SemLista vazio="Sem pedidos." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
         )}
+        </details>
       </section>
 
       <Separator />
 
       <section>
+        <details className="crm-contact-disclosure" open={Boolean(activities?.length) || erro}>
+        <summary>
         <h3 className="text-xs font-semibold text-text">
           {t("Atividade")}
         </h3>
+        </summary>
         {sectionsLoading ? (
           <Skeleton className="mt-2 h-14 w-full" />
         ) : activities && activities.length > 0 ? (
@@ -938,7 +989,18 @@ export function CRMSidePanel({ conversation }: Props) {
         ) : (
           <SemLista vazio="Sem atividade." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
         )}
+        </details>
       </section>
+
+      <details className="crm-contact-disclosure" open={Boolean(enrichment) || erro || enrichmentError}>
+        <summary><h3>{t("Sobre a empresa")}</h3></summary>
+        <LeadEnrichment
+          data={summaryContactId === contactId && !erro && !contact?.is_anonymized ? enrichment : null}
+          loading={sectionsLoading}
+          error={erro || (summaryContactId === contactId && enrichmentError)}
+          onRetry={recarregar}
+        />
+      </details>
 
       <Separator />
 
@@ -948,11 +1010,15 @@ export function CRMSidePanel({ conversation }: Props) {
           DEPOIS das seções de trabalho: é consulta, não é o que o atendente abre
           a conversa para fazer. */}
       <section>
+        <details className="crm-contact-disclosure">
+        <summary>
         <h3 className="text-xs font-semibold">{t("Acervo")}</h3>
+        </summary>
         <p className="mt-1 mb-2 text-xs text-muted-foreground">
           {t("Pergunte como a IA perguntaria — a resposta vem com a origem de cada trecho.")}
         </p>
         <AcervoSearch />
+        </details>
       </section>
     </aside>
   );

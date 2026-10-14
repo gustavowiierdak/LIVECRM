@@ -18,6 +18,7 @@ import {
 import { useConversation, isNotFound } from "@/hooks/inbox/useConversation";
 import { ConversationList } from "./ConversationList";
 import { InboxFilters, type InboxFiltersValue, type InboxTab } from "./InboxFilters";
+import { InboxHome } from "./InboxHome";
 import { ChatThread } from "./ChatThread";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ConversationHeader } from "./ConversationHeader";
@@ -30,7 +31,7 @@ import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 import { OpenConversationProvider } from "@/hooks/notifications/OpenConversationContext";
 // ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
-import { CaretLeft, ChatCircle, IdentificationCard, MagnifyingGlass, X } from "@/lib/ui/icons";
+import { CaretLeft, IdentificationCard, MagnifyingGlass, X } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -186,6 +187,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     ...(tagNaUrl ? { tag: tagNaUrl } : {}),
   });
   const filterValue: InboxFiltersValue = { tab, ...aux };
+  const [searchResetVersion, setSearchResetVersion] = useState(0);
   const setFilterValue = useCallback(
     (next: InboxFiltersValue) => {
       if (next.tab !== tab) {
@@ -202,6 +204,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   // Desliga só os AUXILIARES e mantém a aba: a aba é onde a pessoa está, e
   // limpá-la junto a tiraria do lugar sem ela ter pedido.
   const limparFiltrosAuxiliares = useCallback(() => {
+    setSearchResetVersion((version) => version + 1);
     setFilterValue({ tab, search: "", onlyUnread: false, onlyGroups: false });
   }, [tab, setFilterValue]);
 
@@ -209,6 +212,8 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const ultimoIdNaUrl = useRef(idNaUrl);
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const queueRef = useRef<HTMLDivElement | null>(null);
+  const focusSearch = () => queueRef.current?.querySelector<HTMLInputElement>("input")?.focus();
   /** A ficha do contato como painel deslizante — só existe abaixo do `xl`. */
   const [fichaAberta, setFichaAberta] = useState(false);
   /**
@@ -349,7 +354,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     selectedConversation?.unread_count_for_assignee ?? 0,
   );
 
-  // Aceita `null`: é o VOLTAR do celular, que limpa a seleção e devolve a lista.
+  // Aceita `null`: VOLTAR limpa a seleção (lista no celular, visão geral no desktop).
   // É um SUPERCONJUNTO do `handleSelect` do upstream — o tipo dele não aceita
   // `null`, e sem isso o botão de voltar não teria o que chamar.
   //
@@ -587,7 +592,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     <OpenConversationProvider conversationId={selectedId}>
     <div
       ref={gradeRef}
-      className="grid relative h-[calc(100dvh-3.5rem-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[272px_1fr_296px] 2xl:grid-cols-[300px_1fr_320px]"
+      className="crm-inbox grid relative h-[calc(100dvh-3.5rem-var(--space-6)-max(var(--space-6),var(--rodape-ocupado,0px)))] w-full grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px] 2xl:grid-cols-[351px_minmax(0,1fr)_347px]"
       style={estiloDaGrade}
       /*
        * O ESTADO DO TEMPO REAL, LEGÍVEL DE FORA — mesmo par que o dossiê do lead
@@ -626,12 +631,13 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         `md` — onde as duas colunas cabem juntas e a regra não se aplica.
       */}
       <div
+        ref={queueRef}
         className={cn(
-          "h-full min-h-0 flex-col border-r border-border md:flex",
+          "crm-queue h-full min-h-0 flex-col border-r border-border md:flex",
           colunas.lista,
         )}
       >
-        <InboxFilters value={filterValue} onChange={setFilterValue} />
+        <InboxFilters value={filterValue} onChange={setFilterValue} searchResetVersion={searchResetVersion} />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -660,16 +666,17 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
         className={cn(
           "h-full min-h-0 min-w-0 flex-col md:flex",
           colunas.conversa,
+          !selectedId && "xl:col-span-2",
         )}
       >
         {/*
-          A barra do celular vive FORA do ramo da conversa carregada: o caminho
+          A barra de retorno vive FORA do ramo da conversa carregada: o caminho
           de volta tem de existir inclusive quando não há o que mostrar — é aí
           que ele é a única saída. A porta da ficha, essa sim, depende da
           conversa, e só aparece quando há uma.
         */}
         {selectedId && (
-          <div className="flex items-center gap-1 border-b border-border px-1 py-1 md:hidden">
+          <div className="flex items-center gap-1 border-b border-border px-1 py-1">
             <Button
               variant="ghost"
               size="sm"
@@ -742,6 +749,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               <WebchatOperatorPanel
                 key={`webchat:${selectedConversation.id}`}
                 conversationId={selectedConversation.id}
+                contactName={selectedConversation.contacts?.name}
                 supportReadonly={supportReadonly || selectedConversation.status === "closed"}
                 primary
               />
@@ -750,6 +758,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             <div className="min-h-0 flex-1 overflow-hidden">
               <ChatThread
                 conversationId={selectedConversation.id}
+                contactName={selectedConversation.contacts?.name}
                 searchTerm={buscaAberta ? busca.termo : ""}
                 provider={selectedConversation.channel_sessions?.provider ?? null}
                 onResponder={setRespondendo}
@@ -810,18 +819,31 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {t("Conversa não encontrada ou fora do seu acesso.")}
           </div>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <ChatCircle size={36} weight="thin" className="text-text-subtle" aria-hidden />
-            <p className="text-sm font-medium text-text-muted">{t("Selecione uma conversa")}</p>
-            <p className="text-xs text-text-muted">{t("Ou navegue com J e K")}</p>
+        ) : selectedId ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
+            {single.isError ? <>
+              <p role="alert">{t("Não foi possível carregar esta conversa.")}</p>
+              <Button variant="outline" disabled={single.isFetching} onClick={() => void single.refetch()}>{t("Tentar novamente")}</Button>
+            </> : <p role="status">{t("Carregando conversa…")}</p>}
           </div>
+        ) : (
+          <InboxHome
+            orgId={orgId}
+            name={user.full_name}
+            onQueue={(nextTab) => {
+              setSearchResetVersion((version) => version + 1);
+              setFilterValue({ tab: nextTab, search: "", onlyUnread: false, onlyGroups: false });
+              focusSearch();
+            }}
+            onSearch={focusSearch}
+            onHelp={() => setHelpOpen(true)}
+          />
         )}
       </div>
 
-      <div className="hidden h-full min-h-0 min-w-0 xl:block">
+      {selectedId && <div className="hidden h-full min-h-0 min-w-0 xl:block">
         <CRMSidePanel conversation={selectedConversation} />
-      </div>
+      </div>}
 
       {/*
         AS DUAS DIVISÓRIAS (#2579) — só a partir do `md`, quando as colunas
@@ -857,7 +879,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               className="w-px bg-border transition-colors group-hover:bg-primary group-focus-visible:bg-primary"
             />
           </span>
-          {faixa?.temFicha && (
+          {faixa?.temFicha && selectedId && (
             <span
               role="separator"
               aria-orientation="vertical"

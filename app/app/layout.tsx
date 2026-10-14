@@ -274,9 +274,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     needsMfaGate = mfaRequired;
   }
 
-  // Read sidebar collapsed state SSR to avoid flash.
+  // Compact operator rail by default; preserve each person's explicit preference.
+  // Read it server-side to avoid a layout flash during hydration.
   const store = await cookies();
-  const collapsed = store.get("sidebar_collapsed")?.value === "1";
+  const collapsed = store.get("sidebar_collapsed")?.value !== "0";
 
   const impersonating = user.support ? {
     tenantId: user.support.organization_id, tenantName: user.support.name,

@@ -129,6 +129,31 @@ beforeEach(() => {
 });
 
 describe("painel do inbox — demandas abertas", () => {
+  it("organiza ações e copia o telefone sem alterar o contato", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    get.mockResolvedValue({ data: { ...RESPOSTA, leads: [] } });
+    const { container } = renderPainel();
+    await screen.findByText("Ligar amanhã de manhã");
+    expect(screen.getByRole("group", { name: "Ações do contato" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ver contato" })).toHaveAttribute("href", `/app/contacts/${CONTACT}`);
+    expect(screen.getByRole("link", { name: "Marcar compromisso" })).toHaveAttribute("href", `/app/agenda?contato=${CONTACT}&conversa=cv-1`);
+    await user.click(screen.getByRole("button", { name: "Copiar telefone" }));
+    expect(writeText).toHaveBeenCalledWith("5511999");
+    expect(patch).not.toHaveBeenCalled();
+    expect(screen.getByTestId("inbox-demandas").closest("details")).toBeNull();
+    expect(container.querySelector('[data-testid="inbox-campos-lead"] details')).not.toHaveAttribute("open");
+    writeText.mockRestore();
+  });
+
+  it("erro mantém as seções secundárias abertas com opção de tentar novamente", async () => {
+    get.mockRejectedValue(new Error("500"));
+    const { container } = renderPainel();
+    await waitFor(() => expect(screen.getByTestId("inbox-demandas")).toHaveTextContent("Não consegui ler estes dados."));
+    expect(container.querySelector('[data-testid="inbox-campos-lead"] details')).toHaveAttribute("open");
+    expect(screen.getAllByRole("button", { name: "Tentar de novo" }).length).toBeGreaterThan(1);
+  });
+
   it("distingue a demanda SEM próximo passo da que tem", async () => {
     get.mockResolvedValue({ data: RESPOSTA });
     renderPainel();

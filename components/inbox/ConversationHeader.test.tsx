@@ -16,10 +16,16 @@ import type { ConversationWithContact } from "@/hooks/inbox/useConversationsReal
 const closeMutate = vi.hoisted(() => vi.fn());
 const arquivarMutate = vi.hoisted(() => vi.fn());
 const startCall = vi.hoisted(() => vi.fn());
+const authState = vi.hoisted(() => ({ somenteLeitura: false }));
 
 vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: { id: "u1", support: null } }),
+  useAuth: () => ({
+    user: {
+      id: "u1",
+      support: authState.somenteLeitura ? { access_mode: "support_readonly" } : null,
+    },
+  }),
 }));
 vi.mock("@/hooks/inbox/useClaimConversation", () => ({
   useClaimConversation: () => ({ mutate: vi.fn(), isPending: false }),
@@ -48,7 +54,10 @@ vi.mock("@/hooks/contacts/usePersonalContact", () => ({
 vi.mock("@/hooks/ai/useAutomaticoAtivo", () => ({
   useAutomaticoAtivo: () => ({ data: false }),
 }));
-vi.mock("@/components/kanban/OwnerBadge", () => ({ OwnerBadge: () => null }));
+vi.mock("@/components/kanban/OwnerBadge", async (importOriginal) => ({
+  ...(await importOriginal<typeof OwnerBadgeModule>()),
+  OwnerBadge: () => null,
+}));
 vi.mock("@/components/inbox/ReassignDialog", () => ({ ReassignDialog: () => null }));
 vi.mock("@/components/inbox/SnoozeButton", () => ({ SnoozeButton: () => null }));
 vi.mock("@/components/inbox/JanelaSelo", () => ({ JanelaSelo: () => null }));
@@ -90,6 +99,7 @@ function conversa(status: string): ConversationWithContact {
 }
 
 beforeEach(() => {
+  authState.somenteLeitura = false;
   closeMutate.mockReset();
   arquivarMutate.mockReset();
   startCall.mockReset();
@@ -199,6 +209,27 @@ describe("ConversationHeader — Fechar e Arquivar por AlertDialog", () => {
 });
 
 describe("ConversationHeader — busca dentro da conversa (#1793)", () => {
+  it("mantém o suporte somente leitura sem ações de atendimento", () => {
+    authState.somenteLeitura = true;
+    render(<ConversationHeader conversation={conversa("open")} onBuscar={vi.fn()} />);
+    expect(screen.getByText(/Somente leitura/)).toBeVisible();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Ações do atendimento" })).toBeNull();
+  });
+  it("separa ferramentas de consulta das ações sem duplicar controles", () => {
+    render(<ConversationHeader conversation={conversa("open")} onBuscar={vi.fn()} />);
+    const ferramentas = screen.getByRole("group", { name: "Ferramentas da conversa" });
+    const acoes = screen.getByRole("group", { name: "Ações do atendimento" });
+    expect(
+      within(ferramentas).getByRole("button", { name: "Buscar nesta conversa" }),
+    ).toBeVisible();
+    expect(within(ferramentas).queryByRole("button", { name: "Fechar" })).toBeNull();
+    for (const name of ["Assumir", "Transferir", "Fechar", "Arquivar"]) {
+      expect(within(acoes).getByRole("button", { name })).toBeVisible();
+      expect(screen.getAllByRole("button", { name })).toHaveLength(1);
+    }
+  });
+
   it("o botão só existe com quem o atenda, e só abre a busca — nenhuma ação de atendimento", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<ConversationHeader conversation={conversa("open")} />);
@@ -216,3 +247,4 @@ describe("ConversationHeader — busca dentro da conversa (#1793)", () => {
     expect(arquivarMutate).not.toHaveBeenCalled();
   });
 });
+import type * as OwnerBadgeModule from "@/components/kanban/OwnerBadge";

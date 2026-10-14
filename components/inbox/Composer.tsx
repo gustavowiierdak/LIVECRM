@@ -17,6 +17,7 @@ import { ContactPickerDialog } from "@/components/inbox/composer/ContactPickerDi
 import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
+import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwitch";
 import {
   MentionMenu,
   opcoesDeMencao,
@@ -417,8 +418,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <>
       <div
+        data-mode={mode}
         className={cn(
-          "relative border-t border-border bg-background px-3 py-2",
+          "crm-composer relative border-t border-border bg-background px-3 py-2",
           mode === "note" && "border-warning/40 bg-warning-bg",
         )}
       >
@@ -463,32 +465,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </p>
           </div>
         )}
-        <div className="mb-1.5 flex gap-1">
-          <button
-            type="button"
-            onClick={() => setMode("reply")}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-              mode === "reply"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {t("Responder")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("note")}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-              mode === "note"
-                ? "bg-warning text-warning-fg"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {t("Nota interna")}
-          </button>
-        </div>
+        <ComposerModeSwitch mode={mode} onChange={setMode} />
         {/*
           A FAIXA DA CITAÇÃO — o que o atendente escolheu responder.
 
@@ -519,7 +496,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="crm-composer-editor">
+          <div className="crm-composer-tools">
           {/* O "+" existe nos DOIS modos desde a F3 da #1863: em "Nota interna"
               ele abre o mesmo menu, com as DUAS primeiras opções — foto/vídeo e
               documento — porque a nota passou a aceitar anexo. A terceira
@@ -551,6 +529,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               });
             }}
           />
+          </div>
           <textarea
             ref={taRef}
             value={text}
@@ -611,7 +590,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             <Button
               type="button"
               size="icon"
-              className="h-9 w-9 shrink-0"
+              className="crm-composer-send h-9 w-9 shrink-0"
               onClick={handleSubmit}
               disabled={(mode === "note" ? isDisabled : respostaBarrada) || !text.trim()}
               aria-label={t("Enviar")}
@@ -624,6 +603,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       </div>
       <AttachmentPreviewDialog
+        mode={pendingEm}
         file={pendingFile}
         sending={upload.isPending || send.isPending || createNote.isPending}
         onCancel={() => setPendingFile(null)}

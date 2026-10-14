@@ -3,7 +3,7 @@
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { ArrowBendUpLeft, CaretDown, Check, Checks, PencilSimple, Robot, Trash, WarningOctagon } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, CaretDown, Check, Checks, PencilSimple, Trash, WarningOctagon } from "@/lib/ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -17,6 +17,7 @@ import type { Message } from "@/lib/types/messaging";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
 import { CitationButton } from "@/components/ai/CitationButton";
 import { MediaRenderer } from "@/components/inbox/media/MediaRenderer";
+import { MessageFrame } from "./MessageFrame";
 import { MediaUnavailable } from "@/components/inbox/media/MediaUnavailable";
 import { ContactCard } from "@/components/inbox/media/ContactCard";
 import { LocationCard } from "@/components/inbox/media/LocationCard";
@@ -28,6 +29,7 @@ import {
 
 interface Props {
   message: Message;
+  contactName?: string | null;
   searchMatch?: boolean;
   debugCitations?: boolean;
   /** Escolher esta mensagem para responder "em cima" dela. */
@@ -66,6 +68,7 @@ function AckIndicator({ status, t }: { status: string; t: (texto: string) => str
 
 export function MessageBubble({
   message,
+  contactName,
   searchMatch = false,
   debugCitations,
   onResponder,
@@ -214,13 +217,8 @@ export function MessageBubble({
   }
 
   return (
-    <div
-      data-search-match={searchMatch || undefined}
-      className={cn(
-        "group flex w-full min-w-0 items-center gap-1 px-4 py-1",
-        isOutbound ? "justify-end" : "justify-start",
-      )}
-    >
+    <MessageFrame outbound={isOutbound} searchMatch={searchMatch} ai={senderLabel === "IA"}
+      sender={remetente ? rotuloDoRemetente(remetente) : senderLabel ? t(senderLabel) : !isOutbound && contactName?.trim() || t(isOutbound ? "Atendente" : "Cliente")}>
       <div
         // Identidade, não aparência. O e2e de citação contava bolhas por
         // `[class*='rounded-2xl']`, e qualquer componente novo com a mesma
@@ -228,15 +226,15 @@ export function MessageBubble({
         // fez a spec achar que havia mensagem onde não havia (issue #1318).
         data-testid="message-bubble"
         className={cn(
-          "relative max-w-[75%] min-w-0 text-sm",
+          "relative max-w-full min-w-0 text-sm",
           isBareSticker
             ? "px-0 py-0"
             : cn(
-                "rounded-2xl px-3 py-2 shadow-sm",
+                "crm-chat-bubble rounded-lg px-3 py-2 shadow-sm",
                 temMenu && "pr-8",
                 isOutbound
-                  ? "rounded-br-sm bg-primary text-primary-foreground"
-                  : "rounded-bl-sm bg-muted text-foreground",
+                  ? "crm-chat-outgoing rounded-br-sm bg-primary text-primary-foreground"
+                  : "crm-chat-incoming rounded-bl-sm bg-card text-foreground",
               ),
           isFailed && "border border-destructive",
           // A marca da busca é ANEL, não cor de fundo: o fundo já diz de quem é
@@ -338,20 +336,6 @@ export function MessageBubble({
             </div>
           </div>
         )}
-        {remetente && (
-          <p className="mb-0.5 text-[11px] font-medium text-muted-foreground">
-            {rotuloDoRemetente(remetente)}
-          </p>
-        )}
-        {senderLabel && (
-          <div className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold opacity-80">
-            {senderLabel === "IA" ? (
-              <Robot size={10} weight="duotone" aria-hidden />
-            ) : null}
-            {senderLabel && t(senderLabel)}
-          </div>
-        )}
-
         {editando ? (
           <div ref={editorRef} className="space-y-2">
             <textarea
@@ -418,7 +402,7 @@ export function MessageBubble({
 
         <div
           className={cn(
-            "mt-1 flex items-center justify-end gap-1 text-[10px]",
+            "crm-message-meta mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
             isOutbound ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
@@ -429,7 +413,7 @@ export function MessageBubble({
             // divergência só aparece quando alguém cobra o que não foi.
             <span title={t("O autor editou esta mensagem")}>{t("editada")}</span>
           )}
-          <span>{time}</span>
+          <time dateTime={message.sent_at}>{time}</time>
           {showCitationButton && (
             <CitationButton citations={citations} messageId={message.id} />
           )}
@@ -489,6 +473,6 @@ export function MessageBubble({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </MessageFrame>
   );
 }

@@ -8,7 +8,6 @@ import { format, formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
 import { Robot } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ChipDeEtiqueta } from "@/components/tags/ChipDeEtiqueta";
 import { OwnerBadge } from "@/components/kanban/OwnerBadge";
@@ -21,7 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
-import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 
 interface Props {
@@ -87,17 +85,6 @@ const COR_DO_COMANDO: Record<string, string> = {
   encerrada: "bg-muted-foreground/30",
 };
 
-function initials(name: string | null | undefined, fallback: string): string {
-  const v = (name ?? "").trim();
-  if (!v) return fallback.slice(0, 2).toUpperCase();
-  const parts = v.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return fallback.slice(0, 2).toUpperCase();
-  if (parts.length === 1) return (parts[0] ?? "").slice(0, 2).toUpperCase();
-  const first = parts[0]?.[0] ?? "";
-  const last = parts[parts.length - 1]?.[0] ?? "";
-  return (first + last).toUpperCase();
-}
-
 function relativeTime(iso: string | null, locale: Locale): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -141,7 +128,6 @@ export function ConversationListItem({
   const t = useT();
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c, t);
-  const phoneFallback = c?.phone_number ? phoneForDisplay(c.phone_number) : "??";
   const tags = c?.tags ?? [];
   const visibleTags = tags.slice(0, 2);
   const overflow = tags.length - visibleTags.length;
@@ -223,6 +209,7 @@ export function ConversationListItem({
   const rotuloCanal = rotuloDoCanalDaConversa(canal, t);
 
   const temSelos =
+    Boolean(conversation.atendimento_setor_id) ||
     visibleTags.length > 0 ||
     (mostrarAtendente && comando.quem === "humano") ||
     (mostrarCanal && rotuloCanal != null) ||
@@ -244,39 +231,9 @@ export function ConversationListItem({
       {isSelected && (
         <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" aria-hidden />
       )}
-      <div className="relative shrink-0">
-        <Avatar className="h-10 w-10">
-          {/* Só monta a <img> quando existe arquivo: sem isso o browser pediria
-              a rota para TODO contato da lista e levaria 404 em cada um sem
-              foto — que é a maioria. O AvatarFallback do Radix já cobre o caso
-              de a imagem não carregar, então as iniciais nunca somem. */}
-          {c?.avatar_storage_path && !c?.is_anonymized ? (
-            <AvatarImage
-              src={`/api/v1/contacts/${c.id}/avatar`}
-              alt=""
-              className="object-cover"
-            />
-          ) : null}
-          <AvatarFallback className="bg-surface-elevated text-xs font-medium text-text-muted">
-            {initials(displayName, phoneFallback)}
-          </AvatarFallback>
-        </Avatar>
-        <span
-          className={cn(
-            "absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full border-2 border-background",
-            dot,
-          )}
-          role="img"
-          aria-label={rotuloDoComando}
-          title={rotuloDoComando}
-        />
-        <ChannelLogo channel={canal} size={16} className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-background ring-2 ring-background" />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <SetorDaConversa id={conversation.atendimento_setor_id} />
+      <div className="crm-list-content flex min-w-0 flex-1 flex-col">
         {naFila && (
-          <div className="mb-1 flex items-center gap-1.5">
+          <div className="order-4 mt-1 flex items-center gap-1.5">
             <span
               className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-soft px-1 text-[10px] font-medium tabular-nums text-accent"
               aria-label={`${t("Posição")} ${queuePosition} ${t("na fila")}`}
@@ -288,8 +245,9 @@ export function ConversationListItem({
             </span>
           </div>
         )}
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="order-1 flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5">
+            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} role="img" aria-label={rotuloDoComando} title={rotuloDoComando} />
             <span
               className={cn(
                 "truncate text-sm",
@@ -323,9 +281,10 @@ export function ConversationListItem({
           >
             {time}
           </span>
+          <ChannelLogo channel={canal} size={16} className="shrink-0" />
         </div>
 
-        <div className="mt-0.5 flex items-center justify-between gap-2">
+        <div className="order-3 mt-1 flex items-center justify-between gap-2">
           <p
             className={cn(
               "min-w-0 truncate text-[13px]",
@@ -345,7 +304,8 @@ export function ConversationListItem({
         </div>
 
         {temSelos && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <div className="order-2 mt-1 flex flex-wrap items-center gap-1">
+            <SetorDaConversa id={conversation.atendimento_setor_id} />
             {visibleTags.map((t) => (
               <ChipDeEtiqueta key={t} tag={t} className="h-4 px-1.5 text-[10px]" />
             ))}

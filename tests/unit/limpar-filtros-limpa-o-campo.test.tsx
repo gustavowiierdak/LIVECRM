@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { InboxRailProvider, useInboxRail } from "@/components/shell/InboxRail";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -60,6 +61,7 @@ const { InboxFilters } = await import("@/components/inbox/InboxFilters");
  * por ele é o que torna o teste determinístico sem relógio falso.
  */
 function Arnes() {
+  const [searchResetVersion, setSearchResetVersion] = useState(0);
   const [value, setValue] = useState<InboxFiltersValue>({
     tab: "all",
     search: "",
@@ -67,18 +69,39 @@ function Arnes() {
   });
   return (
     <>
-      <InboxFilters value={value} onChange={setValue} />
+      <InboxFilters value={value} onChange={setValue} searchResetVersion={searchResetVersion} />
       <span data-testid="search-aplicado">{value.search}</span>
-      <button onClick={() => setValue((v) => ({ ...v, search: "", onlyUnread: false }))}>
+      <button onClick={() => {
+        setSearchResetVersion((version) => version + 1);
+        setValue((v) => ({ ...v, search: "", onlyUnread: false }));
+      }}>
         Limpar filtros
       </button>
     </>
   );
 }
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('"Limpar filtros" e o campo de busca', () => {
+  it("limpar antes dos 250ms cancela o texto ainda não propagado e mantém o campo montado", () => {
+    vi.useFakeTimers();
+    try {
+      render(<Arnes />);
+      const campo = screen.getByLabelText("Buscar conversas");
+      fireEvent.change(campo, { target: { value: "busca pendente" } });
+      expect(screen.getByTestId("search-aplicado")).toHaveTextContent("");
+      fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+      expect(screen.getByLabelText("Buscar conversas")).toBe(campo);
+      expect(campo).toHaveValue("");
+      act(() => vi.advanceTimersByTime(300));
+      expect(screen.getByTestId("search-aplicado")).toBeEmptyDOMElement();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
   it("o campo volta a ficar vazio quando o filtro é limpo por fora", async () => {
     const user = userEvent.setup();
     render(<Arnes />);
@@ -105,5 +128,47 @@ describe('"Limpar filtros" e o campo de busca', () => {
     await new Promise((r) => setTimeout(r, 400));
 
     expect(campo, "o conserto reverteu a digitação em curso").toHaveValue("abc");
+  });
+});
+
+function RailSlot() {
+  const rail = useInboxRail();
+  return <aside data-testid="rail"><div ref={rail?.setQueues} /></aside>;
+}
+
+describe("navegação compacta do atendimento", () => {
+  it("recolhe filtros sem apagar a seleção, e mantém a contagem visível", async () => {
+    const user = userEvent.setup();
+    render(<Arnes />);
+    const trigger = screen.getByRole("button", { name: "Filtros de atendimento" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Não lidos" })).not.toBeInTheDocument();
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Não lidos" }));
+    await user.click(trigger);
+    expect(trigger).toHaveTextContent("1");
+    await user.click(trigger);
+    expect(screen.getByRole("button", { name: "Não lidos" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("move as MESMAS abas para a lateral e devolve ao painel no celular", async () => {
+    const listeners = new Set<() => void>();
+    const media = {
+      matches: true,
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+    };
+    vi.stubGlobal("matchMedia", () => media);
+    const user = userEvent.setup();
+    render(<InboxRailProvider><RailSlot /><Arnes /></InboxRailProvider>);
+    const rail = screen.getByTestId("rail");
+    expect(within(rail).getByRole("tablist")).toHaveAttribute("aria-orientation", "vertical");
+    expect(screen.getAllByRole("tablist")).toHaveLength(1);
+    await user.click(within(rail).getByRole("tab", { name: "Fila" }));
+    expect(screen.getByRole("tab", { name: "Fila" })).toHaveAttribute("aria-selected", "true");
+    act(() => { media.matches = false; listeners.forEach((listener) => listener()); });
+    expect(within(rail).queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(screen.getByRole("tab", { name: "Fila" })).toHaveAttribute("aria-selected", "true");
   });
 });

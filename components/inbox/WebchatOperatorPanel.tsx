@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
+import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwitch";
 import { NoteCard } from "@/components/inbox/NoteCard";
+import { MessageFrame } from "@/components/inbox/MessageFrame";
+import { DocumentCard } from "@/components/inbox/media/DocumentCard";
+import { pdfDaMensagem } from "@/lib/webchat/anexo";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useConversationNotes } from "@/hooks/inbox/useConversationNotes";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { randomId } from "@/lib/random-id";
@@ -38,8 +43,8 @@ async function resposta<T>(response: Response): Promise<T> {
   return json.data;
 }
 
-function horaDaMensagem(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function horaDaMensagem(value: string, locale: string): string {
+  return new Date(value).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 /**
@@ -51,12 +56,15 @@ export function WebchatOperatorPanel({
   conversationId,
   supportReadonly = false,
   primary = false,
+  contactName,
 }: {
   conversationId: string;
   supportReadonly?: boolean;
   primary?: boolean;
+  contactName?: string | null;
 }) {
   const t = useT();
+  const locale = useTagDeIdioma();
   const [sessions, setSessions] = useState<SessaoOperadorWebchat[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [messages, setMessages] = useState<MensagemWebchat[]>([]);
@@ -260,14 +268,14 @@ export function WebchatOperatorPanel({
   return (
     <section
       className={cn(
-        "border-t border-border bg-background",
+        "crm-webchat-operator border-t border-border bg-background",
         primary ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "px-3 py-3",
       )}
       aria-label={t("Atendimento web")}
     >
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-2",
+          "crm-webchat-channel flex flex-wrap items-center justify-between gap-2",
           primary && "border-b border-border px-4 py-2.5",
         )}
       >
@@ -277,7 +285,7 @@ export function WebchatOperatorPanel({
           </span>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">{t("Atendimento web")}</h2>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="crm-channel-description truncate text-xs text-muted-foreground">
               {t("Canal separado: apenas mensagens trocadas neste atendimento aparecem aqui.")}
             </p>
           </div>
@@ -367,7 +375,7 @@ export function WebchatOperatorPanel({
         <div className={cn("min-h-0", primary ? "flex flex-1 flex-col" : "mt-3 grid gap-2")}>
           <label
             className={cn(
-              "text-xs font-medium",
+              "crm-webchat-session text-xs font-medium",
               primary
                 ? "flex items-center gap-2 border-b border-border bg-muted/20 px-4 py-2"
                 : "grid gap-1",
@@ -425,40 +433,43 @@ export function WebchatOperatorPanel({
                     </span>
                   </div>
                 ) : (
-                  <div
+                  <MessageFrame
                     key={item.data.id}
-                    className={cn(
-                      "flex w-full min-w-0 px-4 py-1",
-                      item.data.direction === "operator" ? "justify-end" : "justify-start",
-                    )}
+                    outbound={item.data.direction === "operator"}
+                    ai={item.data.sender_kind === "ai"}
+                    sender={item.data.direction === "operator"
+                      ? item.data.sender_kind === "ai" ? t("IA") : item.data.sender_name?.trim() || t("Atendente")
+                      : contactName?.trim() || t("Cliente")}
                   >
                     <div
                       data-testid="webchat-message-bubble"
                       className={cn(
-                        "max-w-[75%] min-w-0 rounded-2xl px-3 py-2 text-sm shadow-sm",
+                        "crm-chat-bubble max-w-full min-w-0 rounded-lg px-3 py-2 text-sm shadow-sm",
                         item.data.direction === "operator"
-                          ? "rounded-br-sm bg-primary text-primary-foreground"
-                          : "rounded-bl-sm bg-muted text-foreground",
+                          ? "crm-chat-outgoing rounded-br-sm bg-primary text-primary-foreground"
+                          : "crm-chat-incoming rounded-bl-sm bg-card text-foreground",
                       )}
                     >
                       <p className="leading-snug wrap-anywhere whitespace-pre-wrap">
                         {item.data.body}
                       </p>
+                      {pdfDaMensagem(item.data) && (
+                        <DocumentCard messageId={item.data.id} mime={item.data.media_mime ?? null}
+                          sizeBytes={null} storagePath={null} src={pdfDaMensagem(item.data) ?? undefined}
+                          isOutbound={item.data.direction === "operator"} />
+                      )}
                       <div
                         className={cn(
-                          "mt-1 text-right text-[10px]",
+                          "crm-message-meta mt-1 text-right text-[10px] tabular-nums",
                           item.data.direction === "operator"
                             ? "text-primary-foreground"
                             : "text-muted-foreground",
                         )}
                       >
-                        {item.data.direction === "operator"
-                          ? t(item.data.sender_kind === "ai" ? "IA" : "Você")
-                          : t("Cliente")} ·{" "}
-                        {horaDaMensagem(item.data.created_at)}
+                        <time dateTime={item.data.created_at}>{horaDaMensagem(item.data.created_at, locale)}</time>
                       </div>
                     </div>
-                  </div>
+                  </MessageFrame>
                 ),
               )
             )}
@@ -466,41 +477,17 @@ export function WebchatOperatorPanel({
           </div>
 
           <div
+            data-mode={mode}
             className={cn(
-              "border-t border-border px-3 py-2",
+              "crm-composer border-t border-border px-3 py-2",
               mode === "note" ? "border-warning/40 bg-warning-bg" : "bg-background",
             )}
           >
             {primary && (
-              <div className="mb-1.5 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setMode("reply")}
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                    mode === "reply"
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {t("Responder")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("note")}
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                    mode === "note"
-                      ? "bg-warning text-warning-fg"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {t("Nota interna")}
-                </button>
-              </div>
+              <ComposerModeSwitch mode={mode} onChange={setMode} />
             )}
-            <div className="flex items-end gap-2">
-              <EmojiButton disabled={editorDisabled} onPick={insertEmoji} />
+            <div className="crm-composer-editor">
+              <div className="crm-composer-tools"><EmojiButton disabled={editorDisabled} onPick={insertEmoji} /></div>
               <label className="sr-only" htmlFor={`webchat-reply-${conversationId}`}>
                 {t("Responder pelo atendimento web")}
               </label>
@@ -533,7 +520,7 @@ export function WebchatOperatorPanel({
               <Button
                 type="button"
                 size="icon"
-                className="size-9 shrink-0"
+                className="crm-composer-send size-9 shrink-0"
                 onClick={() => void enviar()}
                 disabled={editorDisabled || !draft.trim()}
                 aria-label={mode === "note" ? t("Salvar nota") : t("Enviar")}

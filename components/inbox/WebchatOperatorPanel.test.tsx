@@ -130,8 +130,33 @@ describe("WebchatOperatorPanel", () => {
     });
     render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
     expect(await screen.findByText("Segue o PIX")).toBeInTheDocument();
-    expect(screen.getByText(/IA ·/)).toBeInTheDocument();
+    expect(screen.getByText("IA")).toBeInTheDocument();
     expect(screen.queryByText(/Você ·/)).not.toBeInTheDocument();
+  });
+
+  it("mostra o autor registrado e PDF seguro sem inventar entrega nem link inválido", async () => {
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      if (String(input).includes("webchat-sessions")) return Response.json({ data: [
+        { id: SESSION_ID, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true },
+      ] });
+      return Response.json({ data: [
+        { id: "pdf-1", direction: "operator", sender_kind: "human", sender_name: "Elson Andrade",
+          type: "document", media_mime: "application/pdf", media_url: "https://faturas.example/teste.pdf",
+          body: "Sua fatura", created_at: "2026-10-08T12:00:00Z" },
+        { id: "pdf-2", direction: "operator", type: "document", media_mime: "application/pdf",
+          media_url: "javascript:alert(1)", body: "Documento indisponível", created_at: "2026-10-08T12:01:00Z" },
+        { id: "text-1", direction: "visitor", body: "Obrigada", created_at: "2026-10-08T12:02:00Z" },
+      ] });
+    });
+    render(<WebchatOperatorPanel conversationId="c1" contactName="Ana Silva" />);
+    expect(await screen.findByText("Elson Andrade")).toHaveClass("crm-message-sender");
+    expect(screen.getByText("Ana Silva")).toHaveClass("crm-message-sender");
+    expect(screen.getByText("Atendente")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Baixar PDF/ })).toHaveAttribute("href", "https://faturas.example/teste.pdf");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByText("Você")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Lida")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Entregue")).not.toBeInTheDocument();
   });
 
   it("salva nota interna sem enviar texto ao visitante", async () => {
@@ -151,6 +176,8 @@ describe("WebchatOperatorPanel", () => {
     render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" primary />);
     await screen.findByLabelText("Responder pelo atendimento web");
     await user.click(screen.getByRole("button", { name: "Nota interna" }));
+    expect(screen.getByRole("button", { name: "Nota interna" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Esta nota fica visível apenas para a equipe.");
     const input = screen.getByLabelText("Responder pelo atendimento web");
     await user.type(input, "Contexto só para a equipe");
     await user.click(screen.getByRole("button", { name: "Salvar nota" }));

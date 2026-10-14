@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useT } from "@/hooks/i18n/useT";
 import { randomId } from "@/lib/random-id";
+import { pdfDaMensagem } from "@/lib/webchat/anexo";
 import {
   Sheet,
   SheetContent,
@@ -70,17 +71,6 @@ function descricaoDoSetor(id: SetorId, t: (texto: string) => string): string {
   return t("Internet, Wi-Fi e equipamentos.");
 }
 
-function pdfDaMensagem(item: MensagemWebchat): string | null {
-  if (item.type !== "document" || item.media_mime !== "application/pdf" || !item.media_url) {
-    return null;
-  }
-  try {
-    const url = new URL(item.media_url);
-    return url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
 
 function PainelDeSetores({
   setores,

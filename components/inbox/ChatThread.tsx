@@ -43,6 +43,7 @@ interface Props {
    */
   dono?: { userId: string | null; nome: string | null } | null;
   contatoId?: string | null;
+  contactName?: string | null;
 }
 
 /**
@@ -87,6 +88,7 @@ export function ChatThread({
   onResponder,
   dono,
   contatoId,
+  contactName,
   searchTerm = "",
 }: Props) {
   const localeDaData = useLocaleDeData();
@@ -337,7 +339,7 @@ export function ChatThread({
   }
 
   return (
-    <div {...sinalDoCanal} className="flex h-full min-w-0 flex-col">
+    <div {...sinalDoCanal} className="crm-message-thread flex h-full min-w-0 flex-col">
       {termo && (
         <div className="px-4 py-1 text-xs text-muted-foreground" role="status">
           {t("Resultados nas mensagens carregadas")}: {resultados.size}
@@ -398,6 +400,7 @@ export function ChatThread({
                 <MessageBubble
                   key={`msg-${item.data.id}`}
                   message={item.data}
+                  contactName={contactName}
                   searchMatch={resultados.has(item.data.id)}
                   debugCitations={debugCitations}
                   onResponder={onResponder}

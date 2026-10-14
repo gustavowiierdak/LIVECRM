@@ -205,6 +205,7 @@ describe("deep-link para conversa fora do filtro", () => {
         <InboxLayout />
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByTestId("painel")).toHaveTextContent("sem-conversa"));
+    await waitFor(() => expect(screen.queryByTestId("painel")).not.toBeInTheDocument());
+    expect(screen.getByRole("region", { name: "Início do operador" })).toBeInTheDocument();
   });
 });

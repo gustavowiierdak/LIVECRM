@@ -36,7 +36,7 @@ export function DocumentCard({
       rel="noreferrer"
       aria-label={`${t("Baixar")} ${label} (${formatBytes(sizeBytes)})`}
       className={cn(
-        "flex w-60 items-center gap-3 rounded-lg p-2 transition-colors",
+        "crm-message-document flex w-60 max-w-full items-center gap-3 rounded-lg p-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
         isOutbound
           ? "bg-primary-foreground/10 hover:bg-primary-foreground/20"
           : "bg-background/60 hover:bg-background",

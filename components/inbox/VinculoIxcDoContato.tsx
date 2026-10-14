@@ -23,6 +23,7 @@ interface Props {
   contactId: string;
   readonly: boolean;
   initialLink: VinculoIxcDoContato | null;
+  compact?: boolean;
 }
 
 function soDigitos(valor: string): string {
@@ -33,7 +34,7 @@ export function VinculoIxcDoContato(props: Props) {
   return <FormularioVinculoIxc key={props.contactId} {...props} />;
 }
 
-function FormularioVinculoIxc({ contactId, readonly, initialLink }: Props) {
+function FormularioVinculoIxc({ contactId, readonly, initialLink, compact = false }: Props) {
   const t = useT();
   const [vinculoSalvo, setVinculoSalvo] = useState<{
     contactId: string;
@@ -84,17 +85,17 @@ function FormularioVinculoIxc({ contactId, readonly, initialLink }: Props) {
   return (
     <>
       <div
-        className="rounded-md border border-border bg-surface/40 p-2.5"
+        className={compact ? "crm-contact-ixc text-center" : "rounded-md border border-border bg-surface/40 p-2.5"}
         data-testid="vinculo-ixc-contato"
       >
-        <div className="flex items-start gap-2">
+        <div className={compact ? "flex flex-col items-center gap-1" : "flex items-start gap-2"}>
           <IdentificationCard
             size={17}
-            className="mt-0.5 shrink-0 text-muted-foreground"
+            className={compact ? "hidden" : "mt-0.5 shrink-0 text-muted-foreground"}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-xs font-medium">
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${compact ? "justify-center text-muted-foreground" : ""}`}>
               {t("Cadastro IXC")}
               {vinculo ? (
                 <CheckCircle size={13} weight="fill" className="text-success-fg" aria-hidden />
@@ -107,7 +108,7 @@ function FormularioVinculoIxc({ contactId, readonly, initialLink }: Props) {
                   <span aria-hidden> · </span>
                   {vinculo.customer_name}
                 </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className={compact ? "sr-only" : "mt-0.5 text-[11px] text-muted-foreground"}>
                   {vinculo.linked_by === "automatico"
                     ? t("Vinculado automaticamente pelo CPF informado no atendimento.")
                     : t("Vinculado por um atendente.")}
