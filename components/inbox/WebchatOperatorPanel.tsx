@@ -7,7 +7,10 @@ import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwit
 import { NoteCard } from "@/components/inbox/NoteCard";
 import { MessageFrame } from "@/components/inbox/MessageFrame";
 import { DocumentCard } from "@/components/inbox/media/DocumentCard";
+import { ImageMedia } from "@/components/inbox/media/ImageMedia";
+import { AudioPlayer } from "@/components/inbox/media/AudioPlayer";
 import { pdfDaMensagem } from "@/lib/webchat/anexo";
+import { tipoDeAnexoWebchat } from "@/lib/webchat/media";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
 import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
@@ -49,8 +52,8 @@ function horaDaMensagem(value: string, locale: string): string {
 
 /**
  * Porta explícita do canal web na inbox. O visual acompanha o fio comum, mas o
- * transporte continua próprio: anexos, áudio, citação e sugestão do agente só
- * entram quando o contrato do webchat souber carregá-los sem cair no WhatsApp.
+ * transporte continua próprio: imagem e áudio do visitante são carregados pelo
+ * contrato do webchat sem misturar as mensagens do WhatsApp.
  */
 export function WebchatOperatorPanel({
   conversationId,
@@ -453,6 +456,12 @@ export function WebchatOperatorPanel({
                       <p className="leading-snug wrap-anywhere whitespace-pre-wrap">
                         {item.data.body}
                       </p>
+                      {tipoDeAnexoWebchat(item.data) === "image" && (
+                        <ImageMedia messageId={item.data.id} alt={t("Imagem recebida")} />
+                      )}
+                      {tipoDeAnexoWebchat(item.data) === "audio" && (
+                        <AudioPlayer messageId={item.data.id} isOutbound={item.data.direction === "operator"} />
+                      )}
                       {pdfDaMensagem(item.data) && (
                         <DocumentCard messageId={item.data.id} mime={item.data.media_mime ?? null}
                           sizeBytes={null} storagePath={null} src={pdfDaMensagem(item.data) ?? undefined}

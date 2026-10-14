@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  Bell,
+  BellOff,
+  BellRing,
   CircleHelp,
   CircleX,
   Download,
   FileText,
   Menu,
+  Mic,
+  Paperclip,
   Plus,
   Send,
+  Square,
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
@@ -17,7 +23,10 @@ import { Button } from "@/components/ui/button";
 import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { useT } from "@/hooks/i18n/useT";
 import { randomId } from "@/lib/random-id";
+import { emitNotification } from "@/lib/notifications/emit";
+import { assinarPermissao, getPermission, requestPermission } from "@/lib/notifications/permission";
 import { pdfDaMensagem } from "@/lib/webchat/anexo";
+import { WEBCHAT_MAX_MEDIA_BYTES, tipoDeAnexoWebchat } from "@/lib/webchat/media";
 import {
   Sheet,
   SheetContent,
@@ -270,8 +279,21 @@ export function PortalDeAtendimento({
   const [erro, setErro] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState("");
   const [mensagens, setMensagens] = useState<MensagemWebchat[]>([]);
+  const [novasRespostas, setNovasRespostas] = useState(0);
+  const novasRespostasRef = useRef(0);
+  const permissaoDeAvisos = useSyncExternalStore(assinarPermissao, getPermission, () => "unsupported");
+  const respostasConhecidas = useRef(new Set<string>());
+  const historicoCarregado = useRef(false);
+  const tituloOriginal = useRef<string | null>(null);
+  const [anexo, setAnexo] = useState<File | null>(null);
+  const [previewAnexo, setPreviewAnexo] = useState<string | null>(null);
+  const previewRef = useRef<string | null>(null);
+  const [gravando, setGravando] = useState(false);
+  const gravador = useRef<MediaRecorder | null>(null);
+  const arquivoRef = useRef<HTMLInputElement>(null);
   const geracaoDaConversa = useRef(0);
-  const fimDaConversa = useRef<HTMLDivElement>(null);
+  const historicoRef = useRef<HTMLDivElement>(null);
+  const acompanharFim = useRef(true);
   const setores = setoresPermitidos
     ? SETORES.filter((item) => setoresPermitidos.includes(item.id))
     : SETORES;
@@ -282,12 +304,75 @@ export function PortalDeAtendimento({
     "--atendimento-accent-soft": `${accent}16`,
   } as React.CSSProperties;
 
+  useEffect(() => () => {
+    const current = gravador.current;
+    gravador.current = null;
+    if (current) {
+      current.onstop = null;
+      if (current.state !== "inactive") current.stop();
+      current.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
+
+  useEffect(() => {
+    tituloOriginal.current = document.title;
+    const restaurarTitulo = () => {
+      if (document.visibilityState === "visible" && tituloOriginal.current)
+        document.title = tituloOriginal.current;
+    };
+    document.addEventListener("visibilitychange", restaurarTitulo);
+    return () => {
+      document.removeEventListener("visibilitychange", restaurarTitulo);
+      if (tituloOriginal.current) document.title = tituloOriginal.current;
+    };
+  }, []);
+
+  const limparAvisoDeResposta = () => {
+    novasRespostasRef.current = 0;
+    setNovasRespostas(0);
+    if (tituloOriginal.current) document.title = tituloOriginal.current;
+    acompanharFim.current = true;
+    const historico = historicoRef.current;
+    if (historico) historico.scrollTop = historico.scrollHeight;
+  };
+
+  const ativarAvisos = async () => {
+    const resultado = await requestPermission().catch(() => "denied" as const);
+    if (resultado !== "granted")
+      setErro(t("Notificações bloqueadas. Libere a permissão nas configurações do navegador."));
+    else setErro(null);
+  };
+
+  const limparAnexo = () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null;
+    setPreviewAnexo(null);
+    setAnexo(null);
+    if (arquivoRef.current) arquivoRef.current.value = "";
+  };
+
   const novoAtendimento = () => {
     geracaoDaConversa.current += 1;
+    acompanharFim.current = true;
+    historicoCarregado.current = false;
+    respostasConhecidas.current.clear();
+    novasRespostasRef.current = 0;
+    setNovasRespostas(0);
+    if (tituloOriginal.current) document.title = tituloOriginal.current;
     setAtivo(false);
     setEncerrado(false);
     setMensagens([]);
     setRascunho("");
+    limparAnexo();
+    const current = gravador.current;
+    gravador.current = null;
+    if (current) {
+      current.onstop = null;
+      if (current.state !== "inactive") current.stop();
+      current.stream.getTracks().forEach((track) => track.stop());
+    }
+    setGravando(false);
     setPrimeiraMensagem("");
     setAssuntoInicial(setoresPermitidos?.length === 1 ? (setoresPermitidos[0] ?? null) : null);
     setMenuAberto(false);
@@ -356,6 +441,11 @@ export function PortalDeAtendimento({
       };
       if (geracao !== geracaoDaConversa.current) return;
       if (sessionResponse.status === 401 || messagesResponse.status === 401) {
+        historicoCarregado.current = false;
+        respostasConhecidas.current.clear();
+        novasRespostasRef.current = 0;
+        setNovasRespostas(0);
+        if (tituloOriginal.current) document.title = tituloOriginal.current;
         setAtivo(false);
         setEncerrado(false);
         setMensagens([]);
@@ -369,6 +459,27 @@ export function PortalDeAtendimento({
         throw new Error(
           messagesPayload.error?.message ?? t("Não foi possível carregar as mensagens."),
         );
+      const respostas = messagesPayload.data.filter((item) => item.direction === "operator");
+      const novas = historicoCarregado.current
+        ? respostas.filter((item) => !respostasConhecidas.current.has(item.id))
+        : [];
+      for (const resposta of respostas) respostasConhecidas.current.add(resposta.id);
+      historicoCarregado.current = true;
+      if (novas.length > 0) {
+        novasRespostasRef.current += novas.length;
+        setNovasRespostas(novasRespostasRef.current);
+        if (document.visibilityState === "hidden") {
+          document.title = `(${novasRespostasRef.current}) ${tituloOriginal.current ?? document.title}`;
+          emitNotification({
+            kind: "message_inbound",
+            title: t("Nova resposta no atendimento"),
+            body: t("Abra o atendimento para ver a mensagem."),
+            tag: `webchat-${publicId ?? "codigo"}`,
+            href: window.location.pathname,
+            force: true,
+          });
+        }
+      }
       setSetorAtual(sessionPayload.data.sector);
       setAtivo(true);
       setEncerrado(sessionPayload.data.active === false);
@@ -391,7 +502,8 @@ export function PortalDeAtendimento({
   }, [ativo, carregarMensagens]);
 
   useEffect(() => {
-    if (ativo) fimDaConversa.current?.scrollIntoView?.({ block: "end" });
+    const historico = historicoRef.current;
+    if (ativo && historico && acompanharFim.current) historico.scrollTop = historico.scrollHeight;
   }, [ativo, mensagens]);
 
   const ativar = async () => {
@@ -411,6 +523,8 @@ export function PortalDeAtendimento({
         throw new Error(payload.error?.message ?? t("Não foi possível validar o código."));
       setSetorAtual(payload.data.sector);
       setCodigo("");
+      historicoCarregado.current = false;
+      respostasConhecidas.current.clear();
       setAtivo(true);
       setEncerrado(false);
     } catch (cause) {
@@ -445,6 +559,8 @@ export function PortalDeAtendimento({
       if (!response.ok || !payload.data?.message)
         throw new Error(payload.error?.message ?? t("Não foi possível iniciar o atendimento."));
       if (geracao !== geracaoDaConversa.current) return;
+      historicoCarregado.current = true;
+      respostasConhecidas.current.clear();
       setSetorAtual(payload.data.sector);
       setMensagens([payload.data.message]);
       setPrimeiraMensagem("");
@@ -500,6 +616,7 @@ export function PortalDeAtendimento({
       if (response.status === 409) setEncerrado(true);
       if (!response.ok || !payload.data)
         throw new Error(payload.error?.message ?? t("Não foi possível enviar a mensagem."));
+      acompanharFim.current = true;
       setMensagens((anteriores) => [...anteriores, payload.data as MensagemWebchat]);
       setRascunho("");
     } catch (cause) {
@@ -510,10 +627,88 @@ export function PortalDeAtendimento({
     }
   };
 
+  const selecionarAnexo = (file: File | null) => {
+    if (!file) return;
+    if (file.size === 0 || file.size > WEBCHAT_MAX_MEDIA_BYTES ||
+      !/^(image\/(jpeg|png|webp|gif)|audio\/(webm|ogg|mpeg|mp4|x-m4a|wav))(;|$)/i.test(file.type)) {
+      setErro(t("Escolha uma imagem ou áudio de até 10 MB."));
+      return;
+    }
+    setErro(null);
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = URL.createObjectURL(file);
+    setPreviewAnexo(previewRef.current);
+    setAnexo(file);
+  };
+
+  const iniciarGravacao = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setErro(t("Este navegador não permite gravar áudio. Você pode anexar um arquivo de áudio."));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const parts: BlobPart[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) parts.push(event.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (gravador.current !== recorder) return;
+        setGravando(false);
+        gravador.current = null;
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        selecionarAnexo(new File(parts, `audio-${Date.now()}.${type.startsWith("audio/mp4") ? "m4a" : "webm"}`, { type }));
+      };
+      gravador.current = recorder;
+      recorder.start();
+      setGravando(true);
+      window.setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 60_000);
+    } catch {
+      setErro(t("Não foi possível acessar o microfone. Verifique a permissão do navegador."));
+    }
+  };
+
+  const enviarAnexo = async () => {
+    if (!anexo || ocupado) return;
+    const csrf = document.cookie.split("; ").find((item) => item.startsWith("webchat_csrf="))?.split("=")[1];
+    if (!csrf) { setErro(t("Sua sessão expirou. Inicie um novo atendimento.")); return; }
+    const geracao = geracaoDaConversa.current;
+    setOcupado(true);
+    setErro(null);
+    try {
+      const form = new FormData();
+      form.set("file", anexo);
+      form.set("idempotency_key", randomId());
+      const response = await fetch("/api/public/webchat/media", {
+        method: "POST", credentials: "same-origin",
+        headers: { "x-webchat-csrf": decodeURIComponent(csrf),
+          ...(publicId ? { "x-webchat-public-id": publicId } : {}) },
+        body: form,
+      });
+      const payload = (await response.json()) as { data?: MensagemWebchat; error?: { message?: string } };
+      if (geracao !== geracaoDaConversa.current) return;
+      if (response.status === 409) setEncerrado(true);
+      if (!response.ok || !payload.data)
+        throw new Error(payload.error?.message ?? t("Não foi possível enviar o anexo."));
+      acompanharFim.current = true;
+      setMensagens((current) => [...current, payload.data!]);
+      limparAnexo();
+    } catch (cause) {
+      if (geracao === geracaoDaConversa.current)
+        setErro(cause instanceof Error ? cause.message : t("Não foi possível enviar o anexo."));
+    } finally { setOcupado(false); }
+  };
+
   return (
-    <main data-theme="light" style={css} className="min-h-screen bg-bg text-text">
-      <section className="mx-auto flex min-h-screen max-w-[1600px] flex-col overflow-hidden bg-surface">
-        <header className="flex min-h-20 items-center justify-between gap-4 border-b border-border px-5 sm:px-8">
+    <main data-theme="light" style={css}
+      className={cn("bg-bg text-text",
+        ativo ? "h-dvh overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible" : "min-h-screen")}>
+      <section className={cn(
+        "mx-auto flex max-w-[1600px] flex-col overflow-hidden bg-surface",
+        ativo ? "h-full lg:h-auto lg:min-h-screen" : "min-h-screen",
+      )}>
+        <header className="flex min-h-20 shrink-0 items-center justify-between gap-4 border-b border-border px-5 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             {logoUrl ? (
               // A URL vem da marca resolvida no servidor; next/image exigiria allowlist em build.
@@ -582,9 +777,12 @@ export function PortalDeAtendimento({
 
           <section
             aria-labelledby="titulo-conversa"
-            className="flex min-h-[calc(100dvh-5rem)] min-w-0 flex-col bg-surface-elevated lg:h-[calc(100dvh-5rem)] lg:min-h-0"
+            className={cn(
+              "flex min-w-0 flex-col bg-surface-elevated lg:h-[calc(100dvh-5rem)] lg:min-h-0",
+              ativo ? "min-h-0" : "min-h-[calc(100dvh-5rem)]",
+            )}
           >
-            <div className="flex items-center gap-4 border-b border-border px-5 py-5 sm:px-8">
+            <div className="flex shrink-0 items-center gap-4 border-b border-border px-5 py-5 sm:px-8">
               <span className="grid size-11 place-items-center rounded-full bg-[var(--atendimento-accent-soft)] text-[var(--atendimento-accent)]">
                 {setorExibido ? (
                   <setorExibido.Icone size={20} aria-hidden />
@@ -592,7 +790,7 @@ export function PortalDeAtendimento({
                   <CircleHelp size={20} aria-hidden />
                 )}
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <h1 id="titulo-conversa" className="text-base font-semibold text-text">
                   {setorExibido ? tituloDoSetor(setorExibido.id, t) : t("Atendimento online")}
                 </h1>
@@ -606,11 +804,53 @@ export function PortalDeAtendimento({
                         : t("Escolha o assunto para começar.")}
                 </p>
               </div>
+              {ativo && !encerrado && permissaoDeAvisos === "default" ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void ativarAvisos()}
+                  aria-label={t("Ativar notificações de novas respostas")}
+                  title={t("Receba avisos quando esta aba estiver em segundo plano.")}
+                  className="shrink-0">
+                  <Bell aria-hidden />
+                  <span className="hidden sm:inline">{t("Ativar avisos")}</span>
+                </Button>
+              ) : null}
+              {ativo && permissaoDeAvisos === "granted" ? (
+                <span className="shrink-0 text-[var(--atendimento-accent)]"
+                  aria-label={t("Notificações ativadas")}
+                  title={t("Você receberá avisos enquanto esta página estiver aberta.")}>
+                  <BellRing size={19} aria-hidden />
+                </span>
+              ) : null}
+              {ativo && permissaoDeAvisos === "denied" ? (
+                <Button type="button" size="icon" variant="ghost"
+                  aria-label={t("Notificações bloqueadas no navegador")}
+                  title={t("Libere as notificações nas configurações do navegador.")}
+                  onClick={() => setErro(t("Notificações bloqueadas. Libere a permissão nas configurações do navegador."))}
+                  className="shrink-0 text-text-muted">
+                  <BellOff size={19} aria-hidden />
+                </Button>
+              ) : null}
             </div>
+
+            {ativo && novasRespostas > 0 ? (
+              <div role="status" aria-live="polite"
+                className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)] px-5 py-2 text-sm text-text sm:px-8">
+                <span>{novasRespostas === 1
+                  ? t("Nova resposta no atendimento")
+                  : `${novasRespostas} ${t("novas respostas no atendimento")}`}</span>
+                <Button type="button" size="sm" variant="ghost" onClick={limparAvisoDeResposta}>
+                  {t("Ver resposta")}
+                </Button>
+              </div>
+            ) : null}
 
             {ativo ? (
               <div
-                className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-7 sm:px-8"
+                ref={historicoRef}
+                onScroll={(event) => {
+                  const historico = event.currentTarget;
+                  acompanharFim.current = historico.scrollHeight - historico.scrollTop - historico.clientHeight < 72;
+                }}
+                className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain px-5 py-7 sm:px-8"
                 role="log"
                 aria-label={t("Mensagens do atendimento")}
                 aria-live="polite"
@@ -651,7 +891,21 @@ export function PortalDeAtendimento({
                             minute: "2-digit",
                           })}
                         </span>
-                        {pdfDaMensagem(item) ? (
+                        {tipoDeAnexoWebchat(item) === "image" ? (
+                          <a href={`/api/public/webchat/media/${item.id}`} target="_blank" rel="noopener noreferrer"
+                            className="block w-48 max-w-full overflow-hidden rounded-2xl border border-border bg-surface sm:w-64">
+                            {/* URL privada, validada pela sessão web em cada acesso. */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={`/api/public/webchat/media/${item.id}`} alt={t("Imagem enviada")}
+                              loading="lazy" className="max-h-72 w-full object-contain" />
+                            <span className="block border-t border-border px-3 py-2 text-xs text-text-muted">
+                              {t("Imagem enviada")}
+                            </span>
+                          </a>
+                        ) : tipoDeAnexoWebchat(item) === "audio" ? (
+                          <audio controls preload="metadata" src={`/api/public/webchat/media/${item.id}`}
+                            aria-label={t("Áudio enviado")} className="max-w-full" />
+                        ) : pdfDaMensagem(item) ? (
                           <a
                             href={pdfDaMensagem(item) ?? undefined}
                             target="_blank"
@@ -688,7 +942,6 @@ export function PortalDeAtendimento({
                     ),
                   )
                 )}
-                <div ref={fimDaConversa} aria-hidden />
               </div>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-start px-5 py-8 sm:px-8 lg:justify-center">
@@ -822,11 +1075,43 @@ export function PortalDeAtendimento({
             ) : null}
 
             {ativo && !encerrado ? (
-              <div className="border-t border-border bg-surface p-4 sm:p-5">
+              <div className="shrink-0 border-t border-border bg-surface p-4 sm:p-5">
+                {anexo ? (
+                  <div className="mb-2 rounded-xl border border-border px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate">{anexo.name}</span>
+                      <Button type="button" variant="ghost" size="sm" disabled={ocupado}
+                        onClick={limparAnexo}>
+                        {t("Remover")}</Button>
+                      <Button type="button" size="sm" disabled={ocupado} onClick={() => void enviarAnexo()}>
+                        {ocupado ? t("Enviando…") : t("Enviar anexo")}
+                      </Button>
+                    </div>
+                    {previewAnexo && anexo.type.startsWith("audio/") ? (
+                      <audio controls preload="metadata" src={previewAnexo}
+                        aria-label={t("Ouvir antes de enviar")} className="mt-2 max-w-full" />
+                    ) : null}
+                  </div>
+                ) : null}
                 <label htmlFor="mensagem-atendimento" className="sr-only">
                   {t("Mensagem")}
                 </label>
                 <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface-elevated p-2.5 focus-within:border-[var(--atendimento-accent)]">
+                  {publicId ? <>
+                  <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,audio/webm,audio/ogg,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav"
+                    className="sr-only" aria-label={t("Selecionar imagem ou áudio")}
+                    onChange={(event) => selecionarAnexo(event.target.files?.[0] ?? null)} />
+                  <Button type="button" size="icon" variant="ghost" disabled={ocupado || gravando}
+                    onClick={() => arquivoRef.current?.click()} aria-label={t("Anexar imagem ou áudio")}>
+                    <Paperclip aria-hidden />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" disabled={ocupado}
+                    onClick={() => gravando ? gravador.current?.stop() : void iniciarGravacao()}
+                    aria-label={gravando ? t("Parar gravação") : t("Gravar áudio")}
+                    aria-pressed={gravando}>
+                    {gravando ? <Square aria-hidden /> : <Mic aria-hidden />}
+                  </Button>
+                  </> : null}
                   <textarea
                     id="mensagem-atendimento"
                     disabled={!ativo || ocupado}

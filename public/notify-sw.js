@@ -20,7 +20,8 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientes) => {
       const origem = self.location.origin;
       const url = href ? new URL(href, origem).href : origem + "/app/inbox";
-      const alvo = clientes.find((c) => "focus" in c);
+      const alvo = clientes.find((c) => "focus" in c && c.url === url)
+        || clientes.find((c) => "focus" in c);
       if (alvo) {
         return alvo.focus().then(() => {
           if ("navigate" in alvo) return alvo.navigate(url);

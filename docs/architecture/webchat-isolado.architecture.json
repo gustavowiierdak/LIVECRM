@@ -96,6 +96,20 @@
       "label": "webchat_messages por sessão; nome do autor humano/IA da mesma organização, sem e-mail; sem transporte WhatsApp"
     },
     {
+      "id": "media",
+      "lane": "app",
+      "col": 6,
+      "type": "api",
+      "label": "Imagem e áudio: sessão + CSRF + Origin, upload privado e acesso por mensagem"
+    },
+    {
+      "id": "reply-notice",
+      "lane": "app",
+      "col": 6,
+      "type": "process",
+      "label": "Resposta nova por polling: aviso no chat e notificação do navegador só com permissão e aba aberta"
+    },
+    {
       "id": "canonical",
       "lane": "db",
       "col": 8,
@@ -232,6 +246,11 @@
     { "id": "e30", "from": "operator", "to": "reset", "label": "Administrador confirma reset" },
     { "id": "e31", "from": "reset", "to": "messages", "label": "Exclui primeiro as mensagens web" },
     { "id": "e32", "from": "reset", "to": "handoff", "label": "Exclui sessões e depois handoffs" },
-    { "id": "e33", "from": "reset", "to": "audit", "label": "Registra conclusão ou etapa de falha" }
+    { "id": "e33", "from": "reset", "to": "audit", "label": "Registra conclusão ou etapa de falha" },
+    { "id": "e34", "from": "portal", "to": "media", "label": "Anexa imagem ou grava áudio" },
+    { "id": "e35", "from": "media", "to": "messages", "label": "Mensagem com mídia privada, visível na Inbox" },
+    { "id": "e36", "from": "media", "to": "audit", "label": "Registra envio do anexo" },
+    { "id": "e37", "from": "messages", "to": "reply-notice", "label": "Detecta ID de resposta ainda não visto" },
+    { "id": "e38", "from": "reply-notice", "to": "portal", "label": "Avisa o visitante e oferece ver resposta" }
   ]
 }

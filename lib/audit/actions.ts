@@ -1060,6 +1060,7 @@ export const AUDIT_ACTIONS = [
   "webchat.public_started",
   "webchat.handoff_issued",
   "webchat.operator_message_sent",
+  "webchat.visitor_media_sent",
 
   // ── Cobrança do revendedor — rotas do dono (spec 2026-09-29, PR 2) ───────
   // Plano criado/editado e arquivado; plano atribuído ou trocado numa empresa

@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { mensagemWebchatSchema } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat } from "@/lib/webchat/types";
+import { enriquecerMensagensWebchat } from "@/lib/webchat/enriquecer-mensagens";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const consultaSchema = z.string().uuid();
@@ -46,7 +47,9 @@ export async function GET(
     return fail("internal_error", "Não foi possível carregar o atendimento web.", 500, {
       requestId,
     });
-  return ok((Array.isArray(data) ? data : []) as MensagemWebchat[], { requestId });
+  const messages = await enriquecerMensagensWebchat(createAdminClient(), authz.org.orgId, visitorSessionId.data,
+    (Array.isArray(data) ? data : []) as MensagemWebchat[]);
+  return ok(messages, { requestId });
 }
 
 export async function POST(

@@ -1,12 +1,13 @@
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { createAdminClient } from "@/lib/supabase/admin";
 
 /** A RPC é a fonte dos IDs: nunca recebemos org/conversa do body público. */
 export async function processarEntradaWebchat(
   admin: ReturnType<typeof createAdminClient>,
   entrada: { organizationId: string; conversationId: string; messageId: string; requestId: string },
+  opcoes: { despacharAgente?: boolean } = {},
 ): Promise<void> {
   const { data: conversa } = await admin.from("conversations")
     .select("channel")
@@ -58,6 +59,6 @@ export async function processarEntradaWebchat(
     requestId: entrada.requestId,
     origem: "webchat",
     canal: conversa.channel,
-    despacharAgente: agenteConfigurado === true && contato?.force_human === false,
+    despacharAgente: opcoes.despacharAgente !== false && agenteConfigurado === true && contato?.force_human === false,
   });
 }

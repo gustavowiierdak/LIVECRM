@@ -102,13 +102,46 @@ describe("webchat isolado no baseline", () => {
 
   it("não expõe nenhuma RPC definer à anon key nem ao usuário autenticado", () => {
     const result = sql(`
-      select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      select count(*) filter (where has_function_privilege('anon', p.oid, 'EXECUTE')
+        or has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+        || ':' || count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'fn_%webchat%'
-        and p.prosecdef
-        and not has_function_privilege('anon', p.oid, 'EXECUTE')
-        and not has_function_privilege('authenticated', p.oid, 'EXECUTE');
+        and p.prosecdef;
     `);
-    expect(result).toBe("15");
+    const [expostas, total] = result.split(":").map(Number);
+    expect(total).toBeGreaterThan(0);
+    expect(expostas).toBe(0);
+  });
+
+  it("anexo exige a própria sessão, origem e path da conversa; espelha mídia privada", () => {
+    const publicId = sql(`select public_id from public.webchat_channel_configs where organization_id='${ORG_A}';`);
+    const digest = "7".repeat(64);
+    const csrf = "8".repeat(64);
+    const started = JSON.parse(sql(`select public.fn_iniciar_webchat_publico(
+      '${publicId}','${ORIGIN}','Cliente com mídia','suporte','Envio uma foto',
+      '${digest}','${csrf}','05440000-7777-4000-8000-000000000010');`)) as { conversation_id: string };
+    const path = `${ORG_A}/${started.conversation_id}/webchat-05440000-7777-4000-8000-000000000011.png`;
+    expect(JSON.parse(sql(`select public.fn_webchat_alvo_anexo('${digest}','${csrf}','${ORIGIN}');`)))
+      .toMatchObject({ organization_id: ORG_A, conversation_id: started.conversation_id });
+    expect(sql(`select public.fn_webchat_alvo_anexo('${digest}','${csrf}','https://outro.example');`)).toBe("");
+    expect(JSON.parse(sql(`select public.fn_registrar_anexo_webchat_visitante(
+      '${digest}','${csrf}','${ORIGIN}',
+      '${ORG_B}/${CONVERSATION_B}/webchat-05440000-7777-4000-8000-000000000011.png',
+      'image/png','image',1024,'05440000-7777-4000-8000-000000000012');`)))
+      .toMatchObject({ ok: false, reason: "invalid_media" });
+    const saved = JSON.parse(sql(`select public.fn_registrar_anexo_webchat_visitante(
+      '${digest}','${csrf}','${ORIGIN}','${path}',
+      'image/png','image',1024,'05440000-7777-4000-8000-000000000013');`)) as {
+      ok: boolean; new_message: boolean; message: { id: string; type: string };
+    };
+    expect(saved).toMatchObject({ ok: true, new_message: true, message: { type: "image" } });
+    expect(sql(`select type || ':' || media_storage_path from public.messages
+      where id='${saved.message.id}' and organization_id='${ORG_A}';`)).toBe(`image:${path}`);
+    expect(sql(`select count(*) from public.messages where id='${saved.message.id}' and organization_id='${ORG_B}';`)).toBe("0");
+    expect(JSON.parse(sql(`select public.fn_registrar_anexo_webchat_visitante(
+      '${digest}','${csrf}','${ORIGIN}','${path}',
+      'image/png','image',1024,'05440000-7777-4000-8000-000000000013');`)))
+      .toMatchObject({ ok: true, new_message: false, message: { id: saved.message.id } });
   });
 
   it("emite somente para a própria conversa e consome o código uma vez na origem autorizada", () => {

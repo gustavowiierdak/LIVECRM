@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -251,6 +251,97 @@ describe("PortalDeAtendimento", () => {
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/public/webchat/consume", expect.anything());
+  });
+
+  it("pede permissão somente após o clique do cliente", async () => {
+    const pedir = vi.fn(async () => {
+      navegador.permission = "granted";
+      return "granted" as const;
+    });
+    const navegador = Object.assign(vi.fn(), { permission: "default", requestPermission: pedir });
+    vi.stubGlobal("Notification", navegador);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: [] })));
+    const user = userEvent.setup();
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    const ativar = await screen.findByRole("button", { name: "Ativar notificações de novas respostas" });
+    expect(pedir).not.toHaveBeenCalled();
+    await user.click(ativar);
+    expect(pedir).toHaveBeenCalledOnce();
+    expect(await screen.findByLabelText("Notificações ativadas")).toBeInTheDocument();
+  });
+
+  it("avisa só a resposta nova, uma vez, sem notificar o histórico ao reabrir", async () => {
+    let chegouResposta = false;
+    const historico = [{ id: "antiga", direction: "operator", body: "Mensagem antiga",
+      created_at: "2026-10-14T12:00:00Z" }];
+    const resposta = { id: "nova", direction: "operator", body: "Vamos ajudar você",
+      created_at: "2026-10-14T12:01:00Z" };
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: chegouResposta ? [...historico, resposta] : historico })));
+    const navegador = Object.assign(vi.fn(), { permission: "granted" });
+    vi.stubGlobal("Notification", navegador);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const intervalo = vi.spyOn(window, "setInterval");
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    expect(await screen.findByText("Mensagem antiga")).toBeInTheDocument();
+    expect(navegador).not.toHaveBeenCalled();
+    chegouResposta = true;
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    act(() => atualizar());
+    expect(await screen.findByText("Vamos ajudar você")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Nova resposta no atendimento");
+    expect(navegador).toHaveBeenCalledOnce();
+    expect(navegador).toHaveBeenCalledWith("Nova resposta no atendimento", expect.objectContaining({
+      body: "Abra o atendimento para ver a mensagem.",
+    }));
+    act(() => atualizar());
+    await waitFor(() => expect(screen.getByText("Vamos ajudar você")).toBeInTheDocument());
+    expect(navegador).toHaveBeenCalledOnce();
+  });
+
+  it("não tira o cliente do ponto lido e rola só o histórico quando ele pede a resposta", async () => {
+    let chegouResposta = false;
+    const antiga = { id: "antiga", direction: "visitor", body: "Mensagem anterior",
+      created_at: "2026-10-14T12:00:00Z" };
+    const nova = { id: "nova", direction: "operator", body: "Resposta mais recente",
+      created_at: "2026-10-14T12:01:00Z" };
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: chegouResposta ? [antiga, nova] : [antiga] })));
+    const intervalo = vi.spyOn(window, "setInterval");
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByText("Mensagem anterior")).toBeInTheDocument();
+
+    const historico = screen.getByRole("log", { name: "Mensagens do atendimento" });
+    Object.defineProperty(historico, "scrollHeight", { configurable: true, value: 800 });
+    Object.defineProperty(historico, "clientHeight", { configurable: true, value: 200 });
+    historico.scrollTop = 100;
+    fireEvent.scroll(historico);
+
+    chegouResposta = true;
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    await act(async () => {
+      atualizar();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(await screen.findByText("Resposta mais recente")).toBeInTheDocument();
+    expect(historico.scrollTop).toBe(100);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Ver resposta" }));
+    expect(historico.scrollTop).toBe(800);
+    expect(screen.queryByRole("button", { name: "Ver resposta" })).not.toBeInTheDocument();
   });
 
   it("retira o aviso quando a leitura das mensagens se recupera", async () => {

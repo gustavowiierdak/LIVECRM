@@ -63,6 +63,15 @@ test.describe("atendimento web público até a Inbox", () => {
   });
 
   test.afterAll(async () => {
+    if (orgId) {
+      const { data: anexos } = await db.from("messages")
+        .select("media_storage_path")
+        .eq("organization_id", orgId)
+        .not("media_storage_path", "is", null);
+      const caminhos = (anexos ?? []).map((item) => item.media_storage_path).filter((path): path is string =>
+        typeof path === "string" && path.startsWith(`${orgId}/`) && path.includes("/webchat-"));
+      if (caminhos.length) await db.storage.from("whatsapp-media").remove(caminhos);
+    }
     if (orgId) await db.from("organizations").delete().eq("id", orgId);
     if (usuarioId) await db.auth.admin.deleteUser(usuarioId);
   });
@@ -170,6 +179,38 @@ test.describe("atendimento web público até a Inbox", () => {
       await expect(
         painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
       ).toBeEnabled();
+      // O visitante envia os dois formatos no celular; ambos aparecem na Inbox.
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9r8WQAAAAASUVORK5CYII=", "base64");
+      await cliente.getByLabel("Selecionar imagem ou áudio").setInputFiles({
+        name: "foto.png", mimeType: "image/png", buffer: png,
+      });
+      await expect(cliente.getByText("foto.png")).toBeVisible();
+      await cliente.getByRole("button", { name: "Enviar anexo" }).click();
+      await expect(cliente.getByRole("img", { name: "Imagem enviada" })).toBeVisible({ timeout: 30_000 });
+      await expect.poll(() => cliente.getByRole("img", { name: "Imagem enviada" })
+        .evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+      await expect(painel.getByRole("button", { name: "Ampliar imagem" })).toBeEnabled({ timeout: 30_000 });
+      const mediaPath = await cliente.getByRole("img", { name: "Imagem enviada" }).getAttribute("src");
+      const estranho = await browser.newContext();
+      try {
+        const semSessao = await estranho.request.get(new URL(mediaPath!, cliente.url()).toString());
+        expect(semSessao.status()).toBe(401);
+      } finally { await estranho.close(); }
+
+      const wav = Buffer.alloc(44 + 8000);
+      wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+      wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+      wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
+      wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34);
+      wav.write("data", 36); wav.writeUInt32LE(8000, 40);
+      await cliente.getByLabel("Selecionar imagem ou áudio").setInputFiles({
+        name: "voz.wav", mimeType: "audio/wav", buffer: wav,
+      });
+      await cliente.getByRole("button", { name: "Enviar anexo" }).click();
+      await expect(cliente.getByLabel("Áudio enviado")).toBeVisible({ timeout: 30_000 });
+      await expect(painel.getByRole("button", { name: "Reproduzir áudio" })).toBeVisible({ timeout: 30_000 });
+      await cliente.screenshot({ path: `${evidencia}/webchat-midia-cliente.png`, fullPage: true });
+      await page.screenshot({ path: `${evidencia}/webchat-midia-operador.png`, fullPage: true });
       await page.screenshot({ path: `${evidencia}/03-inbox.jpg`, fullPage: true });
       await painel
         .getByRole("textbox", { name: "Responder pelo atendimento web" })
@@ -178,7 +219,7 @@ test.describe("atendimento web público até a Inbox", () => {
       await expect(painel.getByText(respostaOperador)).toBeVisible();
       // Sender outside the bubble, real timestamp inside; web transport has no read receipt.
       await expect(
-        painel.locator(".crm-message-sender").filter({ hasText: nomeCliente }),
+        painel.locator(".crm-message-sender").filter({ hasText: nomeCliente }).first(),
       ).toBeVisible();
       const bolhaResposta = painel
         .getByTestId("webchat-message-bubble")
@@ -188,7 +229,36 @@ test.describe("atendimento web público até a Inbox", () => {
       await expect(bolhaResposta.locator(".crm-message-sender")).toHaveCount(0);
       await expect(painel.locator('[aria-label="Lida"]')).toHaveCount(0);
       await expect(cliente.getByText(respostaOperador)).toBeVisible({ timeout: 20_000 });
+      await expect(cliente.getByRole("button", { name: "Ver resposta" })).toBeVisible();
+      await cliente.screenshot({ path: `${evidencia}/webchat-notificacao-resposta.png`, fullPage: true });
+      await cliente.getByRole("button", { name: "Ver resposta" }).click();
+      await expect(cliente.getByRole("button", { name: "Ver resposta" })).toHaveCount(0);
       await cliente.screenshot({ path: `${evidencia}/04-resposta-cliente.jpg`, fullPage: true });
+
+      // No celular, só o histórico rola. Uma resposta nova não arranca o cliente
+      // do trecho anterior; o botão de aviso o leva de volta ao fim.
+      const historicoCliente = cliente.getByRole("log", { name: "Mensagens do atendimento" });
+      const respostaLonga = `Orientação de teste para o histórico.\n`.repeat(55).trim();
+      await painel.getByRole("textbox", { name: "Responder pelo atendimento web" }).fill(respostaLonga);
+      await painel.getByRole("button", { name: "Enviar", exact: true }).click();
+      await expect(cliente.getByText(respostaLonga)).toBeVisible({ timeout: 20_000 });
+      await expect.poll(() => historicoCliente.evaluate((element) =>
+        element.scrollHeight - element.clientHeight)).toBeGreaterThan(100);
+      await expect.poll(() => cliente.evaluate(() =>
+        document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(1);
+      await historicoCliente.evaluate((element) => { element.scrollTop = 0; });
+      await expect.poll(() => historicoCliente.evaluate((element) => element.scrollTop)).toBe(0);
+
+      const respostaSeguinte = `Resposta posterior ${sufixo}`;
+      await painel.getByRole("textbox", { name: "Responder pelo atendimento web" }).fill(respostaSeguinte);
+      await painel.getByRole("button", { name: "Enviar", exact: true }).click();
+      await expect(cliente.getByText(respostaSeguinte)).toBeVisible({ timeout: 20_000 });
+      expect(await historicoCliente.evaluate((element) => element.scrollTop)).toBe(0);
+      expect(await cliente.evaluate(() => window.scrollY)).toBe(0);
+      await cliente.getByRole("button", { name: "Ver resposta" }).click();
+      await expect.poll(() => historicoCliente.evaluate((element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(2);
+      await cliente.screenshot({ path: `${evidencia}/webchat-rolagem-celular.png`, fullPage: false });
 
       // The operator skin must not change routing, public chat or available actions.
       await expect(

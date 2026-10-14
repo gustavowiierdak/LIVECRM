@@ -12,7 +12,8 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/atendimento\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   // O portal não tem sessão Supabase: cada handler valida a sessão opaca
   // HttpOnly, Origin e CSRF próprios. Âncora evita abrir rotas futuras.
-  /^\/api\/public\/webchat\/(consume|session|messages|start)$/,
+  /^\/api\/public\/webchat\/(consume|session|messages|start|media)$/,
+  /^\/api\/public\/webchat\/media\/[0-9a-f-]{36}$/,
   /^\/login(\/.*)?$/,
   /^\/signup$/,
   /^\/auth\/confirm$/,

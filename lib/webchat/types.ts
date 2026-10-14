@@ -3,7 +3,7 @@ export type MensagemWebchat = Readonly<{
   direction: "visitor" | "operator" | "system";
   sender_kind?: "ai" | "human" | null;
   sender_name?: string | null;
-  type?: "text" | "document";
+  type?: "text" | "document" | "image" | "audio";
   body: string;
   media_url?: string | null;
   media_mime?: string | null;
