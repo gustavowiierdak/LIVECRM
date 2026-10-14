@@ -28,6 +28,10 @@ import { assinarPermissao, getPermission, requestPermission } from "@/lib/notifi
 import { pdfDaMensagem } from "@/lib/webchat/anexo";
 import { WEBCHAT_MAX_MEDIA_BYTES, tipoDeAnexoWebchat } from "@/lib/webchat/media";
 import {
+  assinarInstalacao, inscreverPushVisitante, instaladoNaTelaInicial,
+  iphoneOuIpad, precisaInstalarNoIphone,
+} from "@/lib/webchat/push-client";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -39,6 +43,11 @@ import { cn } from "@/lib/utils";
 import type { MensagemWebchat } from "@/lib/webchat/types";
 
 type SetorId = "suporte" | "financeiro" | "cancelamento";
+
+interface InstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
 
 type Setor = {
   readonly id: SetorId;
@@ -282,6 +291,12 @@ export function PortalDeAtendimento({
   const [novasRespostas, setNovasRespostas] = useState(0);
   const novasRespostasRef = useRef(0);
   const permissaoDeAvisos = useSyncExternalStore(assinarPermissao, getPermission, () => "unsupported");
+  const [pushAtivo, setPushAtivo] = useState(false);
+  const [pushDisponivel, setPushDisponivel] = useState(false);
+  const precisaInstalar = useSyncExternalStore(assinarInstalacao, precisaInstalarNoIphone, () => false);
+  const [instalacaoDisponivel, setInstalacaoDisponivel] = useState(false);
+  const [mostrarPassosInstalacao, setMostrarPassosInstalacao] = useState(false);
+  const instalacaoPendente = useRef<InstallPromptEvent | null>(null);
   const respostasConhecidas = useRef(new Set<string>());
   const historicoCarregado = useRef(false);
   const tituloOriginal = useRef<string | null>(null);
@@ -328,6 +343,36 @@ export function PortalDeAtendimento({
     };
   }, []);
 
+  useEffect(() => {
+    const onInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      instalacaoPendente.current = event as InstallPromptEvent;
+      setInstalacaoDisponivel(true);
+    };
+    const onInstalled = () => {
+      instalacaoPendente.current = null;
+      setInstalacaoDisponivel(false);
+    };
+    window.addEventListener("beforeinstallprompt", onInstallPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onInstallPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const adicionarATelaInicial = async () => {
+    const prompt = instalacaoPendente.current;
+    if (!prompt) {
+      setMostrarPassosInstalacao(true);
+      return;
+    }
+    instalacaoPendente.current = null;
+    setInstalacaoDisponivel(false);
+    await prompt.prompt();
+    await prompt.userChoice;
+  };
+
   const limparAvisoDeResposta = () => {
     novasRespostasRef.current = 0;
     setNovasRespostas(0);
@@ -338,11 +383,47 @@ export function PortalDeAtendimento({
   };
 
   const ativarAvisos = async () => {
+    if (iphoneOuIpad() && !instaladoNaTelaInicial()) {
+      setErro(t("No iPhone, toque em Compartilhar, Adicionar à Tela de Início e abra o atendimento pelo novo ícone. Depois, toque em Ativar avisos e permita as notificações."));
+      return;
+    }
     const resultado = await requestPermission().catch(() => "denied" as const);
-    if (resultado !== "granted")
+    if (resultado !== "granted") {
       setErro(t("Notificações bloqueadas. Libere a permissão nas configurações do navegador."));
-    else setErro(null);
+      return;
+    }
+    try {
+      const status = await inscreverPushVisitante(publicId);
+      setPushAtivo(status === "ok");
+      setErro(status === "ok" ? null : t("Não foi possível ativar avisos com o navegador fechado. Tente novamente mais tarde."));
+    } catch {
+      setPushAtivo(false);
+      setErro(t("Não foi possível ativar avisos com o navegador fechado. Tente novamente mais tarde."));
+    }
   };
+
+  useEffect(() => {
+    if (!ativo || encerrado || permissaoDeAvisos !== "granted" || precisaInstalar) return;
+    let cancelled = false;
+    void inscreverPushVisitante(publicId).then((status) => {
+      if (!cancelled) setPushAtivo(status === "ok");
+    }).catch(() => {
+      if (!cancelled) setPushAtivo(false);
+    });
+    return () => { cancelled = true; };
+  }, [ativo, encerrado, permissaoDeAvisos, precisaInstalar, publicId]);
+
+  useEffect(() => {
+    if (!ativo || encerrado) return;
+    let cancelled = false;
+    const headers: Record<string, string> = {};
+    if (publicId) headers["x-webchat-public-id"] = publicId;
+    void fetch("/api/public/webchat/push", { credentials: "same-origin", headers })
+      .then(async (response) => response.ok ? await response.json() as { data?: { enabled?: boolean } } : null)
+      .then((payload) => { if (!cancelled) setPushDisponivel(payload?.data?.enabled === true); })
+      .catch(() => { if (!cancelled) setPushDisponivel(false); });
+    return () => { cancelled = true; };
+  }, [ativo, encerrado, publicId]);
 
   const limparAnexo = () => {
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
@@ -358,6 +439,7 @@ export function PortalDeAtendimento({
     historicoCarregado.current = false;
     respostasConhecidas.current.clear();
     novasRespostasRef.current = 0;
+    setPushAtivo(false);
     setNovasRespostas(0);
     if (tituloOriginal.current) document.title = tituloOriginal.current;
     setAtivo(false);
@@ -470,7 +552,7 @@ export function PortalDeAtendimento({
         setNovasRespostas(novasRespostasRef.current);
         if (document.visibilityState === "hidden") {
           document.title = `(${novasRespostasRef.current}) ${tituloOriginal.current ?? document.title}`;
-          emitNotification({
+          if (!pushAtivo) emitNotification({
             kind: "message_inbound",
             title: t("Nova resposta no atendimento"),
             body: t("Abra o atendimento para ver a mensagem."),
@@ -489,7 +571,7 @@ export function PortalDeAtendimento({
       if (geracao !== geracaoDaConversa.current) return;
       setErro(t("Não foi possível carregar as mensagens."));
     }
-  }, [t, publicId]);
+  }, [t, publicId, pushAtivo]);
 
   useEffect(() => {
     if (!ativo) return;
@@ -804,19 +886,19 @@ export function PortalDeAtendimento({
                         : t("Escolha o assunto para começar.")}
                 </p>
               </div>
-              {ativo && !encerrado && permissaoDeAvisos === "default" ? (
+              {ativo && !encerrado && (precisaInstalar || !pushAtivo) && permissaoDeAvisos !== "denied" ? (
                 <Button type="button" size="sm" variant="outline" onClick={() => void ativarAvisos()}
                   aria-label={t("Ativar notificações de novas respostas")}
-                  title={t("Receba avisos quando esta aba estiver em segundo plano.")}
+                  title={t("Receba avisos no celular mesmo com o atendimento fechado.")}
                   className="shrink-0">
                   <Bell aria-hidden />
                   <span className="hidden sm:inline">{t("Ativar avisos")}</span>
                 </Button>
               ) : null}
-              {ativo && permissaoDeAvisos === "granted" ? (
+              {ativo && pushAtivo ? (
                 <span className="shrink-0 text-[var(--atendimento-accent)]"
                   aria-label={t("Notificações ativadas")}
-                  title={t("Você receberá avisos enquanto esta página estiver aberta.")}>
+                  title={t("Você receberá avisos mesmo com o atendimento fechado.")}>
                   <BellRing size={19} aria-hidden />
                 </span>
               ) : null}
@@ -830,6 +912,28 @@ export function PortalDeAtendimento({
                 </Button>
               ) : null}
             </div>
+
+            {ativo && !encerrado && !pushAtivo && (precisaInstalar || instalacaoDisponivel) ? (
+              <div className="shrink-0 border-b border-border bg-[var(--atendimento-accent-soft)] px-5 py-3 sm:px-8">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-text">
+                    {pushDisponivel
+                      ? t("Receba respostas mesmo depois de fechar o navegador.")
+                      : t("Abra o atendimento direto pela Tela de Início do celular.")}
+                  </p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void adicionarATelaInicial()}
+                    className="gap-2 border-[var(--atendimento-accent)] text-[var(--atendimento-accent)]">
+                    <Download size={16} aria-hidden />
+                    {t("Adicionar à Tela de Início")}
+                  </Button>
+                </div>
+                {mostrarPassosInstalacao ? (
+                  <p className="mt-2 text-xs leading-5 text-text-muted" role="status">
+                    {t("No iPhone: toque em Compartilhar no Safari, escolha Adicionar à Tela de Início e abra o atendimento pelo ícone criado. Depois, toque em Ativar avisos e permita as notificações.")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             {ativo && novasRespostas > 0 ? (
               <div role="status" aria-live="polite"

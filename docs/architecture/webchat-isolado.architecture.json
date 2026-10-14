@@ -107,7 +107,21 @@
       "lane": "app",
       "col": 6,
       "type": "process",
-      "label": "Resposta nova por polling: aviso no chat e notificação do navegador só com permissão e aba aberta"
+      "label": "Resposta nova por polling: aviso dentro do chat enquanto aberto"
+    },
+    {
+      "id": "push-subscription",
+      "lane": "db",
+      "col": 7,
+      "type": "database",
+      "label": "Inscrição Web Push isolada por organização e sessão do visitante"
+    },
+    {
+      "id": "push-worker",
+      "lane": "app",
+      "col": 8,
+      "type": "process",
+      "label": "Evento durável da resposta entrega aviso genérico ao celular, sem conteúdo privado"
     },
     {
       "id": "canonical",
@@ -251,6 +265,10 @@
     { "id": "e35", "from": "media", "to": "messages", "label": "Mensagem com mídia privada, visível na Inbox" },
     { "id": "e36", "from": "media", "to": "audit", "label": "Registra envio do anexo" },
     { "id": "e37", "from": "messages", "to": "reply-notice", "label": "Detecta ID de resposta ainda não visto" },
-    { "id": "e38", "from": "reply-notice", "to": "portal", "label": "Avisa o visitante e oferece ver resposta" }
+    { "id": "e38", "from": "reply-notice", "to": "portal", "label": "Avisa o visitante e oferece ver resposta" },
+    { "id": "e39", "from": "portal", "to": "push-subscription", "label": "Permissão e inscrição vinculada à sessão" },
+    { "id": "e40", "from": "messages", "to": "push-worker", "label": "Resposta emite evento na mesma transação" },
+    { "id": "e41", "from": "push-worker", "to": "push-subscription", "label": "Busca apenas inscrições da sessão ativa" },
+    { "id": "e42", "from": "push-worker", "to": "portal", "label": "Notificação abre o atendimento instalado" }
   ]
 }

@@ -1,14 +1,6 @@
 import { areAlertsEnabled, getPermission } from "./permission";
 import { ensureNotifyServiceWorker } from "./service_worker";
-
-function urlBase64ToUint8Array(base64: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
+import { vapidKeyBytes } from "./push-key";
 
 /** Liga a inscrição Web Push depois da permissão. Sem VAPID no servidor, no-op. */
 export async function syncPushSubscription(): Promise<void> {
@@ -25,7 +17,7 @@ export async function syncPushSubscription(): Promise<void> {
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      applicationServerKey: vapidKeyBytes(publicKey) as BufferSource,
     });
   }
 

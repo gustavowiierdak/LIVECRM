@@ -10,7 +10,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { setorWebchatSchema } from "@/lib/webchat/seguranca";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Atendimento", robots: { index: false, follow: false } };
+export async function generateMetadata({
+  params,
+}: { params: Promise<{ publicId: string }> }): Promise<Metadata> {
+  const { publicId } = await params;
+  return {
+    title: "Atendimento",
+    manifest: `/api/public/webchat/manifest/${publicId}`,
+    robots: { index: false, follow: false },
+  };
+}
 
 /** O ID do link é público, mas só a configuração ativa decide qual org atende. */
 export default async function AtendimentoPublicoPage({

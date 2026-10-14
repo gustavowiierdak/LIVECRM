@@ -1,16 +1,31 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { iphoneOuIpad, instaladoNaTelaInicial } from "@/lib/webchat/push-client";
+
+vi.mock("@/lib/webchat/push-client", () => {
+  const iphone = vi.fn(() => false);
+  const instalado = vi.fn(() => false);
+  return {
+    inscreverPushVisitante: vi.fn(async () => "ok"),
+    instaladoNaTelaInicial: instalado,
+    iphoneOuIpad: iphone,
+    precisaInstalarNoIphone: () => iphone() && !instalado(),
+    assinarInstalacao: () => () => {},
+  };
+});
 
 import { PortalDeAtendimento } from "./PortalDeAtendimento";
 
 describe("PortalDeAtendimento", () => {
-  beforeEach(() =>
+  beforeEach(() => {
+    vi.mocked(iphoneOuIpad).mockReturnValue(false);
+    vi.mocked(instaladoNaTelaInicial).mockReturnValue(false);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => Response.json({ error: { message: "sem sessão" } }, { status: 401 })),
-    ),
-  );
+    );
+  });
   afterEach(() => {
     document.documentElement.setAttribute("data-theme", "light");
     vi.unstubAllGlobals();
@@ -272,6 +287,23 @@ describe("PortalDeAtendimento", () => {
     await user.click(ativar);
     expect(pedir).toHaveBeenCalledOnce();
     expect(await screen.findByLabelText("Notificações ativadas")).toBeInTheDocument();
+  });
+
+  it("no iPhone oferece adicionar à Tela de Início antes de pedir permissão", async () => {
+    vi.mocked(iphoneOuIpad).mockReturnValue(true);
+    const pedir = vi.fn(async () => "granted" as const);
+    vi.stubGlobal("Notification", Object.assign(vi.fn(), { permission: "default", requestPermission: pedir }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : String(input).endsWith("/push")
+          ? Response.json({ data: { enabled: true, public_key: "public" } })
+          : Response.json({ data: [] })));
+    const user = userEvent.setup();
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    await user.click(await screen.findByRole("button", { name: "Adicionar à Tela de Início" }));
+    expect(screen.getByText(/No iPhone: toque em Compartilhar/)).toBeInTheDocument();
+    expect(pedir).not.toHaveBeenCalled();
   });
 
   it("avisa só a resposta nova, uma vez, sem notificar o histórico ao reabrir", async () => {

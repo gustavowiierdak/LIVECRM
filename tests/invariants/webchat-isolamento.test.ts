@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
- * Canal web privado: as quatro tabelas não são uma nova API PostgREST.
+ * Canal web privado: as tabelas do atendimento e do push não são uma nova API PostgREST.
  * O serviço usa somente RPCs com a chave interna; visitante recebe apenas
  * mensagens da própria sessão, nunca a conversa ou o contato de origem.
  */
@@ -68,17 +68,17 @@ beforeAll(() => {
 });
 
 describe("webchat isolado no baseline", () => {
-  it("mantém RLS e impede acesso direto às quatro tabelas por anon/authenticated", () => {
+  it("mantém RLS e impede acesso direto às cinco tabelas por anon/authenticated", () => {
     const result = sql(`
       select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public'
-        and c.relname = any(array['webchat_channel_configs','webchat_handoffs','webchat_visitor_sessions','webchat_messages'])
+        and c.relname = any(array['webchat_channel_configs','webchat_handoffs','webchat_visitor_sessions','webchat_messages','webchat_push_subscriptions'])
         and c.relrowsecurity
         and not has_table_privilege('anon', c.oid, 'SELECT')
         and not has_table_privilege('authenticated', c.oid, 'SELECT')
         and not has_table_privilege('authenticated', c.oid, 'INSERT');
     `);
-    expect(result).toBe("4");
+    expect(result).toBe("5");
     expect(
       sql(`
       select has_table_privilege('service_role', 'public.webchat_channel_configs', 'SELECT')
@@ -92,12 +92,45 @@ describe("webchat isolado no baseline", () => {
         "webchat_handoffs",
         "webchat_visitor_sessions",
         "webchat_messages",
+        "webchat_push_subscriptions",
       ]) {
         expect(() =>
           sql(`begin; set local role ${role}; select count(*) from public.${table};`),
         ).toThrow(/permission denied/);
       }
     }
+  });
+
+  it("resposta da equipe emite push durável sem conteúdo e a inscrição fica privada", () => {
+    const visitorId = "05440000-8888-4000-8000-000000000011";
+    const replyId = "05440000-8888-4000-8000-000000000012";
+    sql(`
+      insert into public.webchat_visitor_sessions
+        (id, organization_id, contact_id, source_conversation_id, sector,
+         session_digest, csrf_digest, expires_at)
+      values ('${visitorId}', '${ORG_A}', '${CONTACT_A}', '${CONVERSATION_A}', 'suporte',
+        repeat('0',64), repeat('a',64), now() + interval '1 hour');
+      insert into public.webchat_push_subscriptions
+        (organization_id, visitor_session_id, endpoint, p256dh, auth)
+      values ('${ORG_A}', '${visitorId}', 'https://push.example/teste', 'key', 'auth');
+      insert into public.webchat_messages
+        (id, organization_id, visitor_session_id, source_conversation_id,
+         direction, body, idempotency_key)
+      values ('${replyId}', '${ORG_A}', '${visitorId}', '${CONVERSATION_A}',
+        'operator', 'Mensagem privada de teste', '05440000-8888-4000-8000-000000000013');
+    `);
+    const result = sql(`
+      select event_type || ':' || organization_id || ':' || entity_id || ':' ||
+        (payload ? 'body')::text || ':' || (payload->>'visitor_session_id')
+      from public.event_log where entity_id='${replyId}' and event_type='webchat.reply_created';
+    `);
+    expect(result).toBe(`webchat.reply_created:${ORG_A}:${replyId}:false:${visitorId}`);
+    expect(sql(`select count(*) from public.webchat_push_subscriptions
+      where organization_id='${ORG_B}' and visitor_session_id='${visitorId}';`)).toBe("0");
+    expect(() => sql(`insert into public.webchat_push_subscriptions
+      (organization_id, visitor_session_id, endpoint, p256dh, auth)
+      values ('${ORG_B}', '${visitorId}', 'https://push.example/errado', 'key', 'auth');`))
+      .toThrow(/foreign key constraint/);
   });
 
   it("não expõe nenhuma RPC definer à anon key nem ao usuário autenticado", () => {

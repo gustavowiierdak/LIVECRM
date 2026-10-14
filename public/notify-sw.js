@@ -20,8 +20,10 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientes) => {
       const origem = self.location.origin;
       const url = href ? new URL(href, origem).href : origem + "/app/inbox";
+      const destinoWebchat = new URL(url).pathname.startsWith("/atendimento");
       const alvo = clientes.find((c) => "focus" in c && c.url === url)
-        || clientes.find((c) => "focus" in c);
+        || clientes.find((c) => "focus" in c &&
+          (destinoWebchat ? new URL(c.url).pathname.startsWith("/atendimento") : true));
       if (alvo) {
         return alvo.focus().then(() => {
           if ("navigate" in alvo) return alvo.navigate(url);
@@ -37,15 +39,19 @@ self.addEventListener("notificationclick", (event) => {
 self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
-      const clientes = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      const visiveis = clientes.filter((c) => c.visibilityState === "visible").length;
-      if (visiveis > 0) return;
       let data = { title: "Nova mensagem", body: "", tag: "msg", href: "/app/inbox", icon: "" };
       try {
         if (event.data) data = { ...data, ...event.data.json() };
       } catch {
         // payload não-JSON
       }
+      const clientes = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const destinoWebchat = data.channel === "webchat";
+      const chatVisivel = clientes.some((c) => c.visibilityState === "visible" &&
+        (!destinoWebchat || new URL(c.url).pathname.startsWith("/atendimento")));
+      // No iPhone, cada push entregue precisa produzir aviso visivel para a
+      // permissao continuar valida, inclusive com o app em primeiro plano.
+      if (!destinoWebchat && chatVisivel) return;
       await self.registration.showNotification(data.title, {
         body: data.body,
         tag: data.tag,
