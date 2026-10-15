@@ -93,7 +93,7 @@ export function NoteCard({ note, onDelete, compact = false }: Props) {
               type="button"
               onClick={onDelete}
               className={compact
-                ? "rounded p-1 text-muted-foreground hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+                ? "rounded-md p-1 text-muted-foreground hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
                 : "opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"}
               aria-label={t("Excluir nota")}
             >
