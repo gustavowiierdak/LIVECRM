@@ -20,8 +20,14 @@ const ouvintes = new Set<OuvinteDePermissao>();
 
 export function assinarPermissao(ouvinte: OuvinteDePermissao): () => void {
   ouvintes.add(ouvinte);
+  // Releia quando a pessoa voltar das configurações do navegador e quando
+  // outra aba mudar a preferência. Não depende de recarregar o atendimento.
+  window.addEventListener("focus", ouvinte);
+  window.addEventListener("storage", ouvinte);
   return () => {
     ouvintes.delete(ouvinte);
+    window.removeEventListener("focus", ouvinte);
+    window.removeEventListener("storage", ouvinte);
   };
 }
 
@@ -60,4 +66,5 @@ export function setAlertsEnabled(on: boolean): void {
   } catch {
     // ignore
   }
+  avisarMudancaDePermissao();
 }

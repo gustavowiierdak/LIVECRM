@@ -1,5 +1,27 @@
 # Operator workspace
 
+## Notificações do atendente — 2026-10-15
+
+Entrada compacta e dispensável sob os filtros da fila, com a mesma porta permanente em Configurações › Notificações. A permissão nativa só é solicitada no clique. Estado de permissão e inscrição não são confundidos: inscrição confirmada, bloqueio, servidor sem configuração e falha recuperável têm textos e próximos passos próprios. Usa tokens e botões existentes; não adiciona consulta na renderização inicial do Inbox.
+
+Sistema Vivo: entrada = OperatorNotificationPrompt + useNotificationPermission; saída = syncPushSubscription → API existente de inscrição autenticada/auditada. Eventos existentes message.received e central.aviso_criado alimentam o worker; clique retorna à conversa/Central e mantém controle de acesso. Anti-silêncio = erro visível, retry e diagnóstico de configuração. Não altera decisões da IA ou regras de destinatários. Mapa: notificacoes-operador.architecture.json. Na produção conferida, o par VAPID ainda está ausente; implementação local não é confirmação de entrega real nem publicação na VPS.
+
+Validação: 122 testes focados em 20 arquivos passaram; typecheck passou; lint sem erros (um aviso de efeito já existente em InboxLayout). Controle negativo ignorando o resultado do PUT reprovou os dois testes de HTTP 401/503; restaurado e verde. Conferência visual local do botão na fila concluída. Entrega nativa com a aba fechada em produção ainda não testável sem configurar o servidor e inscrever o navegador.
+
+## Resposta citada no web — 2026-10-15
+
+Menu existente de mensagens → Responder citando → prévia com cancelamento → bloco de autor/horário/trecho na resposta. Componente de citação compartilhado entre Inbox e portal público; mantém foco no editor após selecionar pelo menu. Nota interna e troca de sessão removem a seleção. No erro, rascunho, citação e chave idempotente são preservados para retry. Gravação resolve o conteúdo no servidor, limitada à mesma organização/conversa/sessão, em transação com o envio existente. O mesmo enriquecimento de leitura expõe apenas o bloco validado aos dois públicos.
+
+Sistema Vivo: entrada = mensagem selecionada em WebchatOperatorPanel; persistência = metadata.webchat_reply via fn_responder_mensagem_webchat_operador; consumidores = enriquecerMensagensWebchat, CitacaoWebchat na Inbox e PortalDeAtendimento. Mantidos auditoria webchat.operator_message_sent, evento de resposta/push e verificações de sessão/encerramento do envio existente. Falhas aparecem no editor com retry; cancelar citação e reabrir sessão permanecem caminhos explícitos. Sem configuração nova ou transporte externo; mapa de webchat atualizado no mesmo trabalho.
+
+Validação: 44 testes unitários focados, 9 invariantes em Postgres efêmero, typecheck e lint passaram. Baseline aplicado como instalação e reaplicado como atualização. Teste de controle removendo o ID da citação do envio fez a suíte reprovar; restaurado e verde. Conferência real em localhost: visitante iniciou → operador citou/respondeu → visitante recebeu → ambos recarregaram e mantiveram a citação; portal conferido em 390px sem overflow horizontal. Anonimização remove o trecho copiado. Evidências ficam fora do repo em .codex/artifacts. Trabalho local, sem publicação na VPS.
+
+## Histórico único — 2026-10-15
+
+Pedido do usuário: Fechadas e Arquivadas tornam-se Encerrados. A navegação e visão geral abrem um único filtro SQL para closed/archived, com paginação existente e sem mover/apagar registros. Links antigos de arquivadas são normalizados. Encerrar usa o fechamento auditado existente e Reabrir funciona nos dois estados; os dois ficam somente leitura até reabertura. A soma das contagens usa as consultas existentes e mantém compatibilidade da API v1.
+
+Sistema Vivo: entrada = status persistido em conversations, saída = listagem/contagem do Inbox; mutação = close/reopen e auditoria já existentes. Porta = Encerrados, continuidade = Reabrir e entrada de novas mensagens pelo fluxo existente. Sem configuração nova, schema ou worker. Falhas usam os tratamentos existentes e recarregamento do cache. Alteração de uma vista existente, sem novo nó de arquitetura.
+
 ## Conversation refinement — 2026-10-13
 
 - User screenshots supersede phase 3's full desktop action row. Use a single portal
@@ -105,3 +127,6 @@ The full local reference is now available at `OPASUITE ENG REVERSA/opasuite-clon
 - Reference: queue, active, virtual-agent and finished sections. Rendered: the CRM's six permission-filtered queues in a compact switchboard. Keep their actual meanings, live counters and keyboard behavior rather than introducing parallel filters.
 - Reference: center conversation with a right contact profile. Rendered: existing resizable columns with wider defaults, enlarged profile initials and IXC link, with contact details in the existing sheet on mobile.
 - Intentional differences: organization-controlled accents instead of the clone's orange; local system font instead of adding Inter; no OPA routes, API calls, assets or business rules.
+# 2026-10-14 — Paleta da conversa
+
+Pedido explícito: aproximar também as cores do OPA, principalmente a conversa com o cliente. No Inbox, ações violeta sobre superfícies azul-grafite e balões cinza-azulados no tema escuro; textos de destaque/foco usam violeta mais claro para manter contraste. Tema claro e alternância preservados. A decisão substitui a retenção do accent da marca **somente no Inbox montado**, incluindo portais. Não altera configuração de marca, login, portal público, lógica ou recursos de web/WhatsApp. Implementação apenas em CSS, sem dependências, fontes remotas ou assets do OPA.

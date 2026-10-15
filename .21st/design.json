@@ -21,6 +21,26 @@
   },
   "decisions": [
     {
+      "date": "2026-10-15",
+      "scope": "Operator notification activation",
+      "decision": "Expose a compact dismissible activation prompt in the queue and a permanent diagnostic in notification settings. Request native permission only on click; distinguish permission from a server-confirmed push subscription and show actionable blocked, unavailable and retry states. Reuse current tokens, auth-scoped API and event delivery. Never imply closed-tab delivery when installation keys are absent."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Webchat quoted replies",
+      "decision": "Reuse the installed message-menu pattern with Responder citando. Show a cancellable quote preview above the editor and a shared author/time/text block in operator and visitor history. Preserve brand colors, notes separation, media, keyboard focus, session isolation and retry draft. Persist only server-resolved quote data in existing message metadata, atomically with the existing send."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Inbox attendance history",
+      "decision": "Unify closed and archived under Encerrados, with a single Encerrar action and explicit Reabrir for both stored statuses. Preserve history, API status compatibility, and old archived deep links. No notification badge on history. Counts sum existing disjoint results without another query."
+    },
+    {
+      "date": "2026-10-14",
+      "scope": "Inbox chat palette",
+      "decision": "User explicitly requested OPA colors, primarily the customer conversation. Supersede brand-accent retention only while Inbox is mounted: graphite/navy surfaces, matching slate incoming/outgoing bubbles and violet solid actions. Keep a lighter violet for dark-mode text/focus, theme choice, all channel capabilities and original public/login branding. Scope tokens to mounted Inbox and body for Radix portals. No new dependencies or remote assets."
+    },
+    {
       "date": "2026-10-13",
       "scope": "Conversation workspace refinement",
       "decision": "Supersedes phase 3's wrapping desktop action bar: move the same mounted controls into a fixed inspector footer at 1280px, retaining inline controls below that breakpoint. Compact identity and avatar, minimize the web channel strip and omit the redundant single active session picker. Preserve themes, real metadata, action gates, dialogs, media and composer capabilities. User screenshots are the reference; 21st CLI is unavailable."

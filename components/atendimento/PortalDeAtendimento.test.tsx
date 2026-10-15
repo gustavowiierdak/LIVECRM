@@ -18,6 +18,15 @@ vi.mock("@/lib/webchat/push-client", () => {
 import { PortalDeAtendimento } from "./PortalDeAtendimento";
 
 describe("PortalDeAtendimento", () => {
+  it("mostra a mensagem citada recebida junto da resposta do atendente", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json({ data: url.includes("/session")
+      ? { sector: "suporte", active: true, expires_at: "2030-10-07T00:00:00Z" }
+      : [{ id: "reply", direction: "operator", sender_name: "Ana", body: "Vamos conferir o sinal", created_at: "2026-10-08T12:01:00Z", reply_to: { id: "original", direction: "visitor", body: "A luz LOS está vermelha", created_at: "2026-10-08T12:00:00Z" } }] })));
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByLabelText("Mensagem citada")).toHaveTextContent("A luz LOS está vermelha");
+    expect(screen.getByLabelText("Mensagem citada")).toHaveTextContent("Você");
+    expect(screen.getByText("Vamos conferir o sinal")).toBeVisible();
+  });
   beforeEach(() => {
     vi.mocked(iphoneOuIpad).mockReturnValue(false);
     vi.mocked(instaladoNaTelaInicial).mockReturnValue(false);

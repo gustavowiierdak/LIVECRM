@@ -4,8 +4,8 @@ import { useSetores } from "@/hooks/team/useSetores";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { InboxQueuePlacement, useInboxRail } from "@/components/shell/InboxRail";
 import {
-  CaretLeft, CaretRight, MagnifyingGlass, Tray, UserCircle,
-  ChatsCircle, CheckCircle, Archive, Robot, Funnel,
+  CaretLeft, CaretRight, MagnifyingGlass, Clock, UserCircle,
+  ChatsCircle, CheckCircle, Robot, Funnel,
 } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,14 +42,13 @@ import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags"
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
 
 const QUEUE_ICONS = {
-  unassigned: Tray,
+  unassigned: Clock,
   mine: UserCircle,
   all: ChatsCircle,
   closed: CheckCircle,
-  archived: Archive,
   ai: Robot,
 };
 
@@ -57,11 +56,7 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
   { value: "mine", label: "Minhas" },
   { value: "all", label: "Todas" },
-  { value: "closed", label: "Fechadas" },
-  // "Arquivadas" fica ao lado de "Fechadas" porque as duas são passado — e
-  // separada dela porque são passados diferentes (#923): fechada é atendimento
-  // encerrado, arquivada é o que saiu da fila de trabalho sem ser destruído.
-  { value: "archived", label: "Arquivadas" },
+  { value: "closed", label: "Encerrados" },
   // "Automático", não "IA": a palavra deste ator já é contrato em quatro arquivos
   // e no dicionário, e `handoff-por-orcamento.test.ts` usa literalmente "Voltar
   // para a IA" como a sabotagem que deve reprovar. A aba era a última fora do
@@ -247,7 +242,6 @@ export function InboxFilters({ value, onChange, onReturnHome, searchResetVersion
     mine: counts?.mine,
     all: counts?.all,
     // Histórico encerrado não é pendência: sem badge de notificação na aba.
-    archived: counts?.archived,
   };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
   // canal) deixa o inbox mostrando um subconjunto — às vezes vazio — sem nada na

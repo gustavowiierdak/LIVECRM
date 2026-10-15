@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
+import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/inbox/status-do-atendimento";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { estadoDaJanela } from "@/lib/channels/janela";
@@ -30,6 +31,7 @@ import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 import { OpenConversationProvider } from "@/hooks/notifications/OpenConversationContext";
+import { OperatorNotificationPrompt } from "@/components/notifications/OperatorNotificationPrompt";
 // ADR-05: ícone de feature sai do mapa canônico, nunca do pacote direto.
 import { CaretLeft, IdentificationCard, MagnifyingGlass, X } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
@@ -84,7 +86,7 @@ export function colunasDoCelular(temSelecao: boolean): { lista: string; conversa
  * aparece em nenhuma tela até alguém reclamar, então vale prender por teste.
  */
 export function tabToFilter(
-  tab: InboxFiltersValue["tab"],
+  tab: InboxFiltersValue["tab"] | "archived",
   automaticoDaOrg?: boolean,
 ): Partial<ConversationsFilters> {
   switch (tab) {
@@ -103,19 +105,13 @@ export function tabToFilter(
     case "mine":
       // Sem `exclude_finished` a aba mostra tudo que o atendente JÁ atendeu —
       // `Fechar` muda o status mas não solta o dono (de propósito: quem atendeu
-      // é histórico). O lugar de "minhas fechadas" é a aba Fechadas.
+      // é histórico). O histórico fica na aba Encerrados.
       return { assigned_to: "me", exclude_finished: true };
     case "closed":
-      return { status: "closed" };
     case "archived":
-      // O ARQUIVO É UM ESTADO SÓ ELE, não `in(terminais)`.
-      //
-      // `CONVERSATION_TERMINAL_STATUSES` responde outra pergunta ("o que sai do
-      // fluxo vivo", usada pelo `exclude_finished` de Minhas). Reaproveitá-la
-      // aqui faria a aba Arquivadas listar também as fechadas — duas abas com a
-      // mesma lista e badges diferentes, que é a mentira de tela que o mapa
-      // abaixo existe para impedir.
-      return { status: "archived" };
+      // Um histórico único, filtrado no servidor antes da paginação. O alias
+      // archived preserva links antigos sem esconder os registros arquivados.
+      return { status: CONVERSATION_TERMINAL_STATUSES };
     case "ai":
       // `ai_handling` é escrito por UM caminho só em produção (a volta pelo botão
       // "Devolver ao automático"), então a aba vivia mostrando 2 enquanto o robô
@@ -127,13 +123,14 @@ export function tabToFilter(
   }
 }
 
-const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "archived", "ai"];
+const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai"];
 
 /**
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a
  * lista volta RLS-scoped (a tab só some cosmeticamente); default: fila.
  */
-function parseFilterParam(v: string | null): InboxTab {
+export function parseFilterParam(v: string | null): InboxTab {
+  if (v === "archived") return "closed";
   return v && FILTER_TABS.includes(v as InboxTab) ? (v as InboxTab) : "unassigned";
 }
 
@@ -387,8 +384,8 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     });
   }, [claim, selectedConversation]);
   const handleClose = useCallback(() => {
-    if (!selectedConversation) return;
-    close.mutate({ conversation_id: selectedConversation.id });
+    if (!selectedConversation || CONVERSATION_TERMINAL_STATUSES.some((status) => status === selectedConversation.status)) return;
+    close.mutate({ conversation_id: selectedConversation.id, expected_revision: selectedConversation.service_revision });
   }, [close, selectedConversation]);
 
   // A janela vence SOZINHA com a aba aberta. Sem este relógio, quem deixa o
@@ -646,6 +643,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
           onReturnHome={selectedId ? () => handleSelect(null) : undefined}
           searchResetVersion={searchResetVersion}
         />
+        <OperatorNotificationPrompt compact />
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -759,7 +757,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
                 key={`webchat:${selectedConversation.id}`}
                 conversationId={selectedConversation.id}
                 contactName={selectedConversation.contacts?.name}
-                supportReadonly={supportReadonly || selectedConversation.status === "closed"}
+                supportReadonly={supportReadonly || CONVERSATION_TERMINAL_STATUSES.some((status) => status === selectedConversation.status)}
                 primary
               />
             ) : (
@@ -809,7 +807,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               conversationId={selectedConversation.id}
               blockedReason={supportReadonly ? "Acompanhamento somente leitura" : blockedReason}
               janelaFechada={motivoDaJanela}
-              disabled={selectedConversation.status === "closed"}
+              disabled={CONVERSATION_TERMINAL_STATUSES.some((status) => status === selectedConversation.status)}
               contactName={selectedConversation.contacts?.name ?? null}
               respondendo={respondendo}
               onCancelarResposta={() => setRespondendo(null)}

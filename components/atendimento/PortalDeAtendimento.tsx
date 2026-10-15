@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { MensagemWebchat } from "@/lib/webchat/types";
+import { CitacaoWebchat } from "./CitacaoWebchat";
 
 type SetorId = "suporte" | "financeiro" | "cancelamento";
 
@@ -1031,7 +1032,7 @@ export function PortalDeAtendimento({
                             </span>
                           </a>
                         ) : (
-                          <p
+                          <div
                             className={cn(
                               "rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-text shadow-sm",
                               item.direction === "visitor"
@@ -1039,8 +1040,9 @@ export function PortalDeAtendimento({
                                 : "rounded-bl-md border border-[var(--atendimento-accent)] bg-[var(--atendimento-accent-soft)]",
                             )}
                           >
-                            {item.body}
-                          </p>
+                            {item.reply_to && <CitacaoWebchat citacao={item.reply_to} visitorName={t("Você")} />}
+                            <p>{item.body}</p>
+                          </div>
                         )}
                       </div>
                     ),

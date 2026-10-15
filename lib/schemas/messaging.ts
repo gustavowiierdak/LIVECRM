@@ -199,11 +199,12 @@ export type OpenConversationWithContactInput = z.infer<typeof openConversationWi
 /**
  * Estados TERMINAIS: atendimento encerrado; nova entrada válida pode reabrir.
  *
- * Vive aqui, e não espalhado em cada `.not(...)`, porque "acabou" é uma decisão
+ * A fonte leve fica em lib/inbox/status-do-atendimento, reexportada aqui para
+ * compatibilidade, porque "acabou" é uma decisão
  * de produto — se um dia `resolved` deixar de ser legado e passar a valer, o
  * lugar de dizer isso é um só.
  */
-export const CONVERSATION_TERMINAL_STATUSES = ["closed", "archived"] as const;
+export { CONVERSATION_TERMINAL_STATUSES } from "@/lib/inbox/status-do-atendimento";
 
 /**
  * OS STATUS EM QUE UMA CONVERSA SEM DONO ESTÁ ESPERANDO UMA PESSOA.

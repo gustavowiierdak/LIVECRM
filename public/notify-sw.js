@@ -47,11 +47,13 @@ self.addEventListener("push", (event) => {
       }
       const clientes = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const destinoWebchat = data.channel === "webchat";
-      const chatVisivel = clientes.some((c) => c.visibilityState === "visible" &&
-        (!destinoWebchat || new URL(c.url).pathname.startsWith("/atendimento")));
+      const operadorEmPrimeiroPlano = clientes.some((c) => c.focused &&
+        c.visibilityState === "visible" && new URL(c.url).pathname.startsWith("/app/"));
       // No iPhone, cada push entregue precisa produzir aviso visivel para a
       // permissao continuar valida, inclusive com o app em primeiro plano.
-      if (!destinoWebchat && chatVisivel) return;
+      // Só o operador realmente em foco tem os avisos realtime locais. Uma
+      // aba pública ou uma janela sem foco não pode engolir o push de fundo.
+      if (!destinoWebchat && operadorEmPrimeiroPlano) return;
       await self.registration.showNotification(data.title, {
         body: data.body,
         tag: data.tag,

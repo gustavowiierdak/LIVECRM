@@ -24,6 +24,7 @@ export function useCloseConversation() {
       showApiError(err);
     },
     onSuccess: (_data, args) => {
+      qc.invalidateQueries({ queryKey: ["conversation-counts"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", args.conversation_id] });
     },
@@ -51,6 +52,7 @@ export function useArchiveConversation() {
     // servidor que vale, não o que estava no cache.
     onError: showApiError,
     onSettled: (_data, _error, args) => {
+      qc.invalidateQueries({ queryKey: ["conversation-counts"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", args.conversation_id] });
     },
@@ -67,6 +69,7 @@ export function useReopenConversation() {
     ),
     onError: showApiError,
     onSettled: (_data, _error, args) => {
+      qc.invalidateQueries({ queryKey: ["conversation-counts"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", args.conversation_id] });
     },

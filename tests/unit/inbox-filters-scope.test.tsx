@@ -108,12 +108,13 @@ describe("visibleInboxTabs (lógica pura de visões)", () => {
 });
 
 describe("InboxFilters render — 3 visões + escopo", () => {
-  it("Fechadas abre o histórico sem contador de notificação, mesmo com conversas encerradas", () => {
+  it("Encerrados reúne o histórico sem contador de notificação nem aba Arquivadas", () => {
     setOrg("manager", "all");
     const onChange = vi.fn();
     render(<InboxFilters value={VALUE} onChange={onChange} />);
-    const fechadas = screen.getByRole("tab", { name: /Fechadas/ });
-    expect(fechadas).toHaveTextContent(/^Fechadas$/);
+    const fechadas = screen.getByRole("tab", { name: /Encerrados/ });
+    expect(fechadas).toHaveTextContent(/^Encerrados$/);
+    expect(screen.queryByRole("tab", { name: /Arquivadas|Fechadas/ })).toBeNull();
     expect(fechadas.querySelector(".crm-queue-count")).toBeNull();
     fireEvent.mouseDown(fechadas, { button: 0, ctrlKey: false });
     expect(onChange).toHaveBeenCalledWith({ ...VALUE, tab: "closed" });
@@ -154,16 +155,16 @@ describe("InboxFilters render — 3 visões + escopo", () => {
       act(() => onResize([], {} as ResizeObserver));
       expect(list.scrollLeft).toBe(100);
 
-      const archived = screen.getByRole("tab", { name: /Arquivadas/ });
+      const archived = screen.getByRole("tab", { name: /Encerrados/ });
       Object.defineProperty(archived, "offsetWidth", { configurable: true, value: 60 });
       vi.spyOn(archived, "getBoundingClientRect").mockImplementation(
         () => ({ left: 430 - list.scrollLeft }) as DOMRect,
       );
-      rerender(<InboxFilters value={{ ...VALUE, tab: "archived" }} onChange={onChange} />);
+      rerender(<InboxFilters value={{ ...VALUE, tab: "closed" }} onChange={onChange} />);
       expect(list.scrollLeft).toBe(260);
       expect(screen.getByRole("button", { name: "Aba anterior" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Próxima aba" })).not.toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: /Arquivadas/ })).toHaveAttribute("data-state", "active");
+      expect(screen.getByRole("tab", { name: /Encerrados/ })).toHaveAttribute("data-state", "active");
     } finally {
       vi.unstubAllGlobals();
     }

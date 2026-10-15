@@ -18,7 +18,7 @@ const BINDINGS: { keys: string; description: string }[] = [
   { keys: "Enter", description: "Enviar a mensagem" },
   { keys: "Shift + Enter", description: "Quebrar linha sem enviar" },
   { keys: "a", description: "Assumir conversa" },
-  { keys: "e", description: "Fechar conversa" },
+  { keys: "e", description: "Encerrar atendimento" },
   { keys: "?", description: "Mostrar atalhos" },
 ];
 

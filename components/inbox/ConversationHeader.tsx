@@ -26,7 +26,6 @@ import {
   Check,
   Robot,
   Pause,
-  Archive,
   ArrowBendUpLeft,
 } from "@/lib/ui/icons";
 import { useAuth } from "@/hooks/auth/AuthProvider";
@@ -38,7 +37,6 @@ import {
 } from "@/hooks/contacts/usePersonalContact";
 import { ROLE_RANK } from "@/lib/auth/types";
 import {
-  useArchiveConversation,
   useCloseConversation,
   useReopenConversation,
 } from "@/hooks/inbox/useCloseConversation";
@@ -94,8 +92,8 @@ const STATUS_LABEL: Record<string, string> = {
   claimed: "Aberta",
   ai_handling: "Aberta",
   resolved: "Resolvida",
-  closed: "Fechada",
-  archived: "Arquivada",
+  closed: "Encerrada",
+  archived: "Encerrada",
 };
 
 export function ConversationHeader({
@@ -112,7 +110,6 @@ export function ConversationHeader({
   const release = useReleaseConversation();
   const close = useCloseConversation();
   const reopen = useReopenConversation();
-  const arquivar = useArchiveConversation();
   const retomar = useResumeAiAttendance();
   const pausar = usePauseAiAttendance();
   // "Existe automático nesta org?" — sem isto o selo afirmava que o robô estava
@@ -121,7 +118,6 @@ export function ConversationHeader({
   const [reassignOpen, setReassignOpen] = useState(false);
   const reassignTriggerRef = useRef<HTMLButtonElement>(null);
   const [confirmFecharOpen, setConfirmFecharOpen] = useState(false);
-  const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
   const [confirmPessoalOpen, setConfirmPessoalOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
@@ -321,7 +317,7 @@ export function ConversationHeader({
             provider={conversation.channel_sessions?.provider ?? null}
             lastInboundAt={conversation.last_inbound_at}
             bloqueio={motivoDoContato(c, t)}
-            encerrada={status === "closed"}
+            encerrada={encerrada}
           />
           {/* PESSOAL (spec 21, etapa 15): marcar tira a conversa do inbox na
             hora; desmarcar relista. O `data-testid` é contrato do e2e da
@@ -484,7 +480,7 @@ export function ConversationHeader({
               onClick={() => setConfirmFecharOpen(true)}
             >
               <Check size={16} aria-hidden />
-              {t("Fechar")}
+              {t("Encerrar")}
             </Button>
           )}
           {encerrada && (
@@ -501,25 +497,6 @@ export function ConversationHeader({
             >
               <ArrowBendUpLeft size={16} aria-hidden />
               {t("Reabrir")}
-            </Button>
-          )}
-          {/* ARQUIVAR (#923): tira da frente sem destruir.
-            A conversa já arquivada não mostra o botão — arquivar duas vezes não
-            é um gesto que exista, e o botão só reapareceria como um clique que
-            não muda nada. Fechada E resolvida mostram: são exatamente as que se
-            quer mandar para o arquivo depois de encerradas, e é o caminho que
-            faz a aba "Arquivadas" deixar de ser uma pasta morta.
-            A permissão é a mesma de fechar (a rota `/conversations/[id]` é
-            `requireSupportWrite`): quem pode encerrar, pode arquivar. */}
-          {status !== "archived" && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={arquivar.isPending}
-              onClick={() => setConfirmArquivarOpen(true)}
-            >
-              <Archive size={16} aria-hidden />
-              {arquivar.isPending ? t("Arquivando...") : t("Arquivar")}
             </Button>
           )}
         </div>
@@ -559,7 +536,7 @@ export function ConversationHeader({
       <AlertDialog open={confirmFecharOpen} onOpenChange={setConfirmFecharOpen}>
         <AlertDialogContent className="crm-inbox-dialog">
           <AlertDialogHeader className="crm-dialog-header">
-            <AlertDialogTitle>{t("Fechar esta conversa?")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("Encerrar este atendimento?")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("O atendimento é encerrado. Se o cliente escrever de novo, você pode reabrir.")}
             </AlertDialogDescription>
@@ -574,43 +551,7 @@ export function ConversationHeader({
                 })
               }
             >
-              {t("Fechar")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      {/* A confirmação precisa dizer o que ACONTECE, e o que acontece depende
-          do estado. `fn_conversation_set_status` trata `archived` como
-          terminal: encerra o atendimento (grava `service_closed_at`,
-          incrementa a revisão) e, com isso, desfaz a pausa do automático. Um
-          atendente que leia "arquivar = tirar da vista, volto depois"
-          encerraria o atendimento sem saber — e o robô voltaria a responder
-          no próximo "oi" do cliente. Por isso a descrição só aparece quando
-          `!encerrada`: quando já está encerrada, arquivar não muda o
-          atendimento, só o lugar onde a conversa mora. */}
-      <AlertDialog open={confirmArquivarOpen} onOpenChange={setConfirmArquivarOpen}>
-        <AlertDialogContent className="crm-inbox-dialog">
-          <AlertDialogHeader className="crm-dialog-header">
-            <AlertDialogTitle>{t("Arquivar esta conversa?")}</AlertDialogTitle>
-            {!encerrada && (
-              <AlertDialogDescription>
-                {t(
-                  "Arquivar encerra este atendimento e guarda a conversa no histórico. Se o cliente escrever de novo, ela volta.",
-                )}
-              </AlertDialogDescription>
-            )}
-          </AlertDialogHeader>
-          <AlertDialogFooter className="crm-dialog-footer">
-            <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                arquivar.mutate({
-                  conversation_id: conversation.id,
-                  expected_revision: conversation.service_revision,
-                })
-              }
-            >
-              {t("Arquivar")}
+              {t("Encerrar")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

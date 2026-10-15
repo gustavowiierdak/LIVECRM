@@ -162,21 +162,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       .eq("assigned_to_user_id", authUser.id)
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
     countExact(),
-    // A aba "Fechadas" existia SEM número nenhum. Num inbox antigo, é o número
-    // que diz o tamanho do arquivo — e a sua ausência fazia a aba parecer um
-    // lugar vazio. Mesma fábrica: herda organização e filtros.
-    //
-    // ⚠️ `eq("closed")`, e NÃO `in(TERMINAIS)` como antes. O par
-    // fechada/arquivada agora tem DUAS abas, e cada badge tem de contar
-    // exatamente a lista da sua aba: `in(TERMINAIS)` somava arquivadas (e, antes
-    // da 0222, resolvidas) no número de "Fechadas", que lista só
-    // `status='closed'` — o badge dizia 120 e a lista mostrava 40. Era a mesma
-    // classe de defeito que este arquivo já conserta desde a Fila, encontrada
-    // aqui no caminho (#923).
+    // Parcelas disjuntas do histórico unificado. A API v1 preserva os campos
+    // antigos; Encerrados recebe a soma dos dois sem nova consulta.
     countExact().eq("status", "closed"),
-    // A aba "Arquivadas" (#923): a pasta do histórico, separada de "Fechadas"
-    // para que arquivar seja reversível e auditável sem se confundir com o
-    // encerramento do atendimento.
     countExact().eq("status", "archived"),
   ]);
 
@@ -199,6 +187,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       all: all.count ?? 0,
       closed: closed.count ?? 0,
       archived: archived.count ?? 0,
+      // Soma dos estados disjuntos já contados, sem consulta adicional. Os
+      // campos anteriores continuam disponíveis para clientes da API v1.
+      encerrados: (closed.count ?? 0) + (archived.count ?? 0),
     },
     { requestId },
   );

@@ -37,7 +37,7 @@ describe("atalho de teclado 'e' — fechar conversa", () => {
     await user.keyboard("e");
 
     const dialogo = await screen.findByRole("alertdialog");
-    expect(within(dialogo).getByText("Fechar conversa?")).toBeTruthy();
+    expect(within(dialogo).getByText("Encerrar este atendimento?")).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
 
     await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
@@ -46,7 +46,7 @@ describe("atalho de teclado 'e' — fechar conversa", () => {
 
     await user.keyboard("e");
     const dialogo2 = await screen.findByRole("alertdialog");
-    await user.click(within(dialogo2).getByRole("button", { name: "Fechar" }));
+    await user.click(within(dialogo2).getByRole("button", { name: "Encerrar" }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
@@ -88,7 +88,7 @@ describe("atalho de teclado 'e' — fechar conversa", () => {
     await user.keyboard("e");
     const dialogo = await screen.findByRole("alertdialog");
     await user.keyboard("j");
-    await user.click(within(dialogo).getByRole("button", { name: "Fechar" }));
+    await user.click(within(dialogo).getByRole("button", { name: "Encerrar" }));
 
     await waitFor(() => expect(fechou).toHaveBeenCalledTimes(1));
     expect(fechou).toHaveBeenCalledWith("c1");

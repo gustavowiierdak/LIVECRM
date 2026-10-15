@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,16 +64,20 @@ describe("WebchatOperatorPanel", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
-  it("troca de sessão sem exibir mensagens da anterior", async () => {
+  it("troca de sessão sem exibir mensagens nem citação da anterior", async () => {
     const user = userEvent.setup();
     const secondId = "00000000-0000-4000-8000-000000000002";
     data.sessions.push({ id: secondId, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true });
     data.messages = [{ id: "a", direction: "visitor", body: "Sessão anterior", created_at: "2026-10-08T12:00:00Z" }];
     render(panel());
     await screen.findByText("Sessão anterior");
+    await user.click(screen.getByRole("button", { name: "Opções da mensagem" }));
+    await user.click(screen.getByRole("menuitem", { name: "Responder citando" }));
+    expect(screen.getByRole("region", { name: "Respondendo à mensagem" })).toBeVisible();
     fetchMock.mockImplementation(() => new Promise(() => {}));
     await user.selectOptions(screen.getByLabelText("Sessão ativa"), secondId);
     expect(screen.queryByText("Sessão anterior")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
     expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining(`visitor_session_id=${secondId}`), expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
@@ -110,6 +114,60 @@ describe("WebchatOperatorPanel", () => {
     await user.click(screen.getByRole("button", { name: "Salvar nota" }));
     expect(createNote).toHaveBeenCalledWith({ conversation_id: "c1", body: "Só para a equipe" });
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("cita uma mensagem, mantém a prévia em falha e repete a mesma chave no retry", async () => {
+    const user = userEvent.setup();
+    const original = { id: "00000000-0000-4000-8000-000000000010", direction: "visitor" as const, body: "A luz LOS está vermelha", created_at: "2026-10-08T12:00:00Z" };
+    data.messages = [original];
+    const attempts: Record<string, unknown>[] = [];
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return Response.json({ data });
+      const sent = JSON.parse(String(init.body));
+      attempts.push(sent);
+      if (attempts.length === 1) throw new TypeError("Falha de conexão");
+      const message = { id: "reply", direction: "operator" as const, body: sent.body, reply_to: original, created_at: "2026-10-08T12:01:00Z" };
+      data.messages.push(message);
+      return Response.json({ data: message });
+    });
+    render(panel({ primary: true }));
+    await screen.findByText(original.body);
+    await user.click(screen.getByRole("button", { name: "Opções da mensagem" }));
+    await user.click(screen.getByRole("menuitem", { name: "Responder citando" }));
+    expect(screen.getByRole("region", { name: "Respondendo à mensagem" })).toHaveTextContent(original.body);
+    const editor = screen.getByLabelText("Responder pelo atendimento web");
+    expect(editor).toHaveFocus();
+    await user.type(editor, "Vou verificar o sinal{Enter}");
+    await screen.findByText("Falha de conexão");
+    expect(editor).toHaveValue("Vou verificar o sinal");
+    expect(screen.getByRole("region", { name: "Respondendo à mensagem" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    await waitFor(() => expect(editor).toHaveValue(""));
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]).toEqual(attempts[1]);
+    expect(attempts[1]).toMatchObject({ visitor_session_id: SESSION_ID, reply_to_message_id: original.id });
+    expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
+    expect(screen.getByLabelText("Mensagem citada")).toHaveTextContent(original.body);
+    await user.click(screen.getByRole("button", { name: "Atualizar" }));
+    expect(await screen.findByLabelText("Mensagem citada")).toHaveTextContent(original.body);
+  });
+
+  it("permite cancelar a citação e a remove ao mudar para nota interna", async () => {
+    const user = userEvent.setup();
+    data.messages = [{ id: "original", direction: "visitor", body: "Mensagem do cliente", created_at: "2026-10-08T12:00:00Z" }];
+    render(panel({ primary: true }));
+    await screen.findByText("Mensagem do cliente");
+    const quote = async () => {
+      await user.click(screen.getByRole("button", { name: "Opções da mensagem" }));
+      await user.click(screen.getByRole("menuitem", { name: "Responder citando" }));
+    };
+    await quote();
+    await user.click(screen.getByRole("button", { name: "Cancelar citação" }));
+    expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
+    await quote();
+    await user.click(screen.getByRole("button", { name: "Nota interna" }));
+    expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
+    expect(within(screen.getByRole("group", { name: "Modo de escrita" })).getByRole("button", { name: "Nota interna" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("preserva histórico encerrado e impede responder", async () => {

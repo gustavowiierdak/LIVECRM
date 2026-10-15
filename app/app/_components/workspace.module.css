@@ -1,5 +1,6 @@
 /* Operator workspace only. Public login and customer webchat keep their skin.
-   Accent/status tokens remain owned by Marca and the existing theme provider. */
+   The requested OPA-style palette overrides only presentation, not saved Marca
+   settings or semantic status colors. The existing theme preference remains. */
 :global(:root):has(.workspace) {
   --color-bg: #f5f6f9;
   --color-surface: #ffffff;
@@ -28,6 +29,70 @@
   --workspace-chat-dot: #3a3f50;
   --workspace-message-incoming: #3b4051;
   --workspace-message-outgoing: #454b60;
+}
+
+:global(:root[data-theme="dark"]):has(.workspace :global(.crm-inbox)) {
+  --color-bg: #222630;
+  --color-surface: #222630;
+  --color-surface-elevated: #373d4e;
+  --color-border: #3b4150;
+  --color-text-muted: #c1c6d2;
+  --workspace-chat: #2b3040;
+  --workspace-message-incoming: #454b60;
+  --workspace-message-outgoing: #454b60;
+}
+
+/* Marca is emitted on body for Radix portals. Declare the operator palette at
+   that same boundary; :root:root wins regardless of stylesheet load order.
+   The Inbox marker removes the override outside the attendance workspace.
+   Rebind compatibility aliases here: inherited var() values resolve at their
+   declaration site, so otherwise a legacy primary button keeps the brand hue. */
+:global(:root:root) :global(body):has(.workspace :global(.crm-inbox)) {
+  --workspace-action: #4434cc;
+  --workspace-action-hover: #3829b1;
+  --workspace-action-fg: #ffffff;
+  --color-accent: #4434cc;
+  --color-accent-hover: #3829b1;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #ebe9fc;
+  --color-accent-500: #6a58e5;
+  --primary: var(--workspace-action);
+  --primary-foreground: var(--workspace-action-fg);
+  --accent-foreground: var(--color-accent-fg);
+  --ring: var(--color-accent-500);
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --secondary: var(--color-surface-elevated);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-surface-elevated);
+  --muted-foreground: var(--color-text-muted);
+  --border: var(--color-border);
+  --input: var(--color-border);
+}
+
+:global(:root:root[data-theme="dark"]) :global(body):has(.workspace :global(.crm-inbox)) {
+  /* Text/focus need a lighter violet than the solid OPA-style action fill. */
+  --color-accent: #c1b9ff;
+  --color-accent-hover: #d0caff;
+  --color-accent-fg: #222630;
+  --color-accent-soft: #34304e;
+  --color-accent-500: #a99dff;
+}
+
+/* Keep solid CTAs violet in both modes, including portaled dialogs. Text links
+   and selected outlines use the contrast-safe accent above, not this fill. */
+:global(body):has(.workspace :global(.crm-inbox)) :global(.bg-accent) {
+  background-color: var(--workspace-action);
+  color: var(--workspace-action-fg);
+}
+
+:global(body):has(.workspace :global(.crm-inbox)) :global(.hover\:bg-accent-hover:hover) {
+  background-color: var(--workspace-action-hover);
+  color: var(--workspace-action-fg);
 }
 .workspace {
   font-family:
@@ -256,7 +321,10 @@
   background: var(--color-accent-soft);
 }
 
-.workspace :global(.crm-queue) [data-conversation-id][aria-current="true"] :global(.text-text-subtle) {
+.workspace
+  :global(.crm-queue)
+  [data-conversation-id][aria-current="true"]
+  :global(.text-text-subtle) {
   color: var(--color-text-muted);
 }
 
@@ -383,7 +451,10 @@
   padding: 0;
 }
 
-:global(:root):has(.workspace) :global(.crm-contact-disclosure) [data-testid="inbox-enrichment"] > h3 {
+:global(:root):has(.workspace)
+  :global(.crm-contact-disclosure)
+  [data-testid="inbox-enrichment"]
+  > h3 {
   display: none;
 }
 
@@ -465,9 +536,17 @@
 }
 
 @media (max-width: 639px) {
-  .workspace :global(.crm-message-row) { padding-inline: 10px; gap: 6px; }
-  .workspace :global(.crm-message-avatar) { width: 24px; height: 24px; }
-  .workspace :global(.crm-message-content) { max-width: calc(100% - 40px); }
+  .workspace :global(.crm-message-row) {
+    padding-inline: 10px;
+    gap: 6px;
+  }
+  .workspace :global(.crm-message-avatar) {
+    width: 24px;
+    height: 24px;
+  }
+  .workspace :global(.crm-message-content) {
+    max-width: calc(100% - 40px);
+  }
 }
 
 .workspace :global(.crm-chat-incoming) {
@@ -612,14 +691,24 @@
 }
 
 @media (max-width: 639px) {
-  .workspace :global(.crm-composer) { padding: 8px; }
+  .workspace :global(.crm-composer) {
+    padding: 8px;
+  }
   .workspace :global(.crm-composer-modes) > button,
   .workspace :global(.crm-composer-tools) button,
-  .workspace :global(.crm-composer-send) { min-height: 44px; }
+  .workspace :global(.crm-composer-send) {
+    min-height: 44px;
+  }
   .workspace :global(.crm-composer-tools) button,
-  .workspace :global(.crm-composer-send) { min-width: 44px; }
-  .workspace :global(.crm-composer-editor) > textarea { min-height: 44px; }
-  :global(:root):has(.workspace) :global(.crm-dialog-footer) button { min-height: 44px; }
+  .workspace :global(.crm-composer-send) {
+    min-width: 44px;
+  }
+  .workspace :global(.crm-composer-editor) > textarea {
+    min-height: 44px;
+  }
+  :global(:root):has(.workspace) :global(.crm-dialog-footer) button {
+    min-height: 44px;
+  }
   :global(:root):has(.workspace) :global(.crm-inbox-dialog) > button:last-child {
     width: 44px;
     height: 44px;

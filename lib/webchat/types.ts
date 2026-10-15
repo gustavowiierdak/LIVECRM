@@ -1,3 +1,11 @@
+export type CitacaoWebchat = Readonly<{
+  id: string;
+  direction: "visitor" | "operator";
+  sender_name?: string | null;
+  body: string;
+  created_at: string;
+}>;
+
 export type MensagemWebchat = Readonly<{
   id: string;
   direction: "visitor" | "operator" | "system";
@@ -8,6 +16,7 @@ export type MensagemWebchat = Readonly<{
   media_url?: string | null;
   media_mime?: string | null;
   created_at: string;
+  reply_to?: CitacaoWebchat | null;
 }>;
 
 export type SessaoVisitanteWebchat = Readonly<{

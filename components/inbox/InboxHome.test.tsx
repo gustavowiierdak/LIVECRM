@@ -7,7 +7,7 @@ import { InboxHome } from "./InboxHome";
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/api/client", () => ({ apiClient: { get } }));
 
-const counts = { fila: 19, unassigned: 20, mine: 2, automatico: 4, closed: 0, all: 25 };
+const counts = { fila: 19, unassigned: 20, mine: 2, automatico: 4, closed: 0, archived: 0, encerrados: 0, all: 25 };
 function mount(initialData?: typeof counts) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (initialData) client.setQueryData(["conversation-counts", "org-test", ""], initialData);
@@ -24,7 +24,7 @@ describe("início do operador", () => {
     expect(await within(screen.getByRole("button", { name: "Abrir Fila" })).findByText("19")).toBeVisible();
     expect(within(screen.getByRole("button", { name: "Abrir Minhas" })).getByText("2")).toBeVisible();
     expect(within(screen.getByRole("button", { name: "Abrir Automático" })).getByText("4")).toBeVisible();
-    expect(within(screen.getByRole("button", { name: "Abrir Fechadas" })).getByText("0")).toBeVisible();
+    expect(within(screen.getByRole("button", { name: "Abrir Encerrados" })).getByText("0")).toBeVisible();
     expect(get).toHaveBeenCalledWith("/api/v1/conversations/counts");
     expect(screen.queryByRole("button", { name: "Abrir Todas" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Assumir/ })).not.toBeInTheDocument();
@@ -36,6 +36,12 @@ describe("início do operador", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Carregando contagens…");
     expect(screen.getAllByLabelText("Contagem indisponível")).toHaveLength(4);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("cache anterior soma fechados e arquivados apenas quando conhece ambos", async () => {
+    get.mockResolvedValue({ data: { ...counts, encerrados: undefined, closed: 3, archived: 2 } });
+    mount();
+    expect(await within(screen.getByRole("button", { name: "Abrir Encerrados" })).findByText("5")).toBeVisible();
   });
 
   it("cache antigo usa unassigned sem inventar os campos ausentes", async () => {
@@ -58,7 +64,7 @@ describe("início do operador", () => {
 
   it("atalhos usam somente callbacks de navegação, por mouse e teclado", async () => {
     const actions = mount();
-    for (const [label, tab] of [["Fila", "unassigned"], ["Minhas", "mine"], ["Automático", "ai"], ["Fechadas", "closed"]]) {
+    for (const [label, tab] of [["Fila", "unassigned"], ["Minhas", "mine"], ["Automático", "ai"], ["Encerrados", "closed"]]) {
       const button = screen.getByRole("button", { name: `Abrir ${label}` });
       button.focus();
       await userEvent.keyboard("{Enter}");

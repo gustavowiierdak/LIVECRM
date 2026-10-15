@@ -8,6 +8,7 @@ import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
 import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwitch";
 import { NoteCard } from "@/components/inbox/NoteCard";
 import { MessageFrame } from "@/components/inbox/MessageFrame";
+import { CitacaoWebchat } from "@/components/atendimento/CitacaoWebchat";
 import { DocumentCard } from "@/components/inbox/media/DocumentCard";
 import { ImageMedia } from "@/components/inbox/media/ImageMedia";
 import { AudioPlayer } from "@/components/inbox/media/AudioPlayer";
@@ -20,7 +21,8 @@ import { useConversationNotes } from "@/hooks/inbox/useConversationNotes";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { randomId } from "@/lib/random-id";
 import type { Note } from "@/lib/types/messaging";
-import { ArrowsClockwise, CircleNotch, Globe, PaperPlaneTilt } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, ArrowsClockwise, CaretDown, CircleNotch, Globe, PaperPlaneTilt, X } from "@/lib/ui/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { AtendimentoOperadorWebchat, MensagemWebchat } from "@/lib/webchat/types";
 
@@ -98,11 +100,15 @@ export function WebchatOperatorPanel({
   const [sector, setSector] = useState<Setor>("suporte");
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<Modo>("reply");
+  const [quoted, setQuoted] = useState<{ sessionId: string; message: MensagemWebchat } | null>(null);
+  const replyTo = quoted?.sessionId === selectedSessionId ? quoted.message : null;
   const [handoffToken, setHandoffToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const loading = attendance.isPending;
   const [sending, setSending] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const focusReplyRef = useRef(false);
+  const sendAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const notes = useConversationNotes(primary ? conversationId : null);
   const createNote = useCreateNote();
@@ -153,6 +159,10 @@ export function WebchatOperatorPanel({
         await createNote.mutateAsync({ conversation_id: conversationId, body });
       } else {
         if (!selectedSessionId) return;
+        const signature = JSON.stringify([selectedSessionId, body, replyTo?.id ?? null]);
+        if (sendAttemptRef.current?.signature !== signature) {
+          sendAttemptRef.current = { signature, key: randomId() };
+        }
         const message = await resposta<MensagemWebchat>(
           await fetch(`/api/v1/conversations/${conversationId}/webchat/messages`, {
             method: "POST",
@@ -161,7 +171,8 @@ export function WebchatOperatorPanel({
             body: JSON.stringify({
               visitor_session_id: selectedSessionId,
               body,
-              idempotency_key: randomId(),
+              idempotency_key: sendAttemptRef.current.key,
+              ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
             }),
           }),
         );
@@ -171,8 +182,10 @@ export function WebchatOperatorPanel({
           ? { ...current, messages: [...current.messages.filter((item) => item.id !== message.id), message] }
           : current);
         void qc.invalidateQueries({ queryKey: ["webchat-attendance", user.id, activeOrg?.orgId, conversationId] });
+        sendAttemptRef.current = null;
       }
       setDraft("");
+      setQuoted(null);
       setStatus(null);
       if (editorRef.current) editorRef.current.style.height = "auto";
     } catch (error) {
@@ -348,7 +361,7 @@ export function WebchatOperatorPanel({
                 primary && "min-w-0 flex-1",
               )}
               value={selectedSessionId}
-              onChange={(event) => setSelectedSessionId(event.target.value)}
+              onChange={(event) => { setSelectedSessionId(event.target.value); setQuoted(null); }}
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
@@ -406,6 +419,30 @@ export function WebchatOperatorPanel({
                           : "crm-chat-incoming rounded-bl-sm bg-card text-foreground",
                       )}
                     >
+                      {!replyDisabled && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon" className="float-right -mr-1 -mt-1 size-11 lg:size-7" aria-label={t("Opções da mensagem")}>
+                              <CaretDown size={14} aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {
+                            if (!focusReplyRef.current) return;
+                            event.preventDefault();
+                            focusReplyRef.current = false;
+                            editorRef.current?.focus();
+                          }}>
+                            <DropdownMenuItem onSelect={() => {
+                              focusReplyRef.current = true;
+                              setMode("reply");
+                              setQuoted({ sessionId: selectedSessionId, message: item.data });
+                            }}>
+                              <ArrowBendUpLeft size={16} aria-hidden />{t("Responder citando")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {item.data.reply_to && <CitacaoWebchat citacao={item.data.reply_to} visitorName={contactName} />}
                       <p className="leading-snug wrap-anywhere whitespace-pre-wrap">
                         {item.data.body}
                       </p>
@@ -446,7 +483,15 @@ export function WebchatOperatorPanel({
             )}
           >
             {primary && (
-              <ComposerModeSwitch mode={mode} onChange={setMode} />
+              <ComposerModeSwitch mode={mode} onChange={(next) => { if (!sending) { setMode(next); setQuoted(null); } }} />
+            )}
+            {mode === "reply" && replyTo && (
+              <div role="region" aria-label={t("Respondendo à mensagem")} className="relative mt-2 pr-12 lg:pr-9">
+                <CitacaoWebchat citacao={{ ...replyTo, direction: replyTo.direction === "operator" ? "operator" : "visitor", body: replyTo.body.slice(0, 1000) }} visitorName={contactName} />
+                <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 size-11 lg:size-8" disabled={sending} aria-label={t("Cancelar citação")} onClick={() => { setQuoted(null); editorRef.current?.focus(); }}>
+                  <X size={16} aria-hidden />
+                </Button>
+              </div>
             )}
             <div className="crm-composer-editor">
               <div className="crm-composer-tools"><EmojiButton disabled={editorDisabled} onPick={insertEmoji} /></div>

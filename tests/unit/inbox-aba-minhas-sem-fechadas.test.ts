@@ -29,8 +29,8 @@ describe("tabToFilter — o que cada aba significa", () => {
     expect(tabToFilter("mine")).toEqual({ assigned_to: "me", exclude_finished: true });
   });
 
-  it("Fechadas continua mostrando as fechadas — senão não sobra onde vê-las", () => {
-    expect(tabToFilter("closed")).toEqual({ status: "closed" });
+  it("Encerrados mostra também os atendimentos arquivados", () => {
+    expect(tabToFilter("closed")).toEqual({ status: ["closed", "archived"] });
   });
 
   it("a Fila pergunta QUEM MANDA, não o status — e o valor mudou por medição", () => {
@@ -141,6 +141,13 @@ const temNotTerminal = (chamadas: { metodo: string; args: unknown[] }[]) =>
   );
 
 describe("listConversationsHandler — predicado", () => {
+  it("o histórico filtra closed e archived na consulta paginada", async () => {
+    const filtro = tabToFilter("closed");
+    const status = filtro.status as readonly string[];
+    const q = listConversationsQuerySchema.parse({ status: status.join(",") });
+    const chamadas = await rodar(q);
+    expect(chamadas).toContainEqual({ metodo: "in", args: ["status", ["closed", "archived"]] });
+  });
   it("com exclude_finished, exclui as terminais no BANCO (não na tela)", async () => {
     expect(temNotTerminal(await rodar({ assigned_to: "me", exclude_finished: true }))).toBe(true);
   });
