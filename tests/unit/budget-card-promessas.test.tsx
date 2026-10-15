@@ -106,9 +106,8 @@ describe("o card diz a verdade sobre o PERÍODO", () => {
 
 describe("o card diz a verdade sobre a PARADA", () => {
   it("no modo bloquear já vigente, promete a fila humana E o caminho de volta", () => {
-    // `performHumanHandoff` grava `force_human = true`, e o ÚNICO escritor de
-    // `force_human = false` no repositório é `lib/escalacao/retomada.ts`,
-    // acionado por um botão POR CONVERSA. Prometer que "volta sozinho ao virar o
+    // `performHumanHandoff` grava `force_human = true`; a reabertura não solta
+    // uma trava com motivo `orcamento_de_ia`. Prometer que "volta sozinho ao virar o
     // mês" seria mandar a pessoa esperar por algo que não acontece.
     montar(
       estado({

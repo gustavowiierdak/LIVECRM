@@ -52,6 +52,8 @@ describe("ConversationNotesPanel", () => {
     ];
     render(<ConversationNotesPanel conversationId="c1" readonly={false} />);
     const panel = screen.getByTestId("inbox-observacoes");
+    expect(screen.getByRole("heading", { name: "Observações internas" })).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent("Só a equipe vê");
     expect(panel).toHaveTextContent("Última");
     expect(panel).toHaveTextContent("Recente");
     expect(panel).not.toHaveTextContent("Antiga");

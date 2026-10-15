@@ -77,10 +77,13 @@ async function reopened(conversation: string) {
     await pool.query(
       `select c.status,c.assigned_to_user_id,c.assigned_to_user_name,c.assignee_kind,
               c.bot_silenced_until::text bot_silenced_until,c.service_revision,c.current_demanda_id,
+              c.atendimento_setor_id,c.last_handoff_at,c.last_handoff_reason,
+              c.active_ai_agent_id,c.active_intent,p.force_human,
               d.dono_kind,d.dono_user_id,
               public.fn_comando_da_conversa(c.status,c.assigned_to_user_id,c.bot_silenced_until,
                 false,false,clock_timestamp()) comando
-         from conversations c left join demandas d on d.id=c.current_demanda_id
+         from conversations c join contacts p on p.id=c.contact_id
+           left join demandas d on d.id=c.current_demanda_id
         where c.id=$1 and c.organization_id=$2`,
       [conversation, GOV_ORG],
     )
@@ -155,8 +158,9 @@ describe("nova mensagem após encerrar atendimento, com o ajuste LIGADO", () => 
 
 /**
  * O PADRÃO — e o de toda empresa que já existia antes da 0396. É a garantia de
- * não regredir ninguém: sem o ajuste, a conversa reaberta volta para a fila, sem
- * dono, com a IA como dona da demanda nova e o silêncio da IA intocado.
+ * não regredir ninguém: sem o ajuste, a conversa reaberta não conserva o dono.
+ * A trava e o setor do episódio encerrado também precisam sair para que a IA
+ * realmente volte a fazer a triagem (não só pareça estar de volta na tela).
  */
 describe("nova mensagem após encerrar atendimento, com o ajuste DESLIGADO", () => {
   it.each([
@@ -166,11 +170,6 @@ describe("nova mensagem após encerrar atendimento, com o ajuste DESLIGADO", () 
   ] as const)("volta para a fila com o ajuste %s", async (_nome, valor) => {
     await ajuste(valor);
     const { contact, conversation, closed } = await closeWithOwner(GOV_AGENT_A);
-    const antes = (
-      await pool.query("select bot_silenced_until::text b from conversations where id=$1", [
-        conversation,
-      ])
-    ).rows[0].b;
     await receive(contact, conversation);
     const current = await reopened(conversation);
     expect(current).toMatchObject({
@@ -180,7 +179,112 @@ describe("nova mensagem após encerrar atendimento, com o ajuste DESLIGADO", () 
       dono_kind: "ia",
       dono_user_id: null,
     });
-    expect(current.bot_silenced_until).toBe(antes);
+    expect(current.bot_silenced_until).toBeNull();
     expect(Number(current.service_revision)).toBe(Number(closed.service_revision) + 1);
+  });
+
+  it("novo oi após passagem para Cobrança reinicia IA e setor, sem herdar a fila antiga", async () => {
+    await ajuste("false");
+    const setor = randomUUID();
+    await pool.query(
+      "insert into atendimento_setores(id,organization_id,slug,nome) values($1,$2,$3,'Cobrança')",
+      [setor, GOV_ORG, `cobranca-${setor.slice(0, 8)}`],
+    );
+    const { contact, conversation, closed } = await closeWithOwner(null);
+    await pool.query("update contacts set force_human=true where id=$1", [contact]);
+    await pool.query(
+      `update conversations set atendimento_setor_id=$2, bot_silenced_until='infinity',
+         active_intent='cobranca',last_handoff_at=clock_timestamp(), last_handoff_reason='caso_escalado'
+       where id=$1`,
+      [conversation, setor],
+    );
+    await receive(contact, conversation);
+    const current = await reopened(conversation);
+    expect(current).toMatchObject({
+      status: "open",
+      assignee_kind: null,
+      bot_silenced_until: null,
+      atendimento_setor_id: null,
+      last_handoff_at: null,
+      last_handoff_reason: null,
+      active_intent: null,
+      force_human: false,
+      dono_kind: "ia",
+    });
+    expect(Number(current.service_revision)).toBe(Number(closed.service_revision) + 1);
+  });
+
+  it("não desfaz uma recusa explícita de atendimento automatizado", async () => {
+    await ajuste("false");
+    const { contact, conversation } = await closeWithOwner(null);
+    await pool.query(
+      `update contacts set force_human=true,
+         consent=jsonb_build_object('automated_service',jsonb_build_object('declined_at',now()))
+       where id=$1`,
+      [contact],
+    );
+    await pool.query(
+      `update conversations set bot_silenced_until='infinity',last_handoff_at=clock_timestamp(),
+         last_handoff_reason='caso_escalado' where id=$1`,
+      [conversation],
+    );
+    await receive(contact, conversation);
+    expect(await reopened(conversation)).toMatchObject({ force_human: true, status: "open" });
+  });
+
+  it("não solta a trava global se outra conversa do contato ainda está com humano", async () => {
+    await ajuste("false");
+    const { contact, conversation } = await closeWithOwner(null);
+    const otherSession = randomUUID();
+    await pool.query(
+      `insert into channel_sessions(id,organization_id,waha_session_name,webhook_secret_encrypted)
+       values($1,$2,$3,'\\x00'::bytea)`,
+      [otherSession, GOV_ORG, `outro-${otherSession}`],
+    );
+    await pool.query(
+      `insert into conversations(id,organization_id,contact_id,channel_session_id,status,bot_silenced_until)
+       values($1,$2,$3,$4,'pending','infinity')`,
+      [randomUUID(), GOV_ORG, contact, otherSession],
+    );
+    await pool.query("update contacts set force_human=true where id=$1", [contact]);
+    await pool.query(
+      `update conversations set bot_silenced_until='infinity',last_handoff_at=clock_timestamp(),
+         last_handoff_reason='caso_escalado' where id=$1`,
+      [conversation],
+    );
+    await receive(contact, conversation);
+    expect(await reopened(conversation)).toMatchObject({ force_human: true, status: "open" });
+  });
+
+  it("preserva a pausa explícita #off mesmo após novo protocolo", async () => {
+    await ajuste("false");
+    const { contact, conversation } = await closeWithOwner(null);
+    await pool.query(
+      `update conversations set bot_silenced_until='infinity',last_handoff_at=clock_timestamp(),
+         last_handoff_reason='Comando #off enviado pelo celular' where id=$1`,
+      [conversation],
+    );
+    await receive(contact, conversation);
+    expect(await reopened(conversation)).toMatchObject({
+      bot_silenced_until: "infinity",
+      last_handoff_reason: "Comando #off enviado pelo celular",
+    });
+  });
+
+  it("não religa IA enquanto o bloqueio por teto de gasto continua ativo", async () => {
+    await ajuste("false");
+    const { contact, conversation } = await closeWithOwner(null);
+    await pool.query("update contacts set force_human=true where id=$1", [contact]);
+    await pool.query(
+      `update conversations set bot_silenced_until='infinity',last_handoff_at=clock_timestamp(),
+         last_handoff_reason='orcamento_de_ia' where id=$1`,
+      [conversation],
+    );
+    await receive(contact, conversation);
+    expect(await reopened(conversation)).toMatchObject({
+      force_human: true,
+      bot_silenced_until: "infinity",
+      last_handoff_reason: "orcamento_de_ia",
+    });
   });
 });

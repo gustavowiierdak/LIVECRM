@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextRequest } from "next/server";
 
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
+vi.mock("@/components/inbox/ConversationNotesPanel", () => ({ ConversationNotesPanel: () => null }));
 import { createClient } from "@/lib/supabase/server";
 
 /**

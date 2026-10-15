@@ -42,12 +42,9 @@ export function ConversationNotesPanel({
     <section
       aria-label={t("Observações internas")}
       data-testid="inbox-observacoes"
-      className="space-y-3"
+      className="space-y-2"
     >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{t("Observações")}</h3>
-        <span className="text-xs text-muted-foreground">{t("Só a equipe vê")}</span>
-      </div>
+      <h3 className="text-xs font-semibold">{t("Observações internas")}</h3>
       {query.isPending ? (
         <p role="status" className="text-xs text-muted-foreground">
           {t("Carregando observações…")}

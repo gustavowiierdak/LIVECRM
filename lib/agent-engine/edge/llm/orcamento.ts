@@ -104,8 +104,9 @@ function emDolares(cents: number): string {
  * descrevendo uma recuperação AUTOMÁTICA que não acontece. Quem para o turno
  * chama `performHumanHandoff` (engine) ou `triggerHandoff` (caminho legado), e
  * os dois gravam `contacts.force_human = true` + `conversations.bot_silenced_until
- * = 'infinity'`. O ÚNICO escritor de `force_human = false` em todo o repositório
- * é `lib/escalacao/retomada.ts`, acionado por um botão POR CONVERSA. Subir o
+ * = 'infinity'`. A retomada normal acontece em `lib/escalacao/retomada.ts`,
+ * acionada por um botão POR CONVERSA. A reabertura de outro atendimento só
+ * solta handoffs comuns; o motivo `orcamento_de_ia` permanece travado. Subir o
  * teto evita paradas NOVAS; ele não devolve a IA a nenhuma conversa já parada.
  */
 export function corpoDoBloqueio(gastoCents: number, tetoCents: number): string {

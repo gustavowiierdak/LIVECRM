@@ -18,16 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tag,
-  Receipt,
-  Users,
-  ArrowRight,
-  Copy,
-  Phone,
-  CalendarBlank,
-  CalendarPlus,
-} from "@/lib/ui/icons";
+import { Tag, Receipt, Users, ArrowRight, Copy, Phone, CalendarPlus } from "@/lib/ui/icons";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -906,24 +897,23 @@ export function CRMSidePanel({ conversation }: Props) {
       </section>
 
       <section className="crm-contact-service" aria-label={t("Dados do atendimento")}>
-        <dl className="space-y-2 text-xs">
+        <dl className="space-y-2.5 text-xs">
           {conversation.service_protocol && (
-            <div className="flex justify-between gap-3">
+            <div className="grid grid-cols-2 items-start gap-3">
               <dt className="text-muted-foreground">{t("Protocolo")}</dt>
-              <dd className="min-w-0 text-right font-mono wrap-anywhere select-all">
+              <dd className="min-w-0 text-right font-mono text-[11px] wrap-anywhere select-all">
                 {conversation.service_protocol}
               </dd>
             </div>
           )}
           {(conversation.service_started_at || conversation.created_at) && (
-            <div>
-              <dt className="flex items-center gap-2 text-muted-foreground">
-                <CalendarBlank size={16} className="shrink-0" aria-hidden />
+            <div className="grid grid-cols-2 items-start gap-3">
+              <dt className="text-muted-foreground">
                 {t(
                   conversation.service_started_at ? "Início do atendimento" : "Conversa criada em",
                 )}
               </dt>
-              <dd className="pl-6">
+              <dd className="min-w-0 text-right tabular-nums">
                 <time dateTime={conversation.service_started_at || conversation.created_at}>
                   {shortDate(
                     conversation.service_started_at || conversation.created_at,
@@ -933,7 +923,7 @@ export function CRMSidePanel({ conversation }: Props) {
               </dd>
             </div>
           )}
-          <div className="flex justify-between gap-3">
+          <div className="grid grid-cols-2 items-start gap-3">
             <dt className="text-muted-foreground">{t("Canal")}</dt>
             <dd className="min-w-0 text-right wrap-anywhere">
               {conversation.channel === "webchat"
@@ -941,7 +931,7 @@ export function CRMSidePanel({ conversation }: Props) {
                 : rotuloDoCanalDaConversa(conversation.channel_sessions, t) || "—"}
             </dd>
           </div>
-          <div className="flex justify-between gap-3">
+          <div className="grid grid-cols-2 items-start gap-3">
             <dt className="text-muted-foreground">{t("Responsável")}</dt>
             <dd className="min-w-0 text-right wrap-anywhere">
               {conversation.assigned_to_user_id
@@ -949,12 +939,15 @@ export function CRMSidePanel({ conversation }: Props) {
                 : t("Sem responsável")}
             </dd>
           </div>
+          {conversation.atendimento_setor_id && (
+            <div className="grid grid-cols-2 items-start gap-3">
+              <dt className="text-muted-foreground">{t("Setor")}</dt>
+              <dd className="flex min-w-0 justify-end text-right">
+                <SetorDaConversa id={conversation.atendimento_setor_id} />
+              </dd>
+            </div>
+          )}
         </dl>
-        {conversation.atendimento_setor_id && (
-          <div className="mt-3 flex justify-center">
-            <SetorDaConversa id={conversation.atendimento_setor_id} />
-          </div>
-        )}
       </section>
 
       {contactId && defaultPipeline.data && (
@@ -970,8 +963,6 @@ export function CRMSidePanel({ conversation }: Props) {
           }}
         />
       )}
-
-      <Separator />
 
       <ConversationNotesPanel
         key={conversation.id}

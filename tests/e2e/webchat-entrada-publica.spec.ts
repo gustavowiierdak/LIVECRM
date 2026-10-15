@@ -286,9 +286,20 @@ test.describe("atendimento web público até a Inbox", () => {
         "href",
         /\/app\/contacts\//,
       );
-      await expect(ficha.getByRole("region", { name: "Dados do atendimento" })).toContainText(
-        "Atendimento web",
+      const dadosAtendimento = ficha.getByRole("region", { name: "Dados do atendimento" });
+      await expect(dadosAtendimento).toContainText("Atendimento web");
+      const alinhamento = await dadosAtendimento.locator("dl > div").evaluateAll((rows) =>
+        rows.map((row) => ({
+          label: row.querySelector("dt")?.getBoundingClientRect().left ?? 0,
+          value: row.querySelector("dd")?.getBoundingClientRect().right ?? 0,
+        })),
       );
+      expect(alinhamento.length).toBeGreaterThanOrEqual(3);
+      const inicioRotulos = alinhamento.map((row) => row.label);
+      const fimValores = alinhamento.map((row) => row.value);
+      expect(Math.max(...inicioRotulos) - Math.min(...inicioRotulos)).toBeLessThan(2);
+      expect(Math.max(...fimValores) - Math.min(...fimValores)).toBeLessThan(2);
+      await expect(ficha.getByRole("heading", { name: "Observações internas" })).toBeVisible();
       await ficha.getByRole("button", { name: "Tags do contato" }).click();
       await expect(ficha.getByRole("textbox", { name: "Adicionar tag ao contato" })).toBeVisible();
       await ficha.getByRole("button", { name: "Tags do contato" }).click();

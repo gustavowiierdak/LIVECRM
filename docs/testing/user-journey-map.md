@@ -3558,3 +3558,12 @@ Limite: a captura foi feita no dev server já em execução, com organização d
 não prova um build fresco nem a publicação na VPS. A prova do teste de ícone foi
 sabotada trocando temporariamente a pasta por relógio: ele falhou e voltou a
 passar após restaurar a pasta.
+
+## J50 — Novo atendimento após encerrar (15/10/2026)
+
+| Caso | Expectativa | Medição |
+| --- | --- | --- |
+| J50.1 | Depois de encerrar um atendimento encaminhado à Cobrança, um novo “oi” cria outra revisão/demanda, remove a fila antiga e libera a triagem da IA. | PASS em `tests/invariants/reabertura-mantem-ultimo-atendente.test.ts`, no Postgres fresco com `baseline.sql` aplicado duas vezes. |
+| J50.2 | O classificador só lê mensagens do atendimento vigente, e não usa a conversa encerrada para interpretar o novo “oi”. | PASS em `lib/agent-engine/agent/resolve-turn-agent.test.ts`; a consulta do sinal e a do contexto exigem a revisão/demanda vigentes. |
+| J50.3 | Recusa de consentimento, `#off` e a configuração de manter o último atendente não são desfeitos pela reabertura. | PASS no mesmo invariante de banco. |
+| J50.4 | Na interface com WhatsApp conectado, encerrar → receber “oi” → IA inicia pelo roteador e não coloca automaticamente em Cobrança. | PENDENTE: precisa ser conferido na instalação conectada após a publicação. |

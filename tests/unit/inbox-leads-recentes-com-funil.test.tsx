@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
+vi.mock("@/components/inbox/ConversationNotesPanel", () => ({ ConversationNotesPanel: () => null }));
 
 /**
  * "Leads recentes" não dizia DE ONDE era cada lead (issue #943). Caso real: o
