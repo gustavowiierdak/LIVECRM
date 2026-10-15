@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,10 +7,7 @@ import type { AtendimentoOperadorWebchat } from "@/lib/webchat/types";
 import { WebchatOperatorPanel } from "./WebchatOperatorPanel";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
-const createNote = vi.hoisted(() => vi.fn(async () => ({ data: {} })));
 vi.mock("@/hooks/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "u1" }, activeOrg: { orgId: "o1" } }) }));
-vi.mock("@/hooks/inbox/useConversationNotes", () => ({ useConversationNotes: () => [] }));
-vi.mock("@/hooks/inbox/useCreateNote", () => ({ useCreateNote: () => ({ mutateAsync: createNote, isPending: false }) }));
 vi.mock("@/components/inbox/composer/EmojiButton", () => ({
   EmojiButton: ({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) =>
     <button type="button" aria-label="Emoji" disabled={disabled} onClick={() => onPick("🙂")}>Emoji</button>,
@@ -26,7 +23,6 @@ describe("WebchatOperatorPanel", () => {
   beforeEach(() => {
     qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     data = { sessions: [{ id: SESSION_ID, sector: "suporte", expires_at: "2030-10-07T00:00:00Z", active: true }], selected_session_id: SESSION_ID, messages: [] };
-    createNote.mockClear();
     fetchMock.mockReset();
     fetchMock.mockImplementation(async () => Response.json({ data }));
     vi.stubGlobal("fetch", fetchMock);
@@ -105,15 +101,10 @@ describe("WebchatOperatorPanel", () => {
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
   });
 
-  it("salva nota sem enviar texto ao visitante", async () => {
-    const user = userEvent.setup();
+  it("deixa a caixa do chat apenas para respostas; observações ficam na lateral", async () => {
     render(panel({ primary: true }));
     await screen.findByLabelText("Responder pelo atendimento web");
-    await user.click(screen.getByRole("button", { name: "Nota interna" }));
-    await user.type(screen.getByLabelText("Responder pelo atendimento web"), "Só para a equipe");
-    await user.click(screen.getByRole("button", { name: "Salvar nota" }));
-    expect(createNote).toHaveBeenCalledWith({ conversation_id: "c1", body: "Só para a equipe" });
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Nota interna" })).not.toBeInTheDocument();
   });
 
   it("cita uma mensagem, mantém a prévia em falha e repete a mesma chave no retry", async () => {
@@ -152,7 +143,7 @@ describe("WebchatOperatorPanel", () => {
     expect(await screen.findByLabelText("Mensagem citada")).toHaveTextContent(original.body);
   });
 
-  it("permite cancelar a citação e a remove ao mudar para nota interna", async () => {
+  it("permite cancelar a citação sem misturar observações internas ao rascunho", async () => {
     const user = userEvent.setup();
     data.messages = [{ id: "original", direction: "visitor", body: "Mensagem do cliente", created_at: "2026-10-08T12:00:00Z" }];
     render(panel({ primary: true }));
@@ -165,9 +156,8 @@ describe("WebchatOperatorPanel", () => {
     await user.click(screen.getByRole("button", { name: "Cancelar citação" }));
     expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
     await quote();
-    await user.click(screen.getByRole("button", { name: "Nota interna" }));
-    expect(screen.queryByRole("region", { name: "Respondendo à mensagem" })).toBeNull();
-    expect(within(screen.getByRole("group", { name: "Modo de escrita" })).getByRole("button", { name: "Nota interna" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Respondendo à mensagem" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Nota interna" })).not.toBeInTheDocument();
   });
 
   it("preserva histórico encerrado e impede responder", async () => {

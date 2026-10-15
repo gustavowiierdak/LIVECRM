@@ -8,7 +8,7 @@ import { showApiError } from "@/components/feedback/ApiErrorToast";
 import type { Note } from "@/lib/types/messaging";
 
 /** Onda 5.2: notas internas da conversa (poucas por conversa — query simples, sem paginação). */
-export function useConversationNotes(conversationId: string | null) {
+export function useConversationNotesQuery(conversationId: string | null) {
   const podeConsultar = usePermission("inbox.notes.view");
   const qc = useQueryClient();
   const queryKey = ["notes", conversationId] as const;
@@ -47,5 +47,9 @@ export function useConversationNotes(conversationId: string | null) {
     enabled: !!conversationId && podeConsultar,
   });
 
-  return query.data ?? [];
+  return query;
+}
+
+export function useConversationNotes(conversationId: string | null) {
+  return useConversationNotesQuery(conversationId).data ?? [];
 }

@@ -45,11 +45,11 @@ vi.mock("@/hooks/inbox/useDraftReply", () => ({
 
 import { Composer } from "@/components/inbox/Composer";
 
-function renderComposer() {
+function renderComposer(fixedMode?: "reply" | "note") {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <Composer conversationId="conv-1" />
+      <Composer conversationId="conv-1" fixedMode={fixedMode} />
     </QueryClientProvider>,
   );
 }
@@ -80,6 +80,25 @@ describe("Composer + modo nota interna", () => {
       expect.objectContaining({ conversation_id: "conv-1", body: "oi cliente", type: "text" }),
       expect.anything(),
     );
+    expect(createNoteMock).not.toHaveBeenCalled();
+  });
+
+  it("na ficha lateral, fixa o destino privado sem oferecer troca para resposta", () => {
+    renderComposer("note");
+    expect(screen.queryByRole("group", { name: "Modo de escrita" })).not.toBeInTheDocument();
+    expect(screen.getByText("Só a equipe vê estas observações.")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/nota interna/i), { target: { value: "Registrar aqui" } });
+    fireEvent.click(screen.getByRole("button", { name: /^enviar$/i }));
+    expect(createNoteMock).toHaveBeenCalledWith(expect.objectContaining({ body: "Registrar aqui" }), expect.anything());
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("no chat, fixa o destino de resposta sem mostrar a opção de nota", () => {
+    renderComposer("reply");
+    expect(screen.queryByRole("button", { name: "Nota interna" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/mensagem/i), { target: { value: "Resposta ao cliente" } });
+    fireEvent.click(screen.getByRole("button", { name: /^enviar$/i }));
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ body: "Resposta ao cliente" }), expect.anything());
     expect(createNoteMock).not.toHaveBeenCalled();
   });
 

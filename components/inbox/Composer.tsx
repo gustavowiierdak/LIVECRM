@@ -72,6 +72,8 @@ interface Props {
   conversationId: string;
   initialDraft?: string;
   initialMode?: "reply" | "note";
+  /** Exibe apenas o editor escolhido; notas ficam na ficha lateral do atendimento. */
+  fixedMode?: "reply" | "note";
   onDraftChange?: (text: string, mode: "reply" | "note") => void;
   active?: boolean;
   disabled?: boolean;
@@ -113,6 +115,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     conversationId,
     initialDraft = "",
     initialMode = "reply",
+    fixedMode,
     active = true,
     onDraftChange,
     disabled,
@@ -145,7 +148,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [pendingEm, setPendingEm] = useState<"reply" | "note">("reply");
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const [mode, setMode] = useState<"reply" | "note">(initialMode);
+  const [selectedMode, setMode] = useState<"reply" | "note">(initialMode);
+  const mode = fixedMode ?? selectedMode;
   /**
    * Menção de atendente (#2372) — e o motivo de ser quatro estados.
    *
@@ -465,7 +469,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </p>
           </div>
         )}
-        <ComposerModeSwitch mode={mode} onChange={setMode} />
+        {!fixedMode && <ComposerModeSwitch mode={mode} onChange={setMode} />}
+        {fixedMode === "note" && (
+          <p className="mb-2 text-xs text-muted-foreground">{t("Só a equipe vê estas observações.")}</p>
+        )}
         {/*
           A FAIXA DA CITAÇÃO — o que o atendente escolheu responder.
 

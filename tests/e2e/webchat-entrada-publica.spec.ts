@@ -313,31 +313,23 @@ test.describe("atendimento web público até a Inbox", () => {
         .analyze();
       expect.soft(acessibilidade.violations).toEqual([]);
 
-      // The composer skin must preserve note privacy and keyboard semantics.
+      // Observações internas ficam na ficha lateral, fora do fio do cliente.
       const notaPrivada = `Contexto interno ${sufixo}`;
-      const editor = painel.getByRole("textbox", { name: "Responder pelo atendimento web" });
-      await painel.getByRole("button", { name: "Nota interna", exact: true }).click();
-      await expect(
-        painel.getByRole("button", { name: "Nota interna", exact: true }),
-      ).toHaveAttribute("aria-pressed", "true");
+      const observacoes = ficha.getByTestId("inbox-observacoes");
+      await expect(painel.getByRole("button", { name: "Nota interna", exact: true })).toHaveCount(0);
+      await observacoes.getByRole("button", { name: "Nova observação" }).click();
+      const editor = observacoes.getByRole("textbox", { name: "Mensagem" });
       await editor.fill(notaPrivada);
       await editor.press("Shift+Enter");
       await editor.pressSequentially("Somente para a equipe.");
       await expect(editor).toHaveValue(`${notaPrivada}\nSomente para a equipe.`);
-      await expect(painel.getByRole("status")).toContainText(
-        "Esta nota fica visível apenas para a equipe.",
-      );
+      await expect(observacoes).toContainText("Só a equipe vê estas observações.");
       await page.screenshot({ path: `${evidencia}/16-editor-nota.png`, fullPage: true });
       await editor.press("Enter");
       await expect(editor).toHaveValue("");
-      await expect(painel.getByText(notaPrivada, { exact: false })).toBeVisible();
+      await expect(observacoes.getByText(notaPrivada, { exact: false })).toBeVisible();
+      await expect(painel.getByText(notaPrivada, { exact: false })).toHaveCount(0);
       await expect(cliente.getByText(notaPrivada, { exact: false })).toHaveCount(0);
-      await painel.getByRole("button", { name: "Responder", exact: true }).click();
-      await expect(painel.getByRole("button", { name: "Responder", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      await expect(painel.getByText("Esta nota fica visível apenas para a equipe.")).toHaveCount(0);
 
       await acoes.getByRole("button", { name: "Transferir", exact: true }).click();
       const transferencia = page.getByRole("dialog", { name: "Transferir conversa" });
@@ -427,6 +419,11 @@ test.describe("atendimento web público até a Inbox", () => {
       await page.screenshot({ path: `${evidencia}/11-operador-monitor.png`, fullPage: true });
 
       await page.setViewportSize({ width: 768, height: 1024 });
+      await expect(page.getByRole("button", { name: "Ficha", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Ficha", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Ficha do contato" }).getByTestId("inbox-observacoes"))
+        .toContainText(notaPrivada);
+      await page.keyboard.press("Escape");
       await expect(
         painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
       ).toBeInViewport();

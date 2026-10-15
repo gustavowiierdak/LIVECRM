@@ -18,7 +18,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Tag, Receipt, Users, ArrowRight, Copy, Phone, CalendarBlank, CalendarPlus } from "@/lib/ui/icons";
+import {
+  Tag,
+  Receipt,
+  Users,
+  ArrowRight,
+  Copy,
+  Phone,
+  CalendarBlank,
+  CalendarPlus,
+} from "@/lib/ui/icons";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -31,7 +40,13 @@ import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
 import { useEditLead } from "@/hooks/kanban/useUpdateLead";
 import { useBulkAction } from "@/hooks/kanban/useBulkAction";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { PROXIMO_PASSO_DA_MENSAGEM_NOVA } from "@/lib/atendimento/proximo-passo-padrao";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
@@ -39,6 +54,9 @@ import { phoneForDisplay } from "@/lib/channels/phone-variants";
 import { VinculoIxcDoContato } from "./VinculoIxcDoContato";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
 import { SetorDaConversa } from "./SetorDaConversa";
+import { ConversationNotesPanel } from "./ConversationNotesPanel";
+import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/inbox/status-do-atendimento";
+import { motivoDoContato } from "@/lib/inbox/motivo-do-envio-bloqueado";
 
 interface Props {
   conversation: ConversationWithContact | null;
@@ -118,7 +136,13 @@ interface DesfechoDraft {
   salvando: boolean;
 }
 
-function EncerrarDemanda({ draft, onAbrir, onAlterar, onFechar, onPronto }: {
+function EncerrarDemanda({
+  draft,
+  onAbrir,
+  onAlterar,
+  onFechar,
+  onPronto,
+}: {
   draft: DesfechoDraft | null;
   onAbrir: () => void;
   onAlterar: (patch: Partial<Pick<DesfechoDraft, "desfecho" | "salvando">>) => void;
@@ -126,31 +150,77 @@ function EncerrarDemanda({ draft, onAbrir, onAlterar, onFechar, onPronto }: {
   onPronto: () => void;
 }) {
   const t = useT();
-  if (!draft) return <Button size="sm" variant="ghost" onClick={onAbrir}>{t("Encerrar demanda")}</Button>;
-  return <form className="mt-2 space-y-2" onSubmit={async (event) => {
-    event.preventDefault(); onAlterar({ salvando: true });
-    try {
-      await apiClient.patch(`/api/v1/demandas/${draft.demandaId}`, { action: "encerrar", desfecho: draft.desfecho, expected_revision: draft.revision });
-      toast.success(t("Desfecho registrado.")); onFechar(); onPronto();
-    } catch { toast.error(t("Não foi possível encerrar. Cancele esta edição e abra novamente para revisar o desfecho.")); onPronto(); }
-    finally { onAlterar({ salvando: false }); }
-  }}>
-    <label className="block">{t("Desfecho")}
-      <select aria-label={t("Desfecho da demanda")} className="mt-1 w-full rounded-md border bg-background p-2" value={draft.desfecho} onChange={(e) => onAlterar({ desfecho: e.target.value })}>
-        <option value="resolvida">{t("Resolvida")}</option><option value="convertida">{t("Convertida")}</option>
-        <option value="nao_procede">{t("Não procede")}</option><option value="encerrada_pelo_cliente">{t("Encerrada pelo cliente")}</option>
-        <option value="perdida">{t("Perdida")}</option><option value="expirada_sem_resposta">{t("Expirada sem resposta")}</option>
-      </select>
-    </label>
-    <p>{t("Registra o resultado desta demanda. As conversas dos outros canais permanecem disponíveis.")}</p>
-    <Button size="sm" disabled={draft.salvando} type="submit">{t("Confirmar desfecho")}</Button>
-    <Button size="sm" variant="ghost" type="button" disabled={draft.salvando} onClick={onFechar}>{t("Cancelar")}</Button>
-  </form>;
+  if (!draft)
+    return (
+      <Button size="sm" variant="ghost" onClick={onAbrir}>
+        {t("Encerrar demanda")}
+      </Button>
+    );
+  return (
+    <form
+      className="mt-2 space-y-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        onAlterar({ salvando: true });
+        try {
+          await apiClient.patch(`/api/v1/demandas/${draft.demandaId}`, {
+            action: "encerrar",
+            desfecho: draft.desfecho,
+            expected_revision: draft.revision,
+          });
+          toast.success(t("Desfecho registrado."));
+          onFechar();
+          onPronto();
+        } catch {
+          toast.error(
+            t(
+              "Não foi possível encerrar. Cancele esta edição e abra novamente para revisar o desfecho.",
+            ),
+          );
+          onPronto();
+        } finally {
+          onAlterar({ salvando: false });
+        }
+      }}
+    >
+      <label className="block">
+        {t("Desfecho")}
+        <select
+          aria-label={t("Desfecho da demanda")}
+          className="mt-1 w-full rounded-md border bg-background p-2"
+          value={draft.desfecho}
+          onChange={(e) => onAlterar({ desfecho: e.target.value })}
+        >
+          <option value="resolvida">{t("Resolvida")}</option>
+          <option value="convertida">{t("Convertida")}</option>
+          <option value="nao_procede">{t("Não procede")}</option>
+          <option value="encerrada_pelo_cliente">{t("Encerrada pelo cliente")}</option>
+          <option value="perdida">{t("Perdida")}</option>
+          <option value="expirada_sem_resposta">{t("Expirada sem resposta")}</option>
+        </select>
+      </label>
+      <p>
+        {t(
+          "Registra o resultado desta demanda. As conversas dos outros canais permanecem disponíveis.",
+        )}
+      </p>
+      <Button size="sm" disabled={draft.salvando} type="submit">
+        {t("Confirmar desfecho")}
+      </Button>
+      <Button size="sm" variant="ghost" type="button" disabled={draft.salvando} onClick={onFechar}>
+        {t("Cancelar")}
+      </Button>
+    </form>
+  );
 }
 
 const DESFECHO_LEGIVEL: Record<string, string> = {
-  resolvida: "Resolvida", convertida: "Convertida", nao_procede: "Não procede",
-  encerrada_pelo_cliente: "Encerrada pelo cliente", perdida: "Perdida", expirada_sem_resposta: "Expirada sem resposta",
+  resolvida: "Resolvida",
+  convertida: "Convertida",
+  nao_procede: "Não procede",
+  encerrada_pelo_cliente: "Encerrada pelo cliente",
+  perdida: "Perdida",
+  expirada_sem_resposta: "Expirada sem resposta",
 };
 
 /** Vocabulário de quem atende, não o do banco. */
@@ -228,7 +298,7 @@ function MarcarProximoPasso({ demandaId, onPronto }: { demandaId: string; onPron
         placeholder={t("O que acontece a seguir?")}
         aria-label={t("Próximo passo desta demanda")}
         data-testid="campo-proximo-passo"
-        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-hidden focus:ring-1 focus:ring-ring"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:ring-1 focus:ring-ring focus:outline-hidden"
       />
       <div className="flex gap-1.5">
         <Button
@@ -240,12 +310,7 @@ function MarcarProximoPasso({ demandaId, onPronto }: { demandaId: string; onPron
         >
           {salvando ? t("Salvando…") : t("Salvar")}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 text-xs"
-          onClick={() => setAberto(false)}
-        >
+        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAberto(false)}>
           {t("Cancelar")}
         </Button>
       </div>
@@ -257,9 +322,7 @@ function formatMoney(cents: number | null, currency: string | null): string {
   if (cents == null) return "—";
   const cur = currency ?? "BRL";
   try {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cur }).format(
-      cents / 100,
-    );
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: cur }).format(cents / 100);
   } catch {
     return `${(cents / 100).toFixed(2)} ${cur}`;
   }
@@ -397,7 +460,9 @@ function InboxLeadEditor({
       )}
       {leads.length === 1 && (
         <div data-testid="inbox-lead-unico" className="text-xs text-muted-foreground">
-          <p>{ativo.title} · {status(ativo)}</p>
+          <p>
+            {ativo.title} · {status(ativo)}
+          </p>
           <p className={CLASSES_DE_ONDE_ESTA} title={ondeEstaOLead(ativo)}>
             {ondeEstaOLead(ativo)}
           </p>
@@ -435,7 +500,11 @@ function EtapaDoNegocio({ lead, onMovido }: { lead: LeadRow; onMovido: () => voi
   async function escolher(stageId: string) {
     if (stageId === lead.stage_id) return;
     try {
-      await mover.mutateAsync({ action: "move", lead_ids: [lead.id], params: { stage_id: stageId } });
+      await mover.mutateAsync({
+        action: "move",
+        lead_ids: [lead.id],
+        params: { stage_id: stageId },
+      });
       toast.success(t("Etapa atualizada."));
       onMovido();
     } catch {
@@ -448,8 +517,16 @@ function EtapaDoNegocio({ lead, onMovido }: { lead: LeadRow; onMovido: () => voi
       <label className="block text-xs font-medium text-text" htmlFor={`etapa-${lead.id}`}>
         {t("Etapa do funil")}
       </label>
-      <Select value={lead.stage_id} onValueChange={(v) => void escolher(v)} disabled={mover.isPending}>
-        <SelectTrigger id={`etapa-${lead.id}`} className="h-8 w-full text-xs" data-testid="inbox-etapa-select">
+      <Select
+        value={lead.stage_id}
+        onValueChange={(v) => void escolher(v)}
+        disabled={mover.isPending}
+      >
+        <SelectTrigger
+          id={`etapa-${lead.id}`}
+          className="h-8 w-full text-xs"
+          data-testid="inbox-etapa-select"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -485,7 +562,9 @@ function CamposDoFunil({
   const [camposCarregados, setCamposCarregados] = useState(valores);
 
   if (fieldDefs.length === 0) {
-    return <p className="text-xs text-muted-foreground">{t("Este funil não tem campos extras.")}</p>;
+    return (
+      <p className="text-xs text-muted-foreground">{t("Este funil não tem campos extras.")}</p>
+    );
   }
 
   async function salvar() {
@@ -534,18 +613,26 @@ export function CRMSidePanel({ conversation }: Props) {
   // A saída do filtro produz null enquanto o detalhe carrega. O rascunho não
   // some nessa lacuna; outra conversa/contato real o descarta, sem expô-lo.
   useEffect(() => {
-    if (conversation && desfechoDraft && (conversation.id !== desfechoDraft.conversationId || contactId !== desfechoDraft.contactId)) setDesfechoDraft(null);
+    if (
+      conversation &&
+      desfechoDraft &&
+      (conversation.id !== desfechoDraft.conversationId || contactId !== desfechoDraft.contactId)
+    )
+      setDesfechoDraft(null);
   }, [conversation, contactId, desfechoDraft]);
 
-
-  const [enrichment, setEnrichment] = useState<(ProspectEnrichment & { collected_at: string }) | null>(null);
+  const [enrichment, setEnrichment] = useState<
+    (ProspectEnrichment & { collected_at: string }) | null
+  >(null);
   const [enrichmentError, setEnrichmentError] = useState(false);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
   const [demandas, setDemandas] = useState<DemandaRow[] | null>(null);
   const [fatos, setFatos] = useState<Array<{ id: string; headline: string; body: string }>>([]);
-  const [historico, setHistorico] = useState<Array<{ id: string; desfecho: string; fechada_em: string }>>([]);
+  const [historico, setHistorico] = useState<
+    Array<{ id: string; desfecho: string; fechada_em: string }>
+  >([]);
   const [summaryContactId, setSummaryContactId] = useState<string | null>(null);
   /**
    * O TERCEIRO ESTADO. Antes existiam dois — carregando e "tem N itens" — e a
@@ -574,7 +661,8 @@ export function CRMSidePanel({ conversation }: Props) {
       setOrders(null);
       setActivities(null);
       setDemandas(null);
-      setFatos([]); setHistorico([]);
+      setFatos([]);
+      setHistorico([]);
       setLeadAtivoId(null);
       return;
     }
@@ -611,7 +699,8 @@ export function CRMSidePanel({ conversation }: Props) {
         // mostraria esqueleto para sempre num contato sem demanda aberta —
         // que é o caso saudável.
         setDemandas(r.data.demandas ?? []);
-        setFatos(r.data.fatos ?? []); setHistorico(r.data.historico ?? []);
+        setFatos(r.data.fatos ?? []);
+        setHistorico(r.data.historico ?? []);
       } catch {
         if (cancelled) return;
         // Falha NÃO vira lista vazia. Os dados ficam `null` e o painel diz que
@@ -621,7 +710,8 @@ export function CRMSidePanel({ conversation }: Props) {
         setOrders(null);
         setActivities(null);
         setDemandas(null);
-        setFatos([]); setHistorico([]);
+        setFatos([]);
+        setHistorico([]);
       }
     }
 
@@ -641,7 +731,15 @@ export function CRMSidePanel({ conversation }: Props) {
     // Depender do DADO que muda é mais honesto que um contador de invalidação:
     // `assigned_to_user_id` cobre assumir/transferir/liberar e `bot_silenced_until`
     // cobre pausar e devolver — que são exatamente os quatro gestos que geram linha.
-  }, [contactId, contact?.is_anonymized, tentativa, conversation?.assigned_to_user_id, conversation?.bot_silenced_until, conversation?.service_revision, conversation?.current_demanda_id]);
+  }, [
+    contactId,
+    contact?.is_anonymized,
+    tentativa,
+    conversation?.assigned_to_user_id,
+    conversation?.bot_silenced_until,
+    conversation?.service_revision,
+    conversation?.current_demanda_id,
+  ]);
 
   // Recarrega o resumo pelo MESMO caminho do "Tentar de novo": o efeito depende
   // de `tentativa`, então a demanda recém-marcada volta do servidor em vez de
@@ -673,7 +771,8 @@ export function CRMSidePanel({ conversation }: Props) {
   const sectionsLoading = useMemo(
     () =>
       !erro &&
-      (summaryContactId !== contactId || (leads === null && orders === null && activities === null && demandas === null)),
+      (summaryContactId !== contactId ||
+        (leads === null && orders === null && activities === null && demandas === null)),
     [erro, summaryContactId, contactId, leads, orders, activities, demandas],
   );
 
@@ -686,36 +785,61 @@ export function CRMSidePanel({ conversation }: Props) {
   }
 
   return (
-    <aside aria-label={t("Ficha do contato")} className="crm-contact-panel flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4">
+    <aside
+      aria-label={t("Ficha do contato")}
+      className="crm-contact-panel flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4"
+    >
       <section>
-        <h3 className="sr-only">
-          {t("Contato")}
-        </h3>
+        <h3 className="sr-only">{t("Contato")}</h3>
         <div className="crm-contact-profile flex flex-col gap-3 text-sm">
           <div className="crm-contact-identity flex flex-col items-center gap-2 py-3 text-center">
             <Avatar className="crm-contact-avatar size-24 text-2xl" aria-hidden>
               {contactId && contact?.avatar_storage_path && !contact.is_anonymized && (
                 <AvatarImage src={`/api/v1/contacts/${contactId}/avatar`} alt="" />
               )}
-              <AvatarFallback>{displayName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase()}</AvatarFallback>
+              <AvatarFallback>
+                {displayName
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0])
+                  .join("")
+                  .toLocaleUpperCase()}
+              </AvatarFallback>
             </Avatar>
             <div className="crm-contact-name font-semibold wrap-anywhere">{displayName}</div>
             {contact?.phone_number && (
               <div className="crm-contact-phone flex max-w-full items-center gap-1 text-xs text-muted-foreground">
                 <Phone size={14} className="shrink-0" aria-hidden />
-                <span className="select-text wrap-anywhere">{phoneForDisplay(contact.phone_number)}</span>
-                <Button variant="ghost" size="icon" className="size-8 shrink-0" aria-label={t("Copiar telefone")}
+                <span className="wrap-anywhere select-text">
+                  {phoneForDisplay(contact.phone_number)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0"
+                  aria-label={t("Copiar telefone")}
                   onClick={async () => {
-                    try { await navigator.clipboard.writeText(contact.phone_number!); toast.success(t("Telefone copiado.")); }
-                    catch { toast.error(t("Não foi possível copiar — selecione e copie manualmente.")); }
-                  }}>
+                    try {
+                      await navigator.clipboard.writeText(contact.phone_number!);
+                      toast.success(t("Telefone copiado."));
+                    } catch {
+                      toast.error(t("Não foi possível copiar — selecione e copie manualmente."));
+                    }
+                  }}
+                >
                   <Copy size={14} aria-hidden />
                 </Button>
               </div>
             )}
           </div>
           {contactId && !contact?.is_anonymized ? (
-            <VinculoIxcDoContato contactId={contactId} readonly={readonly} initialLink={vinculoIxc} compact />
+            <VinculoIxcDoContato
+              contactId={contactId}
+              readonly={readonly}
+              initialLink={vinculoIxc}
+              compact
+            />
           ) : null}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -724,7 +848,11 @@ export function CRMSidePanel({ conversation }: Props) {
               ))}
             </div>
           )}
-          <div className="crm-contact-actions grid grid-cols-2 gap-2 pt-1" role="group" aria-label={t("Ações do contato")}>
+          <div
+            className="crm-contact-actions grid grid-cols-2 gap-2 pt-1"
+            role="group"
+            aria-label={t("Ações do contato")}
+          >
             {contactId && (
               <Button asChild size="sm" className="col-span-2 w-full justify-between">
                 <Link href={`/app/contacts/${contactId}`}>
@@ -733,11 +861,19 @@ export function CRMSidePanel({ conversation }: Props) {
                 </Link>
               </Button>
             )}
-            {contactId && <Button asChild variant="outline" size="sm" className="col-span-2 w-full justify-center">
-              <Link href={`/app/agenda?contato=${contactId}&conversa=${conversation.id}`}>
-                <CalendarPlus size={14} aria-hidden />{t("Marcar compromisso")}
-              </Link>
-            </Button>}
+            {contactId && (
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="col-span-2 w-full justify-center"
+              >
+                <Link href={`/app/agenda?contato=${contactId}&conversa=${conversation.id}`}>
+                  <CalendarPlus size={14} aria-hidden />
+                  {t("Marcar compromisso")}
+                </Link>
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -759,7 +895,13 @@ export function CRMSidePanel({ conversation }: Props) {
               {leadDialogOpen && defaultPipeline.isLoading ? t("Carregando…") : t("Novo Lead")}
             </Button>
           </div>
-          {tagEditorOpen && contactId && <ContactTagsEditor contactId={contactId} orgId={conversation.organization_id} tags={tags} />}
+          {tagEditorOpen && contactId && (
+            <ContactTagsEditor
+              contactId={contactId}
+              orgId={conversation.organization_id}
+              tags={tags}
+            />
+          )}
         </div>
       </section>
 
@@ -768,24 +910,51 @@ export function CRMSidePanel({ conversation }: Props) {
           {conversation.service_protocol && (
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">{t("Protocolo")}</dt>
-              <dd className="min-w-0 select-all text-right font-mono wrap-anywhere">{conversation.service_protocol}</dd>
+              <dd className="min-w-0 text-right font-mono wrap-anywhere select-all">
+                {conversation.service_protocol}
+              </dd>
             </div>
           )}
           {(conversation.service_started_at || conversation.created_at) && (
             <div>
               <dt className="flex items-center gap-2 text-muted-foreground">
                 <CalendarBlank size={16} className="shrink-0" aria-hidden />
-                {t(conversation.service_started_at ? "Início do atendimento" : "Conversa criada em")}
+                {t(
+                  conversation.service_started_at ? "Início do atendimento" : "Conversa criada em",
+                )}
               </dt>
-              <dd className="pl-6"><time dateTime={conversation.service_started_at || conversation.created_at}>{shortDate(conversation.service_started_at || conversation.created_at, localeDaData)}</time></dd>
+              <dd className="pl-6">
+                <time dateTime={conversation.service_started_at || conversation.created_at}>
+                  {shortDate(
+                    conversation.service_started_at || conversation.created_at,
+                    localeDaData,
+                  )}
+                </time>
+              </dd>
             </div>
           )}
-          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("Canal")}</dt>
-            <dd className="min-w-0 text-right wrap-anywhere">{conversation.channel === "webchat" ? t("Atendimento web") : rotuloDoCanalDaConversa(conversation.channel_sessions, t) || "—"}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t("Responsável")}</dt>
-            <dd className="min-w-0 text-right wrap-anywhere">{conversation.assigned_to_user_id ? conversation.assigned_to_user_name || t("Atendente") : t("Sem responsável")}</dd></div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">{t("Canal")}</dt>
+            <dd className="min-w-0 text-right wrap-anywhere">
+              {conversation.channel === "webchat"
+                ? t("Atendimento web")
+                : rotuloDoCanalDaConversa(conversation.channel_sessions, t) || "—"}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">{t("Responsável")}</dt>
+            <dd className="min-w-0 text-right wrap-anywhere">
+              {conversation.assigned_to_user_id
+                ? conversation.assigned_to_user_name || t("Atendente")
+                : t("Sem responsável")}
+            </dd>
+          </div>
         </dl>
-        {conversation.atendimento_setor_id && <div className="mt-3 flex justify-center"><SetorDaConversa id={conversation.atendimento_setor_id} /></div>}
+        {conversation.atendimento_setor_id && (
+          <div className="mt-3 flex justify-center">
+            <SetorDaConversa id={conversation.atendimento_setor_id} />
+          </div>
+        )}
       </section>
 
       {contactId && defaultPipeline.data && (
@@ -804,11 +973,25 @@ export function CRMSidePanel({ conversation }: Props) {
 
       <Separator />
 
-      {!readonly && <ConversationTagsEditor
+      <ConversationNotesPanel
+        key={conversation.id}
         conversationId={conversation.id}
-        orgId={conversation.organization_id}
-        tags={conversation.tags ?? []}
-      />}
+        readonly={
+          readonly ||
+          !!motivoDoContato(contact, t) ||
+          CONVERSATION_TERMINAL_STATUSES.some((status) => status === conversation.status)
+        }
+      />
+
+      <Separator />
+
+      {!readonly && (
+        <ConversationTagsEditor
+          conversationId={conversation.id}
+          orgId={conversation.organization_id}
+          tags={conversation.tags ?? []}
+        />
+      )}
 
       <Separator />
 
@@ -817,9 +1000,7 @@ export function CRMSidePanel({ conversation }: Props) {
           conversa está atendendo alguém que pediu alguma coisa — a primeira
           pergunta a responder é o que ainda está pendente, não quanto vale. */}
       <section data-testid="inbox-demandas">
-        <h3 className="text-xs font-semibold text-text">
-          {t("Demandas abertas")}
-        </h3>
+        <h3 className="text-xs font-semibold text-text">{t("Demandas abertas")}</h3>
         {sectionsLoading ? (
           <Skeleton className="mt-2 h-14 w-full" />
         ) : demandas && demandas.length > 0 ? (
@@ -839,7 +1020,7 @@ export function CRMSidePanel({ conversation }: Props) {
                     <span className="truncate font-medium">
                       {t(ESTADO_LEGIVEL[d.estado] ?? d.estado)}
                     </span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                    <span className="shrink-0 text-muted-foreground tabular-nums">
                       {t("há {tempo}").replace("{tempo}", `${horasDesde(d.aberta_em)}h`)}
                     </span>
                   </div>
@@ -854,15 +1035,53 @@ export function CRMSidePanel({ conversation }: Props) {
                       vazamento e tinha de sair da tela para resolver — peça que
                       só recebe é ilha pelo invariante 1, e foi o gate dos mapas
                       de arquitetura que apontou isso. */}
-                  {d.id === conversation.current_demanda_id && <Badge variant="outline">{t("Demanda vigente neste canal")}</Badge>}
-                  {!readonly && <EncerrarDemanda
-                    draft={desfechoDraft?.conversationId === conversation.id && desfechoDraft.contactId === contactId && desfechoDraft.demandaId === d.id ? desfechoDraft : null}
-                    onAbrir={() => { if (contactId) setDesfechoDraft({ conversationId: conversation.id, contactId, demandaId: d.id, revision: d.revision, desfecho: "resolvida", salvando: false }); }}
-                    onAlterar={(patch) => setDesfechoDraft((current) => current?.conversationId === conversation.id && current.contactId === contactId && current.demandaId === d.id ? { ...current, ...patch } : current)}
-                    onFechar={() => setDesfechoDraft((current) => current?.conversationId === conversation.id && current.contactId === contactId && current.demandaId === d.id ? null : current)}
-                    onPronto={recarregar}
-                  />}
-                  {semPasso && !readonly ? <MarcarProximoPasso demandaId={d.id} onPronto={recarregar} /> : null}
+                  {d.id === conversation.current_demanda_id && (
+                    <Badge variant="outline">{t("Demanda vigente neste canal")}</Badge>
+                  )}
+                  {!readonly && (
+                    <EncerrarDemanda
+                      draft={
+                        desfechoDraft?.conversationId === conversation.id &&
+                        desfechoDraft.contactId === contactId &&
+                        desfechoDraft.demandaId === d.id
+                          ? desfechoDraft
+                          : null
+                      }
+                      onAbrir={() => {
+                        if (contactId)
+                          setDesfechoDraft({
+                            conversationId: conversation.id,
+                            contactId,
+                            demandaId: d.id,
+                            revision: d.revision,
+                            desfecho: "resolvida",
+                            salvando: false,
+                          });
+                      }}
+                      onAlterar={(patch) =>
+                        setDesfechoDraft((current) =>
+                          current?.conversationId === conversation.id &&
+                          current.contactId === contactId &&
+                          current.demandaId === d.id
+                            ? { ...current, ...patch }
+                            : current,
+                        )
+                      }
+                      onFechar={() =>
+                        setDesfechoDraft((current) =>
+                          current?.conversationId === conversation.id &&
+                          current.contactId === contactId &&
+                          current.demandaId === d.id
+                            ? null
+                            : current,
+                        )
+                      }
+                      onPronto={recarregar}
+                    />
+                  )}
+                  {semPasso && !readonly ? (
+                    <MarcarProximoPasso demandaId={d.id} onPronto={recarregar} />
+                  ) : null}
                 </li>
               );
             })}
@@ -879,41 +1098,72 @@ export function CRMSidePanel({ conversation }: Props) {
       <Separator />
 
       <section data-testid="inbox-memoria">
-        <details className="crm-contact-disclosure" open={fatos.length > 0 || historico.length > 0 || erro}>
-        <summary>
-        <h3 className="text-xs font-semibold">{t("Memória do contato")}</h3>
-        </summary>
-        <p className="mt-1 text-xs text-muted-foreground">{t("Fatos duráveis registrados nas notas. Pendências pertencem à demanda vigente.")}</p>
-        {!sectionsLoading && fatos.map((f) => <details key={f.id} className="mt-2 text-xs"><summary className="wrap-anywhere">{f.headline}</summary><p className="mt-1 whitespace-pre-wrap wrap-anywhere">{f.body}</p></details>)}
-        {!sectionsLoading && fatos.length === 0 && <p className="mt-2 text-xs text-muted-foreground">{t("Nenhum fato durável registrado.")}</p>}
-        {!sectionsLoading && historico.length > 0 && <div className="mt-3 text-xs"><h4>{t("Histórico encerrado — sem tarefas pendentes")}</h4>{historico.map((h) => <p key={h.id}>{t(DESFECHO_LEGIVEL[h.desfecho] ?? h.desfecho)}{h.fechada_em ? ` · ${shortDate(h.fechada_em, localeDaData)}` : ""}</p>)}</div>}
+        <details
+          className="crm-contact-disclosure"
+          open={fatos.length > 0 || historico.length > 0 || erro}
+        >
+          <summary>
+            <h3 className="text-xs font-semibold">{t("Memória do contato")}</h3>
+          </summary>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("Fatos duráveis registrados nas notas. Pendências pertencem à demanda vigente.")}
+          </p>
+          {!sectionsLoading &&
+            fatos.map((f) => (
+              <details key={f.id} className="mt-2 text-xs">
+                <summary className="wrap-anywhere">{f.headline}</summary>
+                <p className="mt-1 wrap-anywhere whitespace-pre-wrap">{f.body}</p>
+              </details>
+            ))}
+          {!sectionsLoading && fatos.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t("Nenhum fato durável registrado.")}
+            </p>
+          )}
+          {!sectionsLoading && historico.length > 0 && (
+            <div className="mt-3 text-xs">
+              <h4>{t("Histórico encerrado — sem tarefas pendentes")}</h4>
+              {historico.map((h) => (
+                <p key={h.id}>
+                  {t(DESFECHO_LEGIVEL[h.desfecho] ?? h.desfecho)}
+                  {h.fechada_em ? ` · ${shortDate(h.fechada_em, localeDaData)}` : ""}
+                </p>
+              ))}
+            </div>
+          )}
         </details>
       </section>
       <Separator />
 
       {/* O que os roteiros de atendimento coletaram (módulo opcional; desligado
           ou sem roteiro, não desenha nada). */}
-      {contactId && !contact?.is_anonymized && <RoteirosDoContato contactId={contactId} variante="painel" />}
+      {contactId && !contact?.is_anonymized && (
+        <RoteirosDoContato contactId={contactId} variante="painel" />
+      )}
 
       <section data-testid="inbox-campos-lead">
         <details className="crm-contact-disclosure" open={Boolean(leads?.length) || erro}>
-        <summary>
-        <h3 className="text-xs font-semibold text-text">
-          {t("Leads recentes")}
-        </h3>
-        </summary>
-        {sectionsLoading ? (
-          <Skeleton className="mt-2 h-14 w-full" />
-        ) : leads && leads.length > 0 ? (
-          <fieldset disabled={readonly}><InboxLeadEditor
-            leads={leads}
-            selecionadoId={leadAtivoId}
-            onSelecionar={setLeadAtivoId}
-            onSalvo={recarregar}
-          /></fieldset>
-        ) : (
-          <SemLista vazio="Sem leads." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
-        )}
+          <summary>
+            <h3 className="text-xs font-semibold text-text">{t("Leads recentes")}</h3>
+          </summary>
+          {sectionsLoading ? (
+            <Skeleton className="mt-2 h-14 w-full" />
+          ) : leads && leads.length > 0 ? (
+            <fieldset disabled={readonly}>
+              <InboxLeadEditor
+                leads={leads}
+                selecionadoId={leadAtivoId}
+                onSelecionar={setLeadAtivoId}
+                onSalvo={recarregar}
+              />
+            </fieldset>
+          ) : (
+            <SemLista
+              vazio="Sem leads."
+              erro={erro}
+              onTentarDeNovo={() => setTentativa((n) => n + 1)}
+            />
+          )}
         </details>
       </section>
 
@@ -921,35 +1171,37 @@ export function CRMSidePanel({ conversation }: Props) {
 
       <section>
         <details className="crm-contact-disclosure" open={Boolean(orders?.length) || erro}>
-        <summary>
-        <h3 className="text-xs font-semibold text-text">
-          {t("Pedidos recentes")}
-        </h3>
-        </summary>
-        {sectionsLoading ? (
-          <Skeleton className="mt-2 h-14 w-full" />
-        ) : orders && orders.length > 0 ? (
-          <ul className="mt-2 space-y-1.5">
-            {orders.map((o) => (
-              <li
-                key={o.id}
-                className="flex items-center justify-between rounded-md border border-border p-2 text-xs"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1 truncate font-medium">
-                    <Receipt size={11} weight="regular" aria-hidden />
-                    {o.external_id ?? o.id.slice(0, 8)}
+          <summary>
+            <h3 className="text-xs font-semibold text-text">{t("Pedidos recentes")}</h3>
+          </summary>
+          {sectionsLoading ? (
+            <Skeleton className="mt-2 h-14 w-full" />
+          ) : orders && orders.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {orders.map((o) => (
+                <li
+                  key={o.id}
+                  className="flex items-center justify-between rounded-md border border-border p-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 truncate font-medium">
+                      <Receipt size={11} weight="regular" aria-hidden />
+                      {o.external_id ?? o.id.slice(0, 8)}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {o.status ?? "—"} · {formatMoney(o.total_cents, o.currency)}
+                    </div>
                   </div>
-                  <div className="text-muted-foreground">
-                    {o.status ?? "—"} · {formatMoney(o.total_cents, o.currency)}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <SemLista vazio="Sem pedidos." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
-        )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <SemLista
+              vazio="Sem pedidos."
+              erro={erro}
+              onTentarDeNovo={() => setTentativa((n) => n + 1)}
+            />
+          )}
         </details>
       </section>
 
@@ -957,51 +1209,63 @@ export function CRMSidePanel({ conversation }: Props) {
 
       <section>
         <details className="crm-contact-disclosure" open={Boolean(activities?.length) || erro}>
-        <summary>
-        <h3 className="text-xs font-semibold text-text">
-          {t("Atividade")}
-        </h3>
-        </summary>
-        {sectionsLoading ? (
-          <Skeleton className="mt-2 h-14 w-full" />
-        ) : activities && activities.length > 0 ? (
-          <ul className="mt-2 space-y-1.5">
-            {activities.map((a) => (
-              <li key={a.id} className="rounded-md border border-border p-2 text-xs">
-                {/* Rótulo do vocabulário único (activity-vocabulary), nunca o
+          <summary>
+            <h3 className="text-xs font-semibold text-text">{t("Atividade")}</h3>
+          </summary>
+          {sectionsLoading ? (
+            <Skeleton className="mt-2 h-14 w-full" />
+          ) : activities && activities.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {activities.map((a) => (
+                <li key={a.id} className="rounded-md border border-border p-2 text-xs">
+                  {/* Rótulo do vocabulário único (activity-vocabulary), nunca o
                     tipo cru: a tela e o banco divergiram justamente por manter
                     duas listas. Marcador por ator, forma e não cor (§5). */}
-                <div className="flex items-center gap-1.5 font-medium">
-                  <span
-                    className={cn(
-                      "h-2 w-2 shrink-0",
-                      actorShape(a.actor_kind) === "filled" && "rounded-full bg-accent",
-                      actorShape(a.actor_kind) === "ring" &&
-                        "rounded-full border border-accent bg-surface",
-                      actorShape(a.actor_kind) === "dashed" &&
-                        "rounded-full border border-dashed border-border-strong",
-                    )}
-                    aria-hidden
-                  />
-                  {t(activityLabel(a.type))}
-                </div>
-                {a.reason && <div className="mt-0.5 truncate text-muted-foreground">{t(a.reason)}</div>}
-                <div className="text-muted-foreground">
-                  {a.performed_by_name ?? t(actorLabel(a.actor_kind))} · {shortDate(a.performed_at, localeDaData)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <SemLista vazio="Sem atividade." erro={erro} onTentarDeNovo={() => setTentativa((n) => n + 1)} />
-        )}
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <span
+                      className={cn(
+                        "h-2 w-2 shrink-0",
+                        actorShape(a.actor_kind) === "filled" && "rounded-full bg-accent",
+                        actorShape(a.actor_kind) === "ring" &&
+                          "rounded-full border border-accent bg-surface",
+                        actorShape(a.actor_kind) === "dashed" &&
+                          "rounded-full border border-dashed border-border-strong",
+                      )}
+                      aria-hidden
+                    />
+                    {t(activityLabel(a.type))}
+                  </div>
+                  {a.reason && (
+                    <div className="mt-0.5 truncate text-muted-foreground">{t(a.reason)}</div>
+                  )}
+                  <div className="text-muted-foreground">
+                    {a.performed_by_name ?? t(actorLabel(a.actor_kind))} ·{" "}
+                    {shortDate(a.performed_at, localeDaData)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <SemLista
+              vazio="Sem atividade."
+              erro={erro}
+              onTentarDeNovo={() => setTentativa((n) => n + 1)}
+            />
+          )}
         </details>
       </section>
 
-      <details className="crm-contact-disclosure" open={Boolean(enrichment) || erro || enrichmentError}>
-        <summary><h3>{t("Sobre a empresa")}</h3></summary>
+      <details
+        className="crm-contact-disclosure"
+        open={Boolean(enrichment) || erro || enrichmentError}
+      >
+        <summary>
+          <h3>{t("Sobre a empresa")}</h3>
+        </summary>
         <LeadEnrichment
-          data={summaryContactId === contactId && !erro && !contact?.is_anonymized ? enrichment : null}
+          data={
+            summaryContactId === contactId && !erro && !contact?.is_anonymized ? enrichment : null
+          }
           loading={sectionsLoading}
           error={erro || (summaryContactId === contactId && enrichmentError)}
           onRetry={recarregar}
@@ -1017,13 +1281,13 @@ export function CRMSidePanel({ conversation }: Props) {
           a conversa para fazer. */}
       <section>
         <details className="crm-contact-disclosure">
-        <summary>
-        <h3 className="text-xs font-semibold">{t("Acervo")}</h3>
-        </summary>
-        <p className="mt-1 mb-2 text-xs text-muted-foreground">
-          {t("Pergunte como a IA perguntaria — a resposta vem com a origem de cada trecho.")}
-        </p>
-        <AcervoSearch />
+          <summary>
+            <h3 className="text-xs font-semibold">{t("Acervo")}</h3>
+          </summary>
+          <p className="mt-1 mb-2 text-xs text-muted-foreground">
+            {t("Pergunte como a IA perguntaria — a resposta vem com a origem de cada trecho.")}
+          </p>
+          <AcervoSearch />
         </details>
       </section>
     </aside>

@@ -22,6 +22,11 @@
   "decisions": [
     {
       "date": "2026-10-15",
+      "scope": "Internal observations in the conversation inspector",
+      "decision": "Keep the customer transcript and composer for customer replies only. Reuse the existing private conversation-note storage, media, mentions and permissions in an Observações section of the right inspector and mobile contact sheet. Show the two newest notes first with an explicit Ver todas control, a private note editor, and honest loading/error states. Do not change the visitor transport or WhatsApp message pipeline."
+    },
+    {
+      "date": "2026-10-15",
       "scope": "Operator notification activation",
       "decision": "Expose a compact dismissible activation prompt in the queue and a permanent diagnostic in notification settings. Request native permission only on click; distinguish permission from a server-confirmed push subscription and show actionable blocked, unavailable and retry states. Reuse current tokens, auth-scoped API and event delivery. Never imply closed-tab delivery when installation keys are absent."
     },

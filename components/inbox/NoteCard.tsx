@@ -68,29 +68,33 @@ export function NoteMedia({ note }: { note: Note }) {
 interface Props {
   note: Note;
   onDelete?: () => void;
+  compact?: boolean;
 }
 
-/** Onda 5.2: nota interna inline no thread — nunca vai ao cliente, destaque âmbar (token `warning`). */
-export function NoteCard({ note, onDelete }: Props) {
+/** Nota privada da conversa: na ficha lateral, sem misturá-la ao chat do cliente. */
+export function NoteCard({ note, onDelete, compact = false }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
-  const time = format(new Date(note.created_at), "HH:mm", { locale: localeDaData });
+  const time = format(new Date(note.created_at), compact ? "dd/MM HH:mm" : "HH:mm", { locale: localeDaData });
 
   return (
-    <div className="group flex w-full min-w-0 justify-center px-4 py-1">
-      <div className="max-w-[85%] min-w-0 rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-sm text-warning-fg shadow-sm">
+    <div className={compact ? "group min-w-0" : "group flex w-full min-w-0 justify-center px-4 py-1"}>
+      <div className={compact
+        ? "min-w-0 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground"
+        : "max-w-[85%] min-w-0 rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-sm text-warning-fg shadow-sm"}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold opacity-80">
             <NoteIcon size={12} weight="fill" aria-hidden />
             <span>{note.created_by_name ?? t("Alguém")}</span>
-            <span aria-hidden>·</span>
-            <span>{t("Nota interna · só o time vê")}</span>
+            {!compact && <><span aria-hidden>·</span><span>{t("Nota interna · só o time vê")}</span></>}
           </div>
           {onDelete && (
             <button
               type="button"
               onClick={onDelete}
-              className="opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              className={compact
+                ? "rounded p-1 text-muted-foreground hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+                : "opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"}
               aria-label={t("Excluir nota")}
             >
               <Trash size={12} weight="bold" />

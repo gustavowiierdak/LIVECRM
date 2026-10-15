@@ -1,5 +1,11 @@
 # Operator workspace
 
+## Observações internas na ficha — 2026-10-15
+
+A nota interna sai do editor e do fio do chat (web e WhatsApp) e aparece na ficha lateral, acessível também pela Ficha no celular. A seção mostra as duas mais recentes e permite expandir o histórico, criar novas observações e excluir conforme a permissão existente. O editor privado reutiliza o envio de notas com anexos e menções; o editor da conversa fica exclusivo para respostas ao cliente. Estado de carregamento, erro e nova tentativa são explícitos. Não há tabela, rota, permissão ou transporte novo.
+
+Sistema Vivo: entrada = `conversation_notes` pela consulta/realtime existente; saída = `ConversationNotesPanel` na `CRMSidePanel`, inclusive no sheet móvel. Registro = criação/exclusão e auditoria já existentes. Porta = ficha da conversa em `/app/inbox`; o chat mantém o histórico de mensagens e passagens. A falha de leitura oferece retry; a falha de escrita conserva o rascunho pelo `Composer`. Nenhuma decisão de IA, demanda, regra de envio ou mapa novo é introduzido.
+
 ## Notificações do atendente — 2026-10-15
 
 Entrada compacta e dispensável sob os filtros da fila, com a mesma porta permanente em Configurações › Notificações. A permissão nativa só é solicitada no clique. Estado de permissão e inscrição não são confundidos: inscrição confirmada, bloqueio, servidor sem configuração e falha recuperável têm textos e próximos passos próprios. Usa tokens e botões existentes; não adiciona consulta na renderização inicial do Inbox.
