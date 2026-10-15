@@ -4,21 +4,14 @@
  *
  * Quem lê é `hooks/notifications/useInboundMessageAlerts.ts` (toast e
  * notificação do navegador). A regra é a do push do servidor, na MESMA função:
- * `lib/notifications/destinatarios-da-mensagem.ts` — conversa sem responsável
- * avisa todos; com responsável, só ele e os administradores.
+ * `lib/notifications/destinatarios-da-mensagem.ts` — IA/robô silencia,
+ * fila avisa seu setor, conversa assumida avisa o atendente responsável.
  *
  * ═══ Por que uma rota nova, e não `GET /conversations/[id]` ═══
  *
- * A rota da conversa já devolve `assigned_to_user_id`, e isso basta quando a
- * conversa tem atendente. Não basta no outro ramo da regra — conversa sem
- * atendente cujo contato tem negócio aberto com dono: o dono vive em
- * `crm_leads`, e a policy de leitura dali (`fn_can_view_lead`) esconde de um
- * `agent`, no modo de visibilidade PADRÃO (`own_and_unassigned`), todo negócio
- * de outro dono. Para esse atendente, "não vejo negócio" seria indistinguível
- * de "não há negócio", e ele seria avisado justamente do cliente que é de outra
- * pessoa. A pergunta precisa ser feita onde o dono é visível — aqui, com o
- * service role — e a resposta volta como um booleano, sem expor o dono nem o
- * negócio que a pessoa não pode abrir.
+ * A rota da conversa já devolve o responsável, mas não resolve os membros
+ * ativos do setor nem o comando calculado da conversa. O servidor faz essa
+ * leitura e devolve somente um booleano, sem expor a equipe inteira.
  *
  * ═══ Por que o admin client, e com que cerca ═══
  *
@@ -74,9 +67,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams): Promise<R
 
   try {
     const destino = await carregarDestinatariosDaMensagem(createAdminClient(), org.orgId, id);
-    // `null` só se a conversa sumiu entre as duas leituras: sem dono conhecido,
-    // é fila — avisa, como antes da regra.
-    const avisar = destino === null ? true : usuarioRecebeAviso(destino, user.id);
+    // Conversa removida entre as leituras não autoriza um aviso indiscriminado.
+    const avisar = destino !== null && usuarioRecebeAviso(destino, user.id);
     return ok({ avisar }, { requestId });
   } catch (err) {
     logger.error("[aviso-de-mensagem] leitura falhou", {

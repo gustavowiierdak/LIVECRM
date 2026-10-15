@@ -22,13 +22,18 @@ const enviarPushAQuemVeAConversaMock = vi.fn(
     _soUsuarios?: ReadonlyArray<string>,
   ) => ({ sent: 1, gone: 0 }),
 );
-// A decisão de destinatários tem suíte própria (`destinatarios-da-mensagem.test.ts`);
-// aqui só interessa que o handler OBEDEÇA ao que ela decidir.
+// A decisão de destinatários tem suíte própria; aqui se prova que o handler a obedece.
 const carregarDestinatariosMock = vi.fn(
-  async (..._args: unknown[]): Promise<{ tipo: "todos" } | { tipo: "restrito"; userIds: string[] } | null> => ({
-    tipo: "todos",
+  async (..._args: unknown[]): Promise<{ tipo: "restrito"; userIds: string[] } | null> => ({
+    tipo: "restrito", userIds: ["u-suporte"],
   }),
 );
+const pushDoAvisoDaCentralMock = vi.fn(async (..._args: unknown[]) => ({
+  title: "A IA passou uma conversa", body: "Abra o atendimento", href: "/app/inbox?id=conv-1", tag: "aviso:item-1",
+}));
+vi.mock("./push-dos-avisos", () => ({
+  pushDoAvisoDaCentral: (...args: unknown[]) => pushDoAvisoDaCentralMock(...args),
+}));
 vi.mock("./destinatarios-da-mensagem", () => ({
   carregarDestinatariosDaMensagem: (...args: unknown[]) => carregarDestinatariosMock(...args),
 }));
@@ -89,6 +94,43 @@ describe("webPushInboundHandler", () => {
     carregarDestinatariosMock.mockClear();
     createAdminClientMock.mockClear();
     fromMock.mockClear();
+    pushDoAvisoDaCentralMock.mockClear();
+  });
+
+  it("handoff da IA notifica apenas a fila do setor, nunca a organização inteira", async () => {
+    state.vapidPronto = true;
+    fromMock.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({ maybeSingle: async () => ({
+            data: { kind: "handoff", ref_kind: "conversation", ref_id: "conv-1" }, error: null,
+          }) }),
+        }),
+      }),
+    });
+    carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: ["u-suporte"] });
+    const result = await webPushInboundHandler.handle({
+      ...grupoRow(), event_type: "central.aviso_criado", entity_id: "item-1", payload: { item_id: "item-1" },
+    });
+    expect(result.status).toBe("ok");
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toEqual(["u-suporte"]);
+  });
+
+  it("handoff sem membro no setor permanece na Central, mas não vira push geral", async () => {
+    state.vapidPronto = true;
+    fromMock.mockReturnValue({
+      select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({
+        data: { kind: "handoff", ref_kind: "conversation", ref_id: "conv-1" }, error: null,
+      }) }) }) }),
+    });
+    carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: [] });
+    const result = await webPushInboundHandler.handle({
+      ...grupoRow(), event_type: "central.aviso_criado", entity_id: "item-1", payload: { item_id: "item-1" },
+    });
+    expect(result).toMatchObject({ status: "skipped", detail: "handoff_sem_destinatario" });
+    expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
+    expect(enviarPushAQuemVeAConversaMock).not.toHaveBeenCalled();
   });
 
   it("pula quando VAPID não está configurado", async () => {
@@ -160,8 +202,7 @@ describe("webPushInboundHandler", () => {
       const [orgId, conversationId, payload, soUsuarios] = enviarPushAQuemVeAConversaMock.mock.calls[0]!;
       expect(orgId).toBe("org1");
       expect(conversationId).toBe("conv-1");
-      // Grupo não tem regra própria de destinatário: o recorte é só a visibilidade.
-      expect(soUsuarios).toBeUndefined();
+      expect(soUsuarios).toEqual(["u-suporte"]);
       expect(payload).toMatchObject({
         title: "Nova mensagem no grupo",
         href: "/app/inbox?id=conv-1",
@@ -183,7 +224,7 @@ describe("webPushInboundHandler", () => {
       expect(enviarPushAQuemVeAConversaMock).not.toHaveBeenCalled();
     });
   });
-  describe("mensagem recebida (message.received) — responsável + admins, ou todos", () => {
+  describe("mensagem recebida (message.received) — apenas fila do setor ou atendente", () => {
     // Sem `contact_id` o handler não busca nome/avatar: o foco aqui é o destino.
     function inboundRow(payload: Record<string, unknown> = {}) {
       return {
@@ -203,17 +244,17 @@ describe("webPushInboundHandler", () => {
       state.vapidPronto = true;
     });
 
-    it("conversa sem responsável → todos os que podem ver a conversa", async () => {
-      carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "todos" });
+    it("fila do setor → apenas membros ativos", async () => {
+      carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: ["u-suporte"] });
       const result = await webPushInboundHandler.handle(inboundRow());
       expect(result.status).toBe("ok");
       expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
       expect(enviarPushAQuemVeAConversaMock).toHaveBeenCalledTimes(1);
-      expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toBeUndefined();
+      expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toEqual(["u-suporte"]);
     });
 
-    it("conversa com responsável → push SÓ para a lista decidida (responsável + admins)", async () => {
-      carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: ["u-ana", "u-admin"] });
+    it("conversa com responsável → push SÓ para o atendente", async () => {
+      carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: ["u-ana"] });
       const result = await webPushInboundHandler.handle(inboundRow());
       expect(result.status).toBe("ok");
       expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
@@ -221,35 +262,37 @@ describe("webPushInboundHandler", () => {
       const [orgId, conversationId, payload, userIds] = enviarPushAQuemVeAConversaMock.mock.calls[0]!;
       expect(orgId).toBe("org1");
       expect(conversationId).toBe("conv-1");
-      expect(userIds).toEqual(["u-ana", "u-admin"]);
+      expect(userIds).toEqual(["u-ana"]);
       expect(payload).toMatchObject({ body: "oi" });
       // A decisão é pedida para a conversa e a org DO EVENTO.
       expect(carregarDestinatariosMock.mock.calls[0]!.slice(1)).toEqual(["org1", "conv-1", null]);
     });
 
-    it("falha ao decidir → cai para todos os que podem ver (aviso a mais incomoda; a menos perde cliente)", async () => {
+    it("IA/robô ou falha ao decidir → não envia push", async () => {
+      carregarDestinatariosMock.mockResolvedValueOnce({ tipo: "restrito", userIds: [] });
+      expect((await webPushInboundHandler.handle(inboundRow())).detail).toBe("sem_destinatario_humano");
       carregarDestinatariosMock.mockRejectedValueOnce(new Error("banco fora"));
       const result = await webPushInboundHandler.handle(inboundRow());
-      expect(result.status).toBe("ok");
+      expect(result.status).toBe("skipped");
       expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
-      expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toBeUndefined();
+      expect(enviarPushAQuemVeAConversaMock).not.toHaveBeenCalled();
     });
 
-    it("conversa não encontrada (null) → todos os que podem ver; evento sem conversa → ninguém", async () => {
+    it("conversa não encontrada (null) ou evento sem conversa → ninguém", async () => {
       carregarDestinatariosMock.mockResolvedValueOnce(null);
       await webPushInboundHandler.handle(inboundRow());
       await webPushInboundHandler.handle(inboundRow({ conversation_id: undefined }));
       expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
-      expect(enviarPushAQuemVeAConversaMock).toHaveBeenCalledTimes(1);
+      expect(enviarPushAQuemVeAConversaMock).not.toHaveBeenCalled();
       // Sem conversa nem há o que perguntar.
       expect(carregarDestinatariosMock).toHaveBeenCalledTimes(1);
     });
 
-    it("grupo NÃO passa pela regra de responsável — só pela de visibilidade", async () => {
+    it("grupo também usa a fila do setor", async () => {
       await webPushInboundHandler.handle(grupoRow());
-      expect(carregarDestinatariosMock).not.toHaveBeenCalled();
+      expect(carregarDestinatariosMock).toHaveBeenCalledOnce();
       expect(enviarPushDaOrgMock).not.toHaveBeenCalled();
-      expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toBeUndefined();
+      expect(enviarPushAQuemVeAConversaMock.mock.calls[0]![3]).toEqual(["u-suporte"]);
     });
   });
 

@@ -68,9 +68,9 @@ beforeEach(() => {
 });
 
 describe("aviso-de-mensagem", () => {
-  it("conversa sem responsável → avisa qualquer membro", async () => {
+  it("fila do setor → avisa apenas membro indicado pelo servidor", async () => {
     estado.userId = "u-qualquer";
-    estado.carregar.mockResolvedValue({ tipo: "todos" });
+    estado.carregar.mockResolvedValue({ tipo: "restrito", userIds: ["u-qualquer"] });
     const { status, corpo } = await pergunta();
     expect(status).toBe(200);
     expect(corpo.data).toEqual({ avisar: true });
@@ -83,11 +83,11 @@ describe("aviso-de-mensagem", () => {
     expect((await pergunta()).corpo.data).toEqual({ avisar: true });
   });
 
-  it("com responsável → avisa o admin", async () => {
+  it("admin fora do atendimento não recebe aviso de conversa assumida", async () => {
     estado.userId = "u-admin";
     estado.role = "admin";
-    estado.carregar.mockResolvedValue({ tipo: "restrito", userIds: ["u-ana", "u-admin"] });
-    expect((await pergunta()).corpo.data).toEqual({ avisar: true });
+    estado.carregar.mockResolvedValue({ tipo: "restrito", userIds: ["u-ana"] });
+    expect((await pergunta()).corpo.data).toEqual({ avisar: false });
   });
 
   it("com responsável → NÃO avisa outro atendente (nem gerente que não é admin)", async () => {
@@ -111,7 +111,12 @@ describe("aviso-de-mensagem", () => {
     expect((await pergunta("nao-e-uuid")).status).toBe(404);
   });
 
-  it("falha de leitura → 500 (o cliente cai para avisar)", async () => {
+  it("conversa removida → não avisa", async () => {
+    estado.carregar.mockResolvedValue(null);
+    expect((await pergunta()).corpo.data).toEqual({ avisar: false });
+  });
+
+  it("falha de leitura → 500 (o cliente não avisa sem veredito)", async () => {
     estado.carregar.mockRejectedValue(new Error("boom"));
     expect((await pergunta()).status).toBe(500);
   });

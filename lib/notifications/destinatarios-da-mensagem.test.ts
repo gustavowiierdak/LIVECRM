@@ -1,11 +1,10 @@
-/**
- * Quem é avisado de mensagem recebida — a regra proposta e a
- * precedência atendente > dono de negócio aberto > todos.
- *
- * Roda com: npx vitest run lib/notifications/destinatarios-da-mensagem.test.ts
- */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/ai/agents/org-tem-automatico", () => ({
+  orgTemAutomatico: vi.fn(async () => true),
+}));
+
+import { orgTemAutomatico } from "@/lib/ai/agents/org-tem-automatico";
 import {
   carregarDestinatariosDaMensagem,
   destinatariosDaMensagem,
@@ -13,72 +12,53 @@ import {
   type LeitorDeAtribuicao,
 } from "./destinatarios-da-mensagem";
 
-const ADMIN = "u-admin";
+const BASE = {
+  comando: "automatico", atribuidoA: null, setorId: "setor-suporte",
+  membrosDoSetor: ["ana", "bia"], atendentesAtivos: ["ana", "caio"],
+};
 
-describe("destinatariosDaMensagem (regra pura)", () => {
-  it("sem atendente e sem negócio aberto com dono → todos", () => {
-    expect(destinatariosDaMensagem({ atribuidoA: null, donosDeNegocioAberto: [], admins: [ADMIN] })).toEqual({
-      tipo: "todos",
-    });
+describe("destinatariosDaMensagem", () => {
+  it("silencia mensagem enquanto IA ou robô atende, mesmo com setor e dono de negócio", () => {
+    expect(destinatariosDaMensagem(BASE).userIds).toEqual([]);
   });
 
-  it("negócio aberto SEM dono não é atribuição → todos", () => {
-    expect(
-      destinatariosDaMensagem({ atribuidoA: null, donosDeNegocioAberto: [null, ""], admins: [ADMIN] }),
-    ).toEqual({ tipo: "todos" });
+  it("fila do setor avisa apenas membros ativos daquele setor", () => {
+    expect(destinatariosDaMensagem({ ...BASE, comando: "aguardando" }).userIds).toEqual(["ana"]);
   });
 
-  it("conversa atribuída → só o atendente e os admins", () => {
-    expect(
-      destinatariosDaMensagem({ atribuidoA: "u-ana", donosDeNegocioAberto: [], admins: [ADMIN, "u-admin2"] }),
-    ).toEqual({ tipo: "restrito", userIds: ["u-ana", ADMIN, "u-admin2"] });
+  it("sem setor definido avisa atendentes ativos; não avisa viewer", () => {
+    expect(destinatariosDaMensagem({ ...BASE, comando: "aguardando", setorId: null }).userIds).toEqual(["ana", "caio"]);
   });
 
-  it("atendente da conversa VENCE o dono do negócio", () => {
-    const d = destinatariosDaMensagem({ atribuidoA: "u-ana", donosDeNegocioAberto: ["u-bia"], admins: [ADMIN] });
-    expect(d).toEqual({ tipo: "restrito", userIds: ["u-ana", ADMIN] });
+  it("conversa assumida avisa apenas o responsável humano", () => {
+    const destino = destinatariosDaMensagem({ ...BASE, comando: "humano", atribuidoA: "bia" });
+    expect(destino.userIds).toEqual(["bia"]);
+    expect(usuarioRecebeAviso(destino, "bia")).toBe(true);
+    expect(usuarioRecebeAviso(destino, "ana")).toBe(false);
   });
 
-  it("sem atendente: donos dos negócios abertos (todos eles, sem repetição) + admins", () => {
-    const d = destinatariosDaMensagem({
-      atribuidoA: null,
-      donosDeNegocioAberto: ["u-bia", null, "u-caio", "u-bia"],
-      admins: [ADMIN],
-    });
-    expect(d).toEqual({ tipo: "restrito", userIds: ["u-bia", "u-caio", ADMIN] });
+  it("sem robô configurado, automático é fila; sem saber o estado, não amplia avisos", () => {
+    expect(destinatariosDaMensagem({ ...BASE, automaticoDaOrg: false }).userIds).toEqual(["ana"]);
+    expect(destinatariosDaMensagem({ ...BASE, automaticoDaOrg: undefined }).userIds).toEqual([]);
   });
 
-  it("atendente que também é admin não aparece duas vezes", () => {
-    const d = destinatariosDaMensagem({ atribuidoA: ADMIN, donosDeNegocioAberto: [], admins: [ADMIN] });
-    expect(d).toEqual({ tipo: "restrito", userIds: [ADMIN] });
-  });
-
-  it("usuarioRecebeAviso: todos avisa qualquer um; restrito só a lista", () => {
-    expect(usuarioRecebeAviso({ tipo: "todos" }, "u-qualquer")).toBe(true);
-    const r = { tipo: "restrito" as const, userIds: ["u-ana", ADMIN] };
-    expect(usuarioRecebeAviso(r, "u-ana")).toBe(true);
-    expect(usuarioRecebeAviso(r, ADMIN)).toBe(true);
-    expect(usuarioRecebeAviso(r, "u-outro-agente")).toBe(false);
+  it("encerrado não produz novo aviso", () => {
+    expect(destinatariosDaMensagem({ ...BASE, comando: "encerrada", atribuidoA: "ana" }).userIds).toEqual([]);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Leitura no banco — stub PostgREST que registra os filtros de cada consulta
-// ---------------------------------------------------------------------------
-
-type Filtro = [string, string, unknown];
-
 function stub(tabelas: Record<string, { data: unknown; error?: { message: string } | null }>) {
-  const consultas: Array<{ tabela: string; filtros: Filtro[] }> = [];
+  const consultas: Array<{ tabela: string; filtros: Array<[string, string, unknown]> }> = [];
   const db: LeitorDeAtribuicao = {
     from(tabela: string) {
-      const registro = { tabela, filtros: [] as Filtro[] };
+      const registro = { tabela, filtros: [] as Array<[string, string, unknown]> };
       consultas.push(registro);
       const resultado = { data: tabelas[tabela]?.data ?? null, error: tabelas[tabela]?.error ?? null };
       const q = {
         select: () => q,
         eq: (c: string, v: unknown) => (registro.filtros.push(["eq", c, v]), q),
         is: (c: string, v: unknown) => (registro.filtros.push(["is", c, v]), q),
+        in: (c: string, v: unknown) => (registro.filtros.push(["in", c, v]), q),
         maybeSingle: async () => resultado,
         then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve(resultado).then(ok, ko),
       };
@@ -89,62 +69,42 @@ function stub(tabelas: Record<string, { data: unknown; error?: { message: string
 }
 
 describe("carregarDestinatariosDaMensagem", () => {
-  it("conversa atribuída: não consulta negócio, lê admins ativos da org", async () => {
+  const conversa = (comando: string, atribuidoA: string | null = null, setorId: string | null = "s1") => ({
+    status: "open", assigned_to_user_id: atribuidoA, atendimento_setor_id: setorId, comando_da_conversa: comando,
+  });
+
+  it("IA ativa: não consulta equipe nem envia aviso", async () => {
+    vi.mocked(orgTemAutomatico).mockResolvedValueOnce(true);
+    const { db, consultas } = stub({ conversations: { data: conversa("automatico") } });
+    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).toEqual({ tipo: "restrito", userIds: [] });
+    expect(consultas.map((c) => c.tabela)).toEqual(["conversations"]);
+  });
+
+  it("handoff para fila: cruza setor e usuários ativos, com filtro de organização", async () => {
     const { db, consultas } = stub({
-      conversations: { data: { assigned_to_user_id: "u-ana", contact_id: "ct-1", is_group: false } },
-      user_organizations: { data: [{ user_id: ADMIN }] },
+      conversations: { data: conversa("aguardando") },
+      atendimento_setor_membros: { data: [{ user_id: "ana" }, { user_id: "bia" }] },
+      user_organizations: { data: [{ user_id: "ana" }, { user_id: "caio" }] },
     });
-    const d = await carregarDestinatariosDaMensagem(db, "org-1", "conv-1");
-    expect(d).toEqual({ tipo: "restrito", userIds: ["u-ana", ADMIN] });
-    expect(consultas.map((c) => c.tabela)).toEqual(["conversations", "user_organizations"]);
-    const admins = consultas[1]!.filtros;
-    expect(admins).toContainEqual(["eq", "organization_id", "org-1"]);
-    expect(admins).toContainEqual(["eq", "role", "admin"]);
-    expect(admins).toContainEqual(["is", "revoked_at", null]);
+    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).toEqual({ tipo: "restrito", userIds: ["ana"] });
+    for (const c of consultas) expect(c.filtros).toContainEqual(["eq", "organization_id", "org-1"]);
+    expect(consultas.find((c) => c.tabela === "atendimento_setor_membros")?.filtros).toContainEqual(["eq", "setor_id", "s1"]);
+    expect(consultas.find((c) => c.tabela === "user_organizations")?.filtros).toContainEqual(["is", "revoked_at", null]);
   });
 
-  it("sem atendente: busca negócios ABERTOS do contato, filtrando a org", async () => {
-    const { db, consultas } = stub({
-      conversations: { data: { assigned_to_user_id: null, contact_id: "ct-1", is_group: false } },
-      crm_leads: { data: [{ owner_user_id: "u-bia" }] },
-      user_organizations: { data: [{ user_id: ADMIN }] },
-    });
-    const d = await carregarDestinatariosDaMensagem(db, "org-1", "conv-1");
-    expect(d).toEqual({ tipo: "restrito", userIds: ["u-bia", ADMIN] });
-    const leads = consultas.find((c) => c.tabela === "crm_leads")!.filtros;
-    expect(leads).toContainEqual(["eq", "organization_id", "org-1"]);
-    expect(leads).toContainEqual(["eq", "contact_id", "ct-1"]);
-    expect(leads).toContainEqual(["eq", "status", "open"]);
+  it("atendente assumiu: só ele, sem procurar outros setores ou donos comerciais", async () => {
+    const { db, consultas } = stub({ conversations: { data: conversa("humano", "bia") } });
+    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).toEqual({ tipo: "restrito", userIds: ["bia"] });
+    expect(consultas.map((c) => c.tabela)).toEqual(["conversations"]);
   });
 
-  it("contact_id do evento tem precedência sobre o da conversa", async () => {
-    const { db, consultas } = stub({
-      conversations: { data: { assigned_to_user_id: null, contact_id: "ct-conv", is_group: false } },
-      crm_leads: { data: [] },
-    });
-    await carregarDestinatariosDaMensagem(db, "org-1", "conv-1", "ct-evento");
-    expect(consultas.find((c) => c.tabela === "crm_leads")!.filtros).toContainEqual(["eq", "contact_id", "ct-evento"]);
+  it("conversa encerrada com histórico de responsável não gera aviso", async () => {
+    const { db } = stub({ conversations: { data: { ...conversa("humano", "bia"), status: "closed" } } });
+    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).toEqual({ tipo: "restrito", userIds: [] });
   });
 
-  it("sem atendente e sem negócio com dono → todos, e nem lê os admins", async () => {
-    const { db, consultas } = stub({
-      conversations: { data: { assigned_to_user_id: null, contact_id: "ct-1", is_group: false } },
-      crm_leads: { data: [{ owner_user_id: null }] },
-    });
-    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).toEqual({ tipo: "todos" });
-    expect(consultas.map((c) => c.tabela)).not.toContain("user_organizations");
-  });
-
-  it("grupo é sempre todos, mesmo com atendente", async () => {
-    const { db } = stub({
-      conversations: { data: { assigned_to_user_id: "u-ana", contact_id: "ct-g", is_group: true } },
-    });
-    expect(await carregarDestinatariosDaMensagem(db, "org-1", "conv-g")).toEqual({ tipo: "todos" });
-  });
-
-  it("conversa fora da org → null; erro de leitura → lança", async () => {
+  it("conversa ausente retorna null; erro de leitura não vira aviso para todos", async () => {
     expect(await carregarDestinatariosDaMensagem(stub({}).db, "org-1", "conv-x")).toBeNull();
-    const { db } = stub({ conversations: { data: null, error: { message: "boom" } } });
-    await expect(carregarDestinatariosDaMensagem(db, "org-1", "conv-1")).rejects.toThrow("boom");
+    await expect(carregarDestinatariosDaMensagem(stub({ conversations: { data: null, error: { message: "boom" } } }).db, "org-1", "conv-1")).rejects.toThrow("boom");
   });
 });

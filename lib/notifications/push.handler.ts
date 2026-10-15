@@ -27,13 +27,17 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
   if (!conversationId) {
     return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_conversa" };
   }
+  const contactId = typeof row.payload.contact_id === "string" ? row.payload.contact_id : null;
+  const destino = await destinatariosDoInbound(row.organization_id, conversationId, contactId);
+  if (destino.userIds.length === 0) {
+    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_destinatario_humano" };
+  }
   const previewRaw = row.payload.body_preview;
   const preview = typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
   const type = typeof row.payload.type === "string" ? row.payload.type : "text";
   const body = type === "text" ? preview : "Mídia";
 
   const marca = await marcaDaSaida(row.organization_id);
-  const contactId = typeof row.payload.contact_id === "string" ? row.payload.contact_id : null;
   let contactName: string | null = null;
   let icon: string | null = null;
   if (contactId) {
@@ -83,10 +87,9 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
     contactName,
     icon,
   });
-  const destino = await destinatariosDoInbound(row.organization_id, conversationId, contactId);
   // Quem DEVE ser avisado (`destino`) nunca alarga quem PODE ver: nome e prévia
   // só saem para quem a RLS de `conversations` deixaria abrir a conversa.
-  const soUsuarios = destino.tipo === "restrito" ? destino.userIds : undefined;
+  const soUsuarios = destino.userIds;
   const { sent } = await enviarPushAQuemVeAConversa(row.organization_id, conversationId, payload, soUsuarios);
   const detail = soUsuarios ? `sent:${sent};restrito:${soUsuarios.length}` : `sent:${sent}`;
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail };
@@ -94,12 +97,10 @@ async function handleInbound(row: EventRow): Promise<HandlerResult> {
 
 /**
  * Para quem vai o push da mensagem recebida — regra em
- * `./destinatarios-da-mensagem.ts` (responsável + admins, ou todos).
+ * `./destinatarios-da-mensagem.ts` (fila do setor ou responsável humano).
  *
- * Falha de leitura cai para "todos", de propósito: era o comportamento antes
- * da regra, e um aviso a mais é um incômodo, enquanto um aviso a menos é
- * cliente sem resposta. O evento também não é reprocessado por isso — repetir
- * o handler mandaria o push duas vezes a quem já recebeu.
+ * Falha de leitura cala o push: a Inbox continua atualizando, mas não podemos
+ * interromper uma equipe inteira por uma conversa que pode estar com a IA.
  */
 async function destinatariosDoInbound(
   organizationId: string,
@@ -113,14 +114,14 @@ async function destinatariosDoInbound(
       conversationId,
       contactId,
     );
-    return destino ?? { tipo: "todos" };
+    return destino ?? { tipo: "restrito", userIds: [] };
   } catch (err) {
     logger.warn("push_inbound_destinatarios_falhou", {
       organization_id: organizationId,
       conversation_id: conversationId,
       detail: err instanceof Error ? err.message : String(err),
     });
-    return { tipo: "todos" };
+    return { tipo: "restrito", userIds: [] };
   }
 }
 
@@ -132,7 +133,8 @@ async function destinatariosDoInbound(
  * notificação), não cria nem roteia nada — só avisa o atendente que o grupo
  * está falando. Título fixo, igual em toda organização.
  *
- * Quem recebe é a mesma régua do 1:1: só quem pode ver a conversa do grupo.
+ * Quem recebe é a mesma régua do 1:1: fila do setor ou responsável humano,
+ * sempre limitada a quem pode ver a conversa do grupo.
  */
 async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
   // Canal DESATIVADO (#2329): a mesma régua de `handleInbound` — a inbox
@@ -143,6 +145,10 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
   const conversationId = typeof row.payload.conversation_id === "string" ? row.payload.conversation_id : null;
   if (!conversationId) {
     return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_conversa" };
+  }
+  const destino = await destinatariosDoInbound(row.organization_id, conversationId, null);
+  if (destino.userIds.length === 0) {
+    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_destinatario_humano" };
   }
   const previewRaw = row.payload.body_preview;
   const preview = typeof previewRaw === "string" && previewRaw.trim() ? previewRaw : "Nova mensagem";
@@ -155,7 +161,7 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
     tag: `msg:${conversationId}`,
     href: `/app/inbox?id=${conversationId}`,
   };
-  const { sent } = await enviarPushAQuemVeAConversa(row.organization_id, conversationId, payload);
+  const { sent } = await enviarPushAQuemVeAConversa(row.organization_id, conversationId, payload, destino.userIds);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
 }
 
@@ -163,9 +169,26 @@ async function handleGroupInbound(row: EventRow): Promise<HandlerResult> {
 async function handleAvisoQuePedeGente(row: EventRow): Promise<HandlerResult> {
   const id = typeof row.payload.item_id === "string" ? row.payload.item_id : row.entity_id;
   if (!id) return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "sem_alvo" };
-  const payload = await pushDoAvisoDaCentral(createAdminClient(), row.organization_id, id);
+  const admin = createAdminClient();
+  const payload = await pushDoAvisoDaCentral(admin, row.organization_id, id);
   if (payload === null) {
     return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "aviso_fora_do_celular" };
+  }
+  const { data: item, error } = await admin.from("agent_inbox_items")
+    .select("kind, ref_kind, ref_id")
+    .eq("organization_id", row.organization_id).eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!item) return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "aviso_ausente" };
+  if (item?.kind === "handoff") {
+    if (item.ref_kind !== "conversation" || !item.ref_id) {
+      return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "handoff_sem_conversa" };
+    }
+    const destino = await destinatariosDoInbound(row.organization_id, item.ref_id, null);
+    if (destino.userIds.length === 0) {
+      return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "skipped", detail: "handoff_sem_destinatario" };
+    }
+    const { sent } = await enviarPushAQuemVeAConversa(row.organization_id, item.ref_id, payload, destino.userIds);
+    return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };
   }
   const { sent } = await enviarPushDaOrg(row.organization_id, payload);
   return { consumer_key: WEB_PUSH_INBOUND_KEY, status: "ok", detail: `sent:${sent}` };

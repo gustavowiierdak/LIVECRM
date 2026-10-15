@@ -1,11 +1,8 @@
 /**
  * O AVISO DENTRO DO APP SEGUE A REGRA DE QUEM RECEBE.
  *
- * Conversa com responsável avisa só o responsável e os administradores; sem
- * responsável, todos (regra em `lib/notifications/destinatarios-da-mensagem.ts`,
- * a mesma do push do servidor). O hook não decide sozinho — pergunta a
- * `/api/v1/conversations/[id]/aviso-de-mensagem` (o porquê está no cabeçalho
- * da rota) e só se cala com `avisar === false`. Falha da rota avisa, como antes.
+ * Conversa no robô não avisa; fila avisa só o setor; conversa assumida, só
+ * seu atendente. O hook pergunta à mesma regra usada pelo push do servidor.
  *
  * Roda com: npx vitest run tests/unit/aviso-de-mensagem-segue-o-responsavel.test.tsx
  */
@@ -99,7 +96,7 @@ beforeEach(() => {
 });
 
 describe("aviso de mensagem nova — quem recebe", () => {
-  it("avisar=true (responsável, admin ou conversa sem dono) → mostra o aviso", async () => {
+  it("avisar=true (fila do setor ou atendente responsável) → mostra o aviso", async () => {
     servidor(() => resposta(true, { data: { avisar: true } }));
     await entrega();
     await waitFor(() => expect(toastFalso).toHaveBeenCalled());
@@ -115,9 +112,10 @@ describe("aviso de mensagem nova — quem recebe", () => {
     expect(fetchFalso).not.toHaveBeenCalledWith("/api/v1/contacts/ct-1", { credentials: "include" });
   });
 
-  it("rota do veredito falhando → avisa, como antes da regra", async () => {
+  it("rota do veredito falhando → não interrompe a equipe", async () => {
     servidor(() => resposta(false, { error: { code: "internal_error" } }));
     await entrega();
-    await waitFor(() => expect(toastFalso).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(toastFalso).not.toHaveBeenCalled();
   });
 });

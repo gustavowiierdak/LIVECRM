@@ -117,8 +117,8 @@ async function contactIdFromRow(
 }
 
 /**
- * Esta pessoa deve ser avisada desta mensagem? A regra (conversa com
- * responsável avisa só ele e os administradores; sem responsável, todos) é a
+ * Esta pessoa deve ser avisada desta mensagem? A regra (IA silenciosa, fila
+ * do setor ou atendente responsável) é a
  * MESMA do push do servidor — `lib/notifications/destinatarios-da-mensagem.ts`
  * — e é decidida pela rota, no servidor.
  *
@@ -129,21 +129,20 @@ async function contactIdFromRow(
  * a mesma resposta — e o atendente seria avisado justamente do cliente alheio.
  * O cabeçalho da rota tem o argumento inteiro.
  *
- * Só `avisar === false` cala. Rota fora do ar, 403, resposta sem o campo:
- * avisa, como antes da regra existir — um aviso a mais incomoda, um a menos
- * deixa cliente sem resposta.
+ * Só `avisar === true` notifica. Falha de leitura não pode transformar uma
+ * conversa ainda com a IA em interrupção para a equipe; a lista segue ao vivo.
  */
 async function devoAvisar(conversationId: string | null): Promise<boolean> {
-  if (!conversationId) return true;
+  if (!conversationId) return false;
   try {
     const r = await fetch(`/api/v1/conversations/${conversationId}/aviso-de-mensagem`, {
       credentials: "include",
     });
-    if (!r.ok) return true;
+    if (!r.ok) return false;
     const json = (await r.json()) as { data?: { avisar?: unknown } | null };
-    return json.data?.avisar !== false;
+    return json.data?.avisar === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
