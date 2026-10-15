@@ -9282,6 +9282,22 @@ export const DICIONARIO: Traducoes = {
   "O contato pediu para não receber mensagens (opt-out). Nada será enviado a ele.": {
     es: "El contacto pidió no recibir mensajes (opt-out). No se le enviará nada.",
   },
+  "Automático pausado para atendimento humano": {
+    es: "Atención automática pausada para atención humana",
+  },
+  "O atendimento foi encaminhado à equipe. A IA não enviou esta resposta; um atendente pode continuar a conversa.": {
+    es: "La atención fue derivada al equipo. La IA no envió esta respuesta; un agente puede continuar la conversación.",
+  },
+  "Automático desativado para contato pessoal": {
+    es: "Atención automática desactivada para contacto personal",
+  },
+  "Este contato está marcado como pessoal. A IA não enviou a resposta.": {
+    es: "Este contacto está marcado como personal. La IA no envió la respuesta.",
+  },
+  "Resposta automática não enviada": { es: "Respuesta automática no enviada" },
+  "Um registro antigo não informa por que o automático foi pausado. Confira o estado atual do contato antes de retomar o envio.": {
+    es: "Un registro anterior no indica por qué se pausó la atención automática. Verifica el estado actual del contacto antes de reanudar el envío.",
+  },
   "Este contato foi anonimizado (LGPD) — é proibido enviar qualquer mensagem a ele.": {
     es: "Este contacto fue anonimizado (LGPD). Está prohibido enviarle cualquier mensaje.",
   },

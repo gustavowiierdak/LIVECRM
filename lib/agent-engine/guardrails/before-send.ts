@@ -79,17 +79,17 @@ import { aplicarAjustesDeEstilo, lerAjustesDeEstiloDaOrg } from './ajustes-de-es
 import type { AjusteDeEstilo, LeituraDosAjustes } from './ajustes-de-estilo-da-org';
 import { renderVetoDeAfirmacao, type ConferenciaDeFato } from './factual-claim';
 
+type StopReason = 'opt_out' | 'human_handoff' | 'personal' | 'unknown';
+
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
 export interface GateContext {
   now: Date;
   /** corpo candidato (para o gate de spinning). */
   body: string;
-  /**
-   * STOP irrevogável: `contacts.is_blocked` OR `contacts.force_human`, lidos DIRETO da
-   * fonte (mesmo banco pós-fusão — não existe mais cache) SOB o lock desta tentativa,
-   * OR o sinal lido no `get_lead_context` deste turno.
-   */
+  /** STOP lido da fonte sob o lock, ou detectado neste turno. */
   optedOut: boolean;
+  /** Motivo específico do STOP; impede que passagem humana vire falso opt-out. */
+  stopReason?: StopReason;
   /**
    * Canal desta tentativa. Nenhum gate pergunta QUEM é o provider (invariante 1
    * de `docs/doctrine/restricao-de-canal.md`) — só o entrega a `capabilitiesOf`
@@ -338,19 +338,40 @@ export interface Gate {
   evaluate(ctx: GateContext): GateVerdict;
 }
 
-/** Gate 1 — STOP/opt-out/força-humano: veto IRREVOGÁVEL (regra dura nº 2), 1ª linha. */
+/** Gate 1 — STOP/opt-out/força-humano: sempre veta, com o motivo correto. */
 const stopGate: Gate = {
   name: 'stop',
-  evaluate: (ctx) =>
-    ctx.optedOut
-      ? {
-          pass: false,
-          code: 'contato_bloqueado',
-          reason:
-            'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
-            'possível enviar nada a ele; encerre o turno sem tentar de novo.',
-        }
-      : { pass: true },
+  evaluate: (ctx) => {
+    if (!ctx.optedOut) return { pass: true };
+    if (ctx.stopReason === 'human_handoff') {
+      return {
+        pass: false,
+        code: 'automatico_pausado_para_humano',
+        reason: 'o atendimento foi transferido para uma pessoa; a IA não deve enviar novas respostas até ser reativada.',
+      };
+    }
+    if (ctx.stopReason === 'personal') {
+      return {
+        pass: false,
+        code: 'contato_pessoal',
+        reason: 'o contato está marcado como pessoal; não envie respostas automáticas.',
+      };
+    }
+    if (ctx.stopReason === 'unknown') {
+      return {
+        pass: false,
+        code: 'parada_automatica_sem_motivo',
+        reason: 'o envio automático está bloqueado, mas a origem não pôde ser confirmada; não tente novamente neste turno.',
+      };
+    }
+    return {
+      pass: false,
+      code: 'contato_bloqueado',
+      reason:
+        'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
+        'possível enviar nada a ele; encerre o turno sem tentar de novo.',
+    };
+  },
 };
 
 /**
@@ -1335,14 +1356,14 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     )
       throw new Error('reply_scope_mismatch');
 
-    const optedOut =
-      args.optedOutThisTurn ||
-      (await readStopFlags(
-        client,
-        args.tenantId,
-        args.leadId,
-        meetingPolicy?.humanCommand === true || replyPolicy !== null,
-      ));
+    const stopReason = args.optedOutThisTurn
+      ? 'opt_out'
+      : await readStopFlags(
+          client,
+          args.tenantId,
+          args.leadId,
+          meetingPolicy?.humanCommand === true || replyPolicy !== null,
+        );
     const pacingCfg = await loadChannelKnobs(
       client,
       args.tenantId,
@@ -1388,7 +1409,8 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     const ctx: GateContext = {
       now: args.now,
       body: bodyDoModelo,
-      optedOut,
+      optedOut: stopReason !== null,
+      ...(stopReason !== null ? { stopReason } : {}),
       provider,
       messagingWindow: { lastInboundAt, ...(args.isTemplate === true ? { isTemplate: true } : {}) },
       pacing: {
@@ -1550,16 +1572,27 @@ async function readStopFlags(
   organizationId: string,
   contactId: string,
   humanMeetingCommand = false,
-): Promise<boolean> {
+): Promise<StopReason | null> {
   // Pessoal não recebe nem via encontro (spec 21, etapa 11): o `or is_personal`
   // vale nos DOIS ramos — o veto segue o bloqueio até aqui.
-  const { rows } = await db.query<{ stopped: boolean }>(
+  const { rows } = await db.query<{
+    stopped: boolean;
+    is_blocked: boolean;
+    force_human: boolean;
+    is_personal: boolean;
+  }>(
     humanMeetingCommand
-      ? 'select (is_blocked or is_personal) as stopped from contacts where organization_id = $1 and id = $2'
-      : 'select (is_blocked or force_human or is_personal) as stopped from contacts where organization_id = $1 and id = $2',
+      ? 'select (is_blocked or is_personal) as stopped, is_blocked, force_human, is_personal from contacts where organization_id = $1 and id = $2'
+      : 'select (is_blocked or force_human or is_personal) as stopped, is_blocked, force_human, is_personal from contacts where organization_id = $1 and id = $2',
     [organizationId, contactId],
   );
-  return rows[0]?.stopped === true;
+  const flags = rows[0];
+  if (flags?.stopped !== true) return null;
+  if (flags.is_blocked) return 'opt_out';
+  if (flags.is_personal) return 'personal';
+  if (!humanMeetingCommand && flags.force_human) return 'human_handoff';
+  // Sem flags individuais, manter o veto sem inventar um pedido de opt-out.
+  return 'unknown';
 }
 
 /**
