@@ -129,7 +129,7 @@ vi.mock("@/components/inbox/InboxFilters", () => ({
   InboxFilters: ({ value, onChange }: {
     value: InboxFiltersValue;
     onChange: (value: InboxFiltersValue) => void;
-  }) => <button onClick={() => onChange({ ...value, tab: "closed" })}>Ver fechadas</button>,
+  }) => <button onClick={() => onChange({ ...value, tab: "closed" })}>Ver encerrados</button>,
 }));
 vi.mock("@/components/inbox/ChatThread", () => ({ ChatThread: () => null }));
 vi.mock("@/components/inbox/Composer", () => ({ Composer: () => null }));
@@ -179,11 +179,11 @@ describe("deep-link para conversa fora do filtro", () => {
     window.history.replaceState(null, "", `/app/inbox?filter=all&id=${CONVERSA}`);
     montar();
     await waitFor(() => expect(screen.getByTestId("painel")).toHaveTextContent(CONVERSA));
-    fireEvent.click(screen.getByRole("button", { name: "Ver fechadas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ver encerrados" }));
     expect(new URLSearchParams(window.location.search).get("filter")).toBe("closed");
     expect(new URLSearchParams(window.location.search).get("id")).toBe(CONVERSA);
     await waitFor(() => expect(get.mock.calls.some(([url]) =>
-      url?.startsWith("/api/v1/conversations?") && new URL(url, "http://localhost").searchParams.get("status") === "closed",
+      url?.startsWith("/api/v1/conversations?") && new URL(url, "http://localhost").searchParams.get("status") === "closed,archived",
     )).toBe(true));
     expect(screen.getByTestId("painel")).toHaveTextContent(CONVERSA);
   });
