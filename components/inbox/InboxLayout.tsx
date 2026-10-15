@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { estadoDaJanela } from "@/lib/channels/janela";
 import { motivoDaJanelaFechada, motivoDoContato } from "@/lib/inbox/motivo-do-envio-bloqueado";
@@ -162,7 +162,6 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const supportReadonly = user.support?.access_mode === "support_readonly";
   const orgId = activeOrg?.orgId ?? null;
 
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const tab = parseFilterParam(searchParams.get("filter"));
@@ -193,12 +192,15 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       if (next.tab !== tab) {
         const params = new URLSearchParams(searchParams);
         params.set("filter", next.tab);
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        // O filtro só muda a query da lista no cliente. Uma navegação RSC aqui
+        // refazia o layout/autenticação inteiro antes de mostrar a aba em cache.
+        // Next sincroniza useSearchParams pela History API, como na seleção.
+        window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
       }
       const { tab: _t, ...rest } = next;
       setAux(rest);
     },
-    [tab, searchParams, router, pathname],
+    [tab, searchParams, pathname],
   );
 
   // Desliga só os AUXILIARES e mantém a aba: a aba é onde a pessoa está, e

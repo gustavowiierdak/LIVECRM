@@ -22,6 +22,9 @@ não se deve interpretar esta amostra pequena como p95 ou teste de carga.
 Troca entre dois atendimentos web já abertos (seis cliques):
 1949, 1665, 1641, 1514, 1533, 1677 ms. Mediana: 1653 ms.
 
+Troca de abas Fechadas/Todas (seis cliques):
+2082, 1463, 1110, 1055, 1175, 946 ms. Mediana: 1142,5 ms.
+
 ## Gargalos confirmados no código
 
 - Webchat: conversa → sessões → mensagens, com autenticação repetida entre
@@ -29,6 +32,8 @@ Troca entre dois atendimentos web já abertos (seis cliques):
 - Detalhe da conversa chamava `getUser` e depois `loadAuthUser`, que já chama
   `getUser` para validar a mesma sessão.
 - Ficha aguardava enriquecimento antes de disparar seis consultas independentes.
+- Trocar apenas o filtro disparava navegação RSC, refazendo layout/autenticação
+  no servidor. Agora usa History API, mantendo URL e consultas autorizadas.
 
 ## Infraestrutura
 
