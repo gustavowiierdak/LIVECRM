@@ -17,6 +17,7 @@ import {
   guardServiceEffect,
 } from "@/lib/atendimento/fronteira-server";
 import { logger } from "@/lib/logger";
+import { assertAttendanceNotice } from "@/lib/atendimento/aviso-autorizado";
 /**
  * Core handlers para messages (list + send).
  *
@@ -437,6 +438,7 @@ export async function sendMessageHandler(
   // porta de saída de TODOS os chamadores, e fecha a corrida de quem passou pelo
   // gate antes da suspensão. O erro é terminal (`terminal: true`).
   await assertOrgOperante(supabase, ctx.organization_id);
+  if (ctx.attendanceNotice) await assertAttendanceNotice(supabase, ctx.organization_id, input.conversation_id, input.body, ctx.attendanceNotice);
   if (ctx.prospectingDelivery) await assertProspectingDelivery(supabase, ctx.prospectingDelivery);
   if (ctx.meetingDelivery) await assertMeetingDeliverySupabase(supabase, ctx.meetingDelivery);
   if (ctx.approvedReply) await assertApprovedReplySupabase(supabase, ctx.approvedReply);
@@ -1036,6 +1038,7 @@ export async function sendMessageHandler(
       const fronteiraJaConferida = mesmaFronteira(currentExecutionBoundary(), ctx.serviceBoundary ?? null);
       const operacaoJaConferida = mesmaOperacao(currentExecutionAgentOperation(), ctx.agentOperation);
       const checkBoundary = async () => {
+        if (ctx.attendanceNotice) await assertAttendanceNotice(supabase, ctx.organization_id, input.conversation_id, input.body, ctx.attendanceNotice);
         await guardServiceEffect();
         await guardAgendaEffect();
         if (ctx.prospectingDelivery) await assertProspectingDelivery(supabase, ctx.prospectingDelivery);
@@ -1347,7 +1350,9 @@ export async function sendMessageHandler(
     }
   }
 
-  if (!ctx.approvedReply) {
+  // Recibo de protocolo não responde à dúvida do cliente: não zera a fila,
+  // não marca como lido e não faz o motor concluir que já houve resposta.
+  if (!ctx.approvedReply && !ctx.attendanceNotice) {
   const conversationUpdate: {
     last_outbound_at: string;
     last_message_at: string;

@@ -35,6 +35,7 @@ import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.ha
 import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
 import { cobrancaSinalHandler } from "@/lib/cobranca/sinal.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
+import { avisoDoAtendimentoHandler } from "@/lib/atendimento/aviso-do-atendimento.handler";
 
 let _registered = false;
 
@@ -83,6 +84,7 @@ export function ensureHandlersRegistered(): void {
   for (const consumidor of CONSUMIDORES_DOS_CANAIS) registerHandler(consumidor);
   registerHandler(webPushInboundHandler);
   registerHandler(webchatPushHandler);
+  registerHandler(avisoDoAtendimentoHandler);
   // A cobrança do revendedor: relê o provedor (rede de terceiro) e só então
   // escreve. Consome um evento só dela, então a posição não atrasa ninguém.
   registerHandler(cobrancaSinalHandler);

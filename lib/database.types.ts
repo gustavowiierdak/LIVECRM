@@ -34,6 +34,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_notices: {
+        Row: { id: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id: string | null; created_at: string }
+        Insert: { id?: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id?: string | null; created_at?: string }
+        Update: { id?: string; organization_id?: string; conversation_id?: string; protocol?: string; kind?: string; body?: string; assigned_to_user_id?: string | null; created_at?: string }
+        Relationships: [
+          { foreignKeyName: "attendance_notices_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "attendance_notices_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "conversations"; referencedColumns: ["id"] },
+        ]
+      }
       erp_integrations: {
         Row: {
           id: string
@@ -4945,6 +4954,7 @@ export type Database = {
           service_closed_at: string | null
           service_revision: number
           service_started_at: string | null
+          service_protocol: string | null
           snooze_until: string | null
           snoozed_at: string | null
           snoozed_by_user_id: string | null
@@ -4989,6 +4999,7 @@ export type Database = {
           service_closed_at?: string | null
           service_revision?: number
           service_started_at?: string | null
+          service_protocol?: string | null
           snooze_until?: string | null
           snoozed_at?: string | null
           snoozed_by_user_id?: string | null
@@ -5033,6 +5044,7 @@ export type Database = {
           service_closed_at?: string | null
           service_revision?: number
           service_started_at?: string | null
+          service_protocol?: string | null
           snooze_until?: string | null
           snoozed_at?: string | null
           snoozed_by_user_id?: string | null

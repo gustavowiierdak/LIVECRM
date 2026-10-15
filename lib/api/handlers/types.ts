@@ -13,6 +13,7 @@ import type { ServiceBoundary } from "@/lib/atendimento/fronteira";
  * humano (cookie session) ou agente de IA (Bearer token com actor_type='ai_agent').
  */
 import type { Idioma } from "@/lib/i18n/idiomas";
+import type { AttendanceNoticeContext } from "@/lib/atendimento/aviso-autorizado";
 
 export type Actor =
   | { type: "user"; id: string; role?: string }
@@ -72,6 +73,8 @@ export type Actor =
   | { type: "webhook_source"; id: string; textoEscritoPelaIA?: true };
 
 export interface HandlerCtx {
+  /** Somente o consumer de uma outbox protegida; nunca vindo de input público. */
+  attendanceNotice?: AttendanceNoticeContext;
   prospectingDelivery?: ProspectingDelivery;
   agentOperation?: AgentOperationContext;
   meetingDelivery?: MeetingDeliveryContext;

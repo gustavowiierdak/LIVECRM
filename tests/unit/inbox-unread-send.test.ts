@@ -27,6 +27,27 @@ describe("sendMessageHandler — unread zera ao responder", () => {
     vi.unstubAllEnvs();
   });
 
+  it("aviso de protocolo NÃO responde à dúvida: preserva unread, espera e last_outbound_at", async () => {
+    vi.stubEnv("WAHA_API_BASE_URL", "http://localhost:3030");
+    vi.stubEnv("WAHA_API_KEY", "hash123");
+    const body="Seu atendimento foi iniciado. Protocolo: 20261015-000001.";
+    const { supabase, capturas } = criarDubleDoHandler({
+      conversation: {
+        id: CONV, organization_id: ORG, contact_id: CONTACT, channel_session_id: SESSION,
+        service_protocol: "20261015-000001", status: "open", channel: "whatsapp", is_group: false, group_chat_id: null,
+        unread_count_for_assignee: 3, last_inbound_at: "2026-10-15T10:00:00Z",
+        contacts: { phone_number: "+5531999998888", wa_identity: null, is_blocked: false },
+        channel_sessions: { provider: "waha", waha_session_name: "default", status: "WORKING", archived_at: null },
+      },
+      avisoAtendimento: { protocol: "20261015-000001", kind: "iniciado", body, assigned_to_user_id: null },
+    });
+    await sendMessageHandler(supabase, { organization_id: ORG, actor: { type: "webhook_source", id: "attendance-notice" },
+      requestId: "req-notice", attendanceNotice: { noticeId: "notice-1" } },
+      { conversation_id: CONV, type: "text", body } as SendMessageInput);
+    expect(capturas.patches.conversations).toEqual([]);
+    expect(capturas.inserts.messages).toHaveLength(1);
+  });
+
   it("atualiza unread_count_for_assignee = 0 junto com last_outbound_at", async () => {
     vi.stubEnv("WAHA_API_BASE_URL", "http://localhost:3030");
     vi.stubEnv("WAHA_API_KEY", "hash123");

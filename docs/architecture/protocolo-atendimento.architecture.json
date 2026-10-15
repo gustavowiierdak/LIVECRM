@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Protocolo e avisos do atendimento",
+    "subtitle": "Núcleo: identidade por episódio, avisos determinísticos e entrega protegida"
+  },
+  "lanes": [
+    { "id": "db", "label": "Banco" },
+    { "id": "app", "label": "Aplicação e worker" },
+    { "id": "ui", "label": "Cliente e atendente" }
+  ],
+  "nodes": [
+    {
+      "id": "estado",
+      "lane": "db",
+      "label": "conversations: criação, assunção, encerramento e reabertura"
+    },
+    {
+      "id": "protocolo",
+      "lane": "db",
+      "label": "service_protocol: sequência e identidade do episódio"
+    },
+    { "id": "web", "lane": "db", "label": "webchat_messages: aviso system transacional" },
+    { "id": "outbox", "lane": "db", "label": "attendance_notices: texto fixo protegido por RLS" },
+    { "id": "evento", "lane": "db", "label": "attendance.notice_requested: evento durável" },
+    {
+      "id": "worker",
+      "lane": "app",
+      "label": "avisoDoAtendimentoHandler: escopo, episódio, estado e idempotência"
+    },
+    {
+      "id": "envio",
+      "lane": "app",
+      "label": "sendMessageHandler: canal, opt-out, recibo e auditoria"
+    },
+    {
+      "id": "falha",
+      "lane": "ui",
+      "label": "Mensagens com falha e Central event_dead: intervenção humana"
+    },
+    { "id": "cliente", "lane": "ui", "label": "Histórico do cliente no mesmo canal" },
+    {
+      "id": "ficha",
+      "lane": "ui",
+      "label": "CRMSidePanel: protocolo selecionável e histórico do Inbox"
+    }
+  ],
+  "edges": [
+    { "id": "p1", "from": "estado", "to": "protocolo" },
+    { "id": "p2", "from": "protocolo", "to": "ficha" },
+    { "id": "p3", "from": "estado", "to": "web" },
+    { "id": "p4", "from": "web", "to": "cliente" },
+    { "id": "p5", "from": "estado", "to": "outbox" },
+    { "id": "p6", "from": "outbox", "to": "evento" },
+    { "id": "p7", "from": "evento", "to": "worker" },
+    { "id": "p8", "from": "worker", "to": "outbox" },
+    { "id": "p9", "from": "worker", "to": "envio" },
+    { "id": "p10", "from": "envio", "to": "cliente" },
+    { "id": "p11", "from": "envio", "to": "falha" },
+    { "id": "p12", "from": "falha", "to": "ficha" }
+  ],
+  "contracts": {
+    "scope": "Núcleo; sem configuração nova, sem mudança de layout e sem avisos retroativos no backfill. Os avisos são sistema/automação, nunca prosa gerada por IA. Repetição usa a mesma identidade de mensagem; avisos de episódio ou responsável obsoletos são descartados. A restrição de janela do transporte não é contornada: falha vai ao dreno e à Central, sem inventar template."
+  }
+}

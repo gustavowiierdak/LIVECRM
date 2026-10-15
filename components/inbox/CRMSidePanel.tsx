@@ -765,6 +765,12 @@ export function CRMSidePanel({ conversation }: Props) {
 
       <section className="crm-contact-service" aria-label={t("Dados do atendimento")}>
         <dl className="space-y-2 text-xs">
+          {conversation.service_protocol && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">{t("Protocolo")}</dt>
+              <dd className="min-w-0 select-all text-right font-mono wrap-anywhere">{conversation.service_protocol}</dd>
+            </div>
+          )}
           {(conversation.service_started_at || conversation.created_at) && (
             <div>
               <dt className="flex items-center gap-2 text-muted-foreground">

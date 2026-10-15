@@ -19,6 +19,8 @@ export interface CapturasDoDubleDoHandler {
 }
 
 export interface OpcoesDoDubleDoHandler {
+  /** Texto fixo protegido do aviso de ciclo de vida, quando este é o emissor. */
+  avisoAtendimento?: LinhaDoDuble | null;
   conversation: LinhaDoDuble;
   channelMetadata?: LinhaDoDuble;
   templateRow?: LinhaDoDuble | null;
@@ -172,6 +174,10 @@ export function criarDubleDoHandler(
 
   const client = {
     from(tabela: string) {
+      if (tabela === "attendance_notices") {
+        const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: opcoes.avisoAtendimento ?? null, error: null }) };
+        return chain;
+      }
       if (tabela === "conversations") {
         return {
           select: (colunas = "") => {

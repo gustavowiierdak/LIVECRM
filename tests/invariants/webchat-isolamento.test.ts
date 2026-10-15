@@ -366,7 +366,11 @@ describe("webchat isolado no baseline", () => {
     const visitor = JSON.parse(
       sql(`select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), '${ORIGIN}');`),
     ) as Array<{ body: string }>;
-    expect(visitor).toEqual([expect.objectContaining({ body: "Preciso de ajuda" })]);
+    const protocol = sql(`select service_protocol from conversations where id='${started.conversation_id}';`);
+    expect(visitor).toEqual([
+      expect.objectContaining({ body: "Preciso de ajuda" }),
+      expect.objectContaining({ body: `Seu atendimento foi iniciado. Protocolo: ${protocol}.` }),
+    ]);
     expect(
       sql(
         `select public.fn_ler_mensagens_webchat_visitante(repeat('1',64), 'https://outro.example');`,
@@ -386,8 +390,9 @@ describe("webchat isolado no baseline", () => {
     ) as Array<{ body: string; direction: string }>;
     expect(closedMessages).toEqual([
       expect.objectContaining({ body: "Preciso de ajuda", direction: "visitor" }),
+      expect.objectContaining({ body: `Seu atendimento foi iniciado. Protocolo: ${protocol}.`, direction: "system" }),
       expect.objectContaining({
-        body: "Atendimento encerrado pela equipe.",
+        body: `Seu atendimento foi encerrado. Protocolo: ${protocol}. Se precisar de mais ajuda, inicie um novo atendimento.`,
         direction: "system",
       }),
     ]);

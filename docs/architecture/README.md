@@ -16,6 +16,7 @@ ser fonte sem ninguém decidir isso.
 
 | arquivo | escopo |
 |---|---|
+| `protocolo-atendimento.architecture.json` | protocolo por episódio, avisos de início/assunção/encerramento, histórico web transacional e outbox dos canais externos |
 | `convites-sem-smtp.architecture.json` | convite privado, cadastro público fechado no GoTrue, criação de conta sem e-mail e aceite da equipe |
 | `webchat-isolado.architecture.json` | opt-in por empresa, código único, sessão retomável, encerramento visível e mensagens separadas do WhatsApp |
 | `integracao-ixc.architecture.json` | conexão IXC por empresa, segredo server-side, teste mínimo e diagnóstico visível |

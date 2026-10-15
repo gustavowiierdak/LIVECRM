@@ -86,7 +86,7 @@ function idsQueCabemNaURL(ids: string[]): string[] {
 
 const SELECT_COLS = `
   id, organization_id, contact_id, channel_session_id, channel, status, atendimento_setor_id,
-  status_changed_at, service_revision, service_closed_at, service_started_at, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
+  status_changed_at, service_revision, service_closed_at, service_started_at, service_protocol, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
   last_outbound_at, last_message_at, last_message_preview,
   unread_count_for_assignee, is_group, group_chat_id, tags, metadata,
   snooze_until, created_at, updated_at,
