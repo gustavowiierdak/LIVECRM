@@ -96,7 +96,7 @@ export async function GET(
   if (!contactScope) return fail("not_found", "Contato não encontrado.", 404, { requestId });
   // Candidates are worker-only. Authorize the contact through RLS first, then
   // scope this read to that exact contact and organization. Never expose raw data.
-  const enrichment = await (async () => {
+  const enrichmentPending = (async () => {
     if (contactScope.is_anonymized) return { enrichment: null, enrichment_error: false };
     try {
       const result = await createAdminClient().from("prospecting_candidates")
@@ -113,7 +113,7 @@ export async function GET(
       return { enrichment: null, enrichment_error: true };
     }
   })();
-  const [leads, orders, activities, demandas, fatos, historico] = await Promise.all([
+  const [leads, orders, activities, demandas, fatos, historico, enrichment] = await Promise.all([
     supabase
       .from("crm_leads")
       .select(LEAD_COLS)
@@ -152,6 +152,7 @@ export async function GET(
       .limit(5),
     supabase.from("lead_notes").select("id, headline, body").eq("contact_id", contactId).eq("organization_id", contactScope.organization_id).order("created_at", { ascending: false }).limit(20),
     supabase.from("demandas").select("id, desfecho, fechada_em").eq("contact_id", contactId).eq("organization_id", contactScope.organization_id).not("fechada_em", "is", null).order("fechada_em", { ascending: false }).limit(5),
+    enrichmentPending,
   ]);
 
   // A falha SOBE. Engolir aqui devolveria lista vazia ao cliente e recriaria,

@@ -1,268 +1,153 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import type { ComponentProps } from "react";
+import type { AtendimentoOperadorWebchat } from "@/lib/webchat/types";
 import { WebchatOperatorPanel } from "./WebchatOperatorPanel";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
 const createNote = vi.hoisted(() => vi.fn(async () => ({ data: {} })));
-
-vi.mock("@/hooks/inbox/useConversationNotes", () => ({
-  useConversationNotes: () => [],
-}));
-vi.mock("@/hooks/inbox/useCreateNote", () => ({
-  useCreateNote: () => ({ mutateAsync: createNote, isPending: false }),
-}));
+vi.mock("@/hooks/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "u1" }, activeOrg: { orgId: "o1" } }) }));
+vi.mock("@/hooks/inbox/useConversationNotes", () => ({ useConversationNotes: () => [] }));
+vi.mock("@/hooks/inbox/useCreateNote", () => ({ useCreateNote: () => ({ mutateAsync: createNote, isPending: false }) }));
 vi.mock("@/components/inbox/composer/EmojiButton", () => ({
-  EmojiButton: ({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) => (
-    <button type="button" aria-label="Emoji" disabled={disabled} onClick={() => onPick("🙂")}>
-      Emoji
-    </button>
-  ),
+  EmojiButton: ({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) =>
+    <button type="button" aria-label="Emoji" disabled={disabled} onClick={() => onPick("🙂")}>Emoji</button>,
 }));
 
 describe("WebchatOperatorPanel", () => {
   const fetchMock = vi.fn();
-
+  let data: AtendimentoOperadorWebchat;
+  let qc: QueryClient;
+  const panel = (props: Partial<ComponentProps<typeof WebchatOperatorPanel>> = {}) => (
+    <QueryClientProvider client={qc}><WebchatOperatorPanel key={props.conversationId ?? "c1"} conversationId="c1" {...props} /></QueryClientProvider>
+  );
   beforeEach(() => {
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    data = { sessions: [{ id: SESSION_ID, sector: "suporte", expires_at: "2030-10-07T00:00:00Z", active: true }], selected_session_id: SESSION_ID, messages: [] };
     createNote.mockClear();
-    fetchMock.mockClear();
-    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = String(input);
-      if (url.includes("webchat-sessions")) return Response.json({ data: [] });
-      if (url.includes("webchat-handoffs")) {
-        expect(init?.method).toBe("POST");
-        expect(init?.body).toBe(JSON.stringify({ sector: "financeiro" }));
-        return Response.json({
-          data: { handoff_token: "codigo-unico", expires_at: "2026-10-07T00:00:00Z" },
-        });
-      }
-      return Response.json({ data: [] });
-    });
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async () => Response.json({ data }));
     vi.stubGlobal("fetch", fetchMock);
   });
+  afterEach(() => { qc.clear(); vi.unstubAllGlobals(); });
 
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("mostra estado honesto sem visitante e emite o código uma única vez", async () => {
-    const user = userEvent.setup();
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
-
-    expect(
-      await screen.findByText("Nenhum visitante conectado por este canal."),
-    ).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Setor"), "financeiro");
-    await user.click(screen.getByRole("button", { name: "Gerar código de acesso" }));
-
-    expect(await screen.findByText("codigo-unico")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/webchat-handoffs"),
-      expect.objectContaining({ method: "POST" }),
-    );
+  it("abre sessão e mensagens numa única leitura, com autoria e PDF seguro", async () => {
+    data.messages = [
+      { id: "ai", direction: "operator", sender_kind: "ai", body: "Segue o PIX", created_at: "2026-10-08T12:00:00Z" },
+      { id: "pdf", direction: "operator", sender_kind: "human", sender_name: "Elson Andrade", type: "document", media_mime: "application/pdf", media_url: "https://faturas.example/teste.pdf", body: "Sua fatura", created_at: "2026-10-08T12:01:00Z" },
+      { id: "bad", direction: "operator", type: "document", media_mime: "application/pdf", media_url: "javascript:alert(1)", body: "Indisponível", created_at: "2026-10-08T12:02:00Z" },
+      { id: "visitor", direction: "visitor", body: "Obrigada", created_at: "2026-10-08T12:03:00Z" },
+    ];
+    render(panel({ contactName: "Ana Silva" }));
+    expect(await screen.findByText("Segue o PIX")).toBeInTheDocument();
+    expect(screen.getByText("IA")).toBeInTheDocument();
+    expect(screen.getByText("Elson Andrade")).toHaveClass("crm-message-sender");
+    expect(screen.getByText("Ana Silva")).toHaveClass("crm-message-sender");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /Baixar PDF/ })).toHaveAttribute("href", "https://faturas.example/teste.pdf");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/conversations/c1/webchat/attendance");
   });
 
-  it("isola a resposta na sessão selecionada", async () => {
-    const user = userEvent.setup();
-    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = String(input);
-      if (url.includes("webchat-sessions")) {
-        return Response.json({
-          data: [
-            { id: SESSION_ID, sector: "suporte", expires_at: "2026-10-07T00:00:00Z", active: true },
-          ],
-        });
-      }
-      if (url.includes("webchat/messages?") && !init?.method) return Response.json({ data: [] });
-      if (url.endsWith("/webchat/messages")) {
-        const body = JSON.parse(String(init?.body)) as { visitor_session_id: string; body: string };
-        expect(body.visitor_session_id).toBe(SESSION_ID);
-        expect(body.body).toBe("Resposta isolada");
-        return Response.json({
-          data: {
-            id: "message-1",
-            direction: "operator",
-            body: "Resposta isolada",
-            created_at: "2026-10-06T00:00:00Z",
-          },
-        });
-      }
-      return Response.json({ data: [] });
-    });
+  it("mostra histórico em cache ao voltar e revalida sem misturar contatos", async () => {
+    data.messages = [{ id: "a", direction: "visitor", body: "Histórico A", created_at: "2026-10-08T12:00:00Z" }];
+    const view = render(panel());
+    await screen.findByText("Histórico A");
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    view.rerender(panel({ conversationId: "c2" }));
+    expect(screen.queryByText("Histórico A")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    view.rerender(panel());
+    expect(screen.getByText("Histórico A")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  });
 
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
+  it("troca de sessão sem exibir mensagens da anterior", async () => {
+    const user = userEvent.setup();
+    const secondId = "00000000-0000-4000-8000-000000000002";
+    data.sessions.push({ id: secondId, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true });
+    data.messages = [{ id: "a", direction: "visitor", body: "Sessão anterior", created_at: "2026-10-08T12:00:00Z" }];
+    render(panel());
+    await screen.findByText("Sessão anterior");
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    await user.selectOptions(screen.getByLabelText("Sessão ativa"), secondId);
+    expect(screen.queryByText("Sessão anterior")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining(`visitor_session_id=${secondId}`), expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it("envia para a sessão correta e atualiza sem apagar histórico", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        expect(body.visitor_session_id).toBe(SESSION_ID);
+        const message = { id: "reply", direction: "operator" as const, body: body.body, created_at: "2026-10-08T12:00:00Z" };
+        data.messages.push(message);
+        return Response.json({ data: message });
+      }
+      return Response.json({ data });
+    });
+    render(panel());
     const input = await screen.findByLabelText("Responder pelo atendimento web");
     await user.click(screen.getByRole("button", { name: "Emoji" }));
     expect(input).toHaveValue("🙂");
     await user.clear(input);
-    await user.type(input, "Resposta isolada");
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => expect(screen.getByText("Resposta isolada")).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining(`visitor_session_id=${SESSION_ID}`),
-      expect.anything(),
-    );
-
-    const leiturasAntes = fetchMock.mock.calls.filter(([url]) =>
-      String(url).includes(`visitor_session_id=${SESSION_ID}`),
-    ).length;
+    await user.type(input, "Resposta isolada{Enter}");
+    expect(await screen.findByText("Resposta isolada")).toBeInTheDocument();
+    const before = fetchMock.mock.calls.length;
     await user.click(screen.getByRole("button", { name: "Atualizar" }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.filter(([url]) =>
-          String(url).includes(`visitor_session_id=${SESSION_ID}`),
-        ).length,
-      ).toBeGreaterThan(leiturasAntes),
-    );
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
   });
 
-  it("identifica a resposta automática como IA, sem atribuí-la ao operador", async () => {
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.includes("webchat-sessions")) return Response.json({ data: [
-        { id: SESSION_ID, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true },
-      ] });
-      if (url.includes("webchat/messages?")) return Response.json({ data: [
-        { id: "ai-1", direction: "operator", sender_kind: "ai", body: "Segue o PIX",
-          created_at: "2026-10-08T12:00:00Z" },
-      ] });
-      return Response.json({ data: [] });
-    });
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
-    expect(await screen.findByText("Segue o PIX")).toBeInTheDocument();
-    expect(screen.getByText("IA")).toBeInTheDocument();
-    expect(screen.queryByText(/Você ·/)).not.toBeInTheDocument();
-  });
-
-  it("mostra o autor registrado e PDF seguro sem inventar entrega nem link inválido", async () => {
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      if (String(input).includes("webchat-sessions")) return Response.json({ data: [
-        { id: SESSION_ID, sector: "financeiro", expires_at: "2030-10-07T00:00:00Z", active: true },
-      ] });
-      return Response.json({ data: [
-        { id: "pdf-1", direction: "operator", sender_kind: "human", sender_name: "Elson Andrade",
-          type: "document", media_mime: "application/pdf", media_url: "https://faturas.example/teste.pdf",
-          body: "Sua fatura", created_at: "2026-10-08T12:00:00Z" },
-        { id: "pdf-2", direction: "operator", type: "document", media_mime: "application/pdf",
-          media_url: "javascript:alert(1)", body: "Documento indisponível", created_at: "2026-10-08T12:01:00Z" },
-        { id: "text-1", direction: "visitor", body: "Obrigada", created_at: "2026-10-08T12:02:00Z" },
-      ] });
-    });
-    render(<WebchatOperatorPanel conversationId="c1" contactName="Ana Silva" />);
-    expect(await screen.findByText("Elson Andrade")).toHaveClass("crm-message-sender");
-    expect(screen.getByText("Ana Silva")).toHaveClass("crm-message-sender");
-    expect(screen.getByText("Atendente")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Baixar PDF/ })).toHaveAttribute("href", "https://faturas.example/teste.pdf");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.queryByText("Você")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Lida")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Entregue")).not.toBeInTheDocument();
-  });
-
-  it("salva nota interna sem enviar texto ao visitante", async () => {
+  it("salva nota sem enviar texto ao visitante", async () => {
     const user = userEvent.setup();
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.includes("webchat-sessions")) {
-        return Response.json({
-          data: [
-            { id: SESSION_ID, sector: "suporte", expires_at: "2026-10-07T00:00:00Z", active: true },
-          ],
-        });
-      }
-      return Response.json({ data: [] });
-    });
-
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" primary />);
+    render(panel({ primary: true }));
     await screen.findByLabelText("Responder pelo atendimento web");
     await user.click(screen.getByRole("button", { name: "Nota interna" }));
-    expect(screen.getByRole("button", { name: "Nota interna" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("status")).toHaveTextContent("Esta nota fica visível apenas para a equipe.");
-    const input = screen.getByLabelText("Responder pelo atendimento web");
-    await user.type(input, "Contexto só para a equipe");
+    await user.type(screen.getByLabelText("Responder pelo atendimento web"), "Só para a equipe");
     await user.click(screen.getByRole("button", { name: "Salvar nota" }));
-
-    await waitFor(() =>
-      expect(createNote).toHaveBeenCalledWith({
-        conversation_id: "11111111-1111-4111-8111-111111111111",
-        body: "Contexto só para a equipe",
-      }),
-    );
-    expect(
-      fetchMock.mock.calls.filter(
-        ([url, init]) => String(url).endsWith("/webchat/messages") && init?.method === "POST",
-      ),
-    ).toHaveLength(0);
+    expect(createNote).toHaveBeenCalledWith({ conversation_id: "c1", body: "Só para a equipe" });
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
-  it("mantém o histórico visível após a sessão expirar, sem permitir resposta", async () => {
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.includes("webchat-sessions"))
-        return Response.json({
-          data: [
-            {
-              id: SESSION_ID,
-              sector: "suporte",
-              expires_at: "2026-10-05T00:00:00Z",
-              active: false,
-            },
-          ],
-        });
-      if (url.includes("webchat/messages?"))
-        return Response.json({
-          data: [
-            {
-              id: "message-old",
-              direction: "visitor",
-              body: "Mensagem anterior",
-              created_at: "2026-10-05T00:00:00Z",
-            },
-          ],
-        });
-      return Response.json({ data: [] });
-    });
-
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" primary />);
+  it("preserva histórico encerrado e impede responder", async () => {
+    data.sessions = data.sessions.map((session) => ({ ...session, active: false }));
+    data.messages = [{ id: "old", direction: "visitor", body: "Mensagem anterior", created_at: "2026-10-05T00:00:00Z" }];
+    render(panel({ primary: true }));
     expect(await screen.findByText("Mensagem anterior")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Suporte — Sessão encerrada" })).toBeInTheDocument();
     expect(screen.getByLabelText("Responder pelo atendimento web")).toBeDisabled();
   });
 
-  it("detecta automaticamente uma sessão criada após a abertura do painel", async () => {
-    let conectado = false;
-    const timers: Array<() => void> = [];
-    const setIntervalOriginal = window.setInterval.bind(window);
-    const intervalSpy = vi
-      .spyOn(window, "setInterval")
-      .mockImplementation((handler, timeout, ...args) => {
-        if (typeof handler === "function") timers.push(() => handler(...args));
-        return setIntervalOriginal(handler, timeout, ...args) as unknown as NodeJS.Timeout;
-      });
-    fetchMock.mockImplementation(async (input: string | URL | Request) => {
-      if (String(input).includes("webchat-sessions"))
-        return Response.json({
-          data: conectado
-            ? [
-                {
-                  id: SESSION_ID,
-                  sector: "suporte",
-                  expires_at: "2026-10-07T00:00:00Z",
-                  active: true,
-                },
-              ]
-            : [],
-        });
-      return Response.json({ data: [] });
-    });
+  it("recupera sessão criada depois e distingue erro de vazio", async () => {
+    const user = userEvent.setup();
+    const connected = data;
+    data = { sessions: [], selected_session_id: "", messages: [] };
+    render(panel());
+    await screen.findByText("Nenhum visitante conectado por este canal.");
+    data = connected;
+    await user.click(screen.getByRole("button", { name: "Atualizar" }));
+    await screen.findByLabelText("Responder pelo atendimento web");
+    fetchMock.mockResolvedValue(Response.json({ error: { message: "Falha de leitura" } }, { status: 500 }));
+    await user.click(screen.getByRole("button", { name: "Atualizar" }));
+    expect(await screen.findByText("Falha de leitura")).toBeInTheDocument();
+  });
 
-    render(<WebchatOperatorPanel conversationId="11111111-1111-4111-8111-111111111111" />);
-    expect(
-      await screen.findByText("Nenhum visitante conectado por este canal."),
-    ).toBeInTheDocument();
-    conectado = true;
-    await act(async () => timers[0]?.());
-    expect(await screen.findByLabelText("Responder pelo atendimento web")).toBeInTheDocument();
-    intervalSpy.mockRestore();
+  it("emite código de handoff apenas pelo comando explícito", async () => {
+    const user = userEvent.setup();
+    data = { sessions: [], selected_session_id: "", messages: [] };
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes("webchat-handoffs")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ sector: "financeiro" });
+        return Response.json({ data: { handoff_token: "codigo-unico" } });
+      }
+      return Response.json({ data });
+    });
+    render(panel());
+    await screen.findByText("Nenhum visitante conectado por este canal.");
+    await user.selectOptions(screen.getByLabelText("Setor"), "financeiro");
+    await user.click(screen.getByRole("button", { name: "Gerar código de acesso" }));
+    expect(await screen.findByText("codigo-unico")).toBeInTheDocument();
   });
 });

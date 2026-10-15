@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/auth/AuthProvider";
 
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
 import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwitch";
@@ -20,7 +22,7 @@ import { randomId } from "@/lib/random-id";
 import type { Note } from "@/lib/types/messaging";
 import { ArrowsClockwise, CircleNotch, Globe, PaperPlaneTilt } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
-import type { MensagemWebchat, SessaoOperadorWebchat } from "@/lib/webchat/types";
+import type { AtendimentoOperadorWebchat, MensagemWebchat } from "@/lib/webchat/types";
 
 type ApiOk<T> = { data: T };
 type Setor = "suporte" | "financeiro" | "cancelamento";
@@ -28,6 +30,7 @@ type Modo = "reply" | "note";
 type ItemDoFio =
   | { kind: "message"; createdAt: string; data: MensagemWebchat }
   | { kind: "note"; createdAt: string; data: Note };
+const SEM_MENSAGENS: MensagemWebchat[] = [];
 
 const SETORES: ReadonlyArray<{ value: Setor; label: string }> = [
   { value: "suporte", label: "Suporte" },
@@ -68,15 +71,36 @@ export function WebchatOperatorPanel({
 }) {
   const t = useT();
   const locale = useTagDeIdioma();
-  const [sessions, setSessions] = useState<SessaoOperadorWebchat[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
-  const [messages, setMessages] = useState<MensagemWebchat[]>([]);
+  const { user, activeOrg } = useAuth();
+  const qc = useQueryClient();
+  const [requestedSessionId, setSelectedSessionId] = useState("");
+  // Cache só em memória, isolado por usuário/org/conversa/sessão. Ao voltar,
+  // mostra o fio já lido e revalida: não descarta tudo a cada clique na lista.
+  const queryKey = ["webchat-attendance", user.id, activeOrg?.orgId, conversationId, requestedSessionId] as const;
+  const attendance = useQuery({
+    queryKey,
+    enabled: !!activeOrg?.orgId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 7_000,
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const params = requestedSessionId ? `?${new URLSearchParams({ visitor_session_id: requestedSessionId })}` : "";
+      return resposta<AtendimentoOperadorWebchat>(await fetch(
+        `/api/v1/conversations/${conversationId}/webchat/attendance${params}`,
+        { credentials: "same-origin", signal },
+      ));
+    },
+  });
+  const sessions = attendance.data?.sessions ?? [];
+  const selectedSessionId = attendance.data?.selected_session_id ?? "";
+  const messages = attendance.data?.messages ?? SEM_MENSAGENS;
   const [sector, setSector] = useState<Setor>("suporte");
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<Modo>("reply");
   const [handoffToken, setHandoffToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = attendance.isPending;
   const [sending, setSending] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -95,81 +119,6 @@ export function WebchatOperatorPanel({
       (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
     );
   }, [messages, notes, primary]);
-
-  const loadSessions = useCallback(
-    async (quiet = false) => {
-      if (!quiet) setLoading(true);
-      try {
-        const next = await resposta<SessaoOperadorWebchat[]>(
-          await fetch(`/api/v1/conversations/${conversationId}/webchat-sessions`, {
-            credentials: "same-origin",
-          }),
-        );
-        setSessions(next);
-        setSelectedSessionId((current) =>
-          next.some((session) => session.id === current)
-            ? current
-            : (next.find((session) => session.active)?.id ?? next[0]?.id ?? ""),
-        );
-        setStatus(null);
-      } catch (error) {
-        setStatus(
-          error instanceof Error
-            ? error.message
-            : t("Não foi possível carregar o atendimento web."),
-        );
-      } finally {
-        if (!quiet) setLoading(false);
-      }
-    },
-    [conversationId, t],
-  );
-
-  const loadMessages = useCallback(async () => {
-    if (!selectedSessionId) {
-      setMessages([]);
-      return;
-    }
-    try {
-      const params = new URLSearchParams({ visitor_session_id: selectedSessionId });
-      const next = await resposta<MensagemWebchat[]>(
-        await fetch(`/api/v1/conversations/${conversationId}/webchat/messages?${params}`, {
-          credentials: "same-origin",
-        }),
-      );
-      setMessages(next);
-      setStatus(null);
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : t("Não foi possível carregar as mensagens."),
-      );
-    }
-  }, [conversationId, selectedSessionId, t]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadSessions(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadSessions]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadSessions(true);
-    }, 7_000);
-    return () => window.clearInterval(interval);
-  }, [loadSessions]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadMessages(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadMessages]);
-
-  useEffect(() => {
-    if (!selectedSessionId) return;
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadMessages();
-    }, 7_000);
-    return () => window.clearInterval(interval);
-  }, [loadMessages, selectedSessionId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
@@ -216,7 +165,12 @@ export function WebchatOperatorPanel({
             }),
           }),
         );
-        setMessages((current) => [...current, message]);
+        // Não deixar uma leitura anterior ao envio apagar a resposta confirmada.
+        await qc.cancelQueries({ queryKey });
+        qc.setQueryData<AtendimentoOperadorWebchat>(queryKey, (current) => current
+          ? { ...current, messages: [...current.messages.filter((item) => item.id !== message.id), message] }
+          : current);
+        void qc.invalidateQueries({ queryKey: ["webchat-attendance", user.id, activeOrg?.orgId, conversationId] });
       }
       setDraft("");
       setStatus(null);
@@ -299,8 +253,7 @@ export function WebchatOperatorPanel({
           size={primary ? "icon" : "sm"}
           className={primary ? "size-9" : undefined}
           onClick={() => {
-            void loadSessions();
-            void loadMessages();
+            void attendance.refetch();
           }}
           disabled={loading}
           aria-label={t("Atualizar")}
@@ -316,7 +269,7 @@ export function WebchatOperatorPanel({
         </Button>
       </div>
 
-      {status && (
+      {(status || attendance.error) && (
         <p
           className={cn(
             "text-sm text-muted-foreground",
@@ -324,7 +277,7 @@ export function WebchatOperatorPanel({
           )}
           role="status"
         >
-          {status}
+          {status ?? attendance.error?.message}
         </p>
       )}
 

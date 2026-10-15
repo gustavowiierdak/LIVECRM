@@ -26,6 +26,12 @@ export type SessaoOperadorWebchat = Readonly<{
   active: boolean;
 }>;
 
+export type AtendimentoOperadorWebchat = {
+  sessions: SessaoOperadorWebchat[];
+  selected_session_id: string;
+  messages: MensagemWebchat[];
+};
+
 export type ConfiguracaoWebchat = Readonly<{
   public_id?: string | null;
   enabled: boolean;
