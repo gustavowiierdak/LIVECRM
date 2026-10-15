@@ -21,28 +21,41 @@ function publish(next: PushStatus): PushStatus {
 }
 
 let pending: Promise<PushStatus> | null = null;
+const PUSH_SYNC_TIMEOUT_MS = 12_000;
 /** A permissão do navegador não prova que o servidor salvou a inscrição. */
 export function syncPushSubscription(): Promise<PushStatus> {
   if (pending) return pending;
-  pending = synchronize().finally(() => {
+  if (typeof window === "undefined") return Promise.resolve("idle");
+  if (getPermission() !== "granted" || !areAlertsEnabled()) {
+    return Promise.resolve(publish("disabled"));
+  }
+  publish("syncing");
+  pending = new Promise<PushStatus>((resolve) => {
+    let settled = false;
+    const finish = (next: PushStatus) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(publish(next));
+    };
+    const timeout = setTimeout(() => finish("error"), PUSH_SYNC_TIMEOUT_MS);
+    void synchronize().then(finish, () => finish("error"));
+  }).finally(() => {
     pending = null;
   });
   return pending;
 }
 
 async function synchronize(): Promise<PushStatus> {
-  if (typeof window === "undefined") return "idle";
-  if (getPermission() !== "granted" || !areAlertsEnabled()) return publish("disabled");
-  publish("syncing");
   try {
     const reg = await ensureNotifyServiceWorker();
-    if (!reg?.pushManager) return publish("unsupported");
+    if (!reg?.pushManager) return "unsupported";
 
     const response = await fetch("/api/v1/notifications/push");
-    if (!response.ok) return publish("error");
+    if (!response.ok) return "error";
     const cfg = await response.json();
     const publicKey = cfg?.data?.public_key as string | undefined;
-    if (!cfg?.data?.enabled || !publicKey) return publish("server_unavailable");
+    if (!cfg?.data?.enabled || !publicKey) return "server_unavailable";
 
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -53,7 +66,7 @@ async function synchronize(): Promise<PushStatus> {
     }
 
     const json = sub.toJSON();
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return publish("error");
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return "error";
 
     const saved = await fetch("/api/v1/notifications/push", {
       method: "PUT",
@@ -63,8 +76,8 @@ async function synchronize(): Promise<PushStatus> {
         keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
       }),
     });
-    return publish(saved.ok ? "ready" : "error");
+    return saved.ok ? "ready" : "error";
   } catch {
-    return publish("error");
+    return "error";
   }
 }

@@ -1,22 +1,61 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Bell, X } from "@/lib/ui/icons";
 import { useT } from "@/hooks/i18n/useT";
 import { useNotificationPermission } from "@/hooks/notifications/useNotificationPermission";
 import { gravarCanal } from "@/lib/notifications/prefs";
 
+const DISMISSED_KEY = "operator-notification-prompt.dismissed.v1";
+const DISMISSED_EVENT = "operator-notification-prompt-dismissed";
+
+function isDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeDismissed(listener: () => void): () => void {
+  window.addEventListener("storage", listener);
+  window.addEventListener(DISMISSED_EVENT, listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener(DISMISSED_EVENT, listener);
+  };
+}
+
+function dismissPrompt(): void {
+  try {
+    window.localStorage.setItem(DISMISSED_KEY, "1");
+  } catch {
+    // Mesmo sem armazenamento, o aviso pode ser fechado nesta aba.
+  }
+  window.dispatchEvent(new Event(DISMISSED_EVENT));
+}
+
 /** Porta de ativação no atendimento; configurações mantêm o diagnóstico à vista. */
 export function OperatorNotificationPrompt({ compact = false }: { compact?: boolean }) {
   const t = useT();
   const { permission, enabled, pushStatus, request } = useNotificationPermission();
-  const [dismissed, setDismissed] = useState(false);
+  const dismissed = useSyncExternalStore(subscribeDismissed, isDismissed, () => true);
+  const [dismissedHere, setDismissedHere] = useState(false);
+  const [activatedHere, setActivatedHere] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const ready = permission === "granted" && enabled && pushStatus === "ready";
-  if (compact && (dismissed || ready || permission === "unsupported")) return null;
+  if (
+    compact &&
+    (dismissed ||
+      dismissedHere ||
+      ready ||
+      permission === "unsupported" ||
+      (permission === "granted" && enabled && !activatedHere))
+  )
+    return null;
 
   const denied = permission === "denied";
   const limited = enabled && (pushStatus === "server_unavailable" || pushStatus === "unsupported");
@@ -44,6 +83,7 @@ export function OperatorNotificationPrompt({ compact = false }: { compact?: bool
           : t("Receba avisos de novas mensagens e atendimentos neste computador.");
 
   async function activate() {
+    setActivatedHere(true);
     setBusy(true);
     setFailed(false);
     try {
@@ -112,7 +152,10 @@ export function OperatorNotificationPrompt({ compact = false }: { compact?: bool
             size="icon"
             className="h-9 w-9 shrink-0"
             aria-label={t("Ocultar aviso de notificações")}
-            onClick={() => setDismissed(true)}
+            onClick={() => {
+              setDismissedHere(true);
+              dismissPrompt();
+            }}
           >
             <X size={16} aria-hidden />
           </Button>

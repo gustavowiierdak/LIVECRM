@@ -34,7 +34,10 @@ beforeEach(() => {
     .mockResolvedValue({ ok: true });
   vi.stubGlobal("fetch", fetchMock);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("ativação de push do operador", () => {
   it("só confirma ready depois de salvar a inscrição autenticada", async () => {
@@ -66,12 +69,10 @@ describe("ativação de push do operador", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it("sem configuração do servidor não promete entrega com aba fechada", async () => {
-    fetchMock
-      .mockReset()
-      .mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: { enabled: false, public_key: null } }),
-      });
+    fetchMock.mockReset().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { enabled: false, public_key: null } }),
+    });
     const client = await import("./push_client");
     expect(await client.syncPushSubscription()).toBe("server_unavailable");
     expect(manager.subscribe).not.toHaveBeenCalled();
@@ -100,6 +101,35 @@ describe("ativação de push do operador", () => {
       })
       .mockResolvedValue({ ok: true });
     expect(await client.syncPushSubscription()).toBe("ready");
+  });
+  it("sai de Ativando quando o service worker trava e permite nova tentativa", async () => {
+    vi.useFakeTimers();
+    mocks.worker.mockImplementationOnce(() => new Promise(() => {}));
+    const client = await import("./push_client");
+    const first = client.syncPushSubscription();
+    expect(client.getPushStatus()).toBe("syncing");
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(await first).toBe("error");
+    expect(client.getPushStatus()).toBe("error");
+    expect(await client.syncPushSubscription()).toBe("ready");
+  });
+  it("resultado atrasado da tentativa expirada não sobrescreve a nova inscrição", async () => {
+    vi.useFakeTimers();
+    let liberarWorker!: (value: { pushManager: typeof manager }) => void;
+    mocks.worker.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          liberarWorker = resolve;
+        }),
+    );
+    const client = await import("./push_client");
+    const expirada = client.syncPushSubscription();
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(await expirada).toBe("error");
+    expect(await client.syncPushSubscription()).toBe("ready");
+    liberarWorker({ pushManager: manager });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(client.getPushStatus()).toBe("ready");
   });
   it("sem permissão não registra nem pede permissão por conta própria", async () => {
     mocks.permission.mockReturnValue("default");

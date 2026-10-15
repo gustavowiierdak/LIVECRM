@@ -15,6 +15,7 @@ vi.mock("@/hooks/notifications/useNotificationPermission", () => ({
 vi.mock("@/lib/notifications/prefs", () => ({ gravarCanal: state.save }));
 vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (text: string) => text }));
 beforeEach(() => {
+  window.localStorage.clear();
   state.permission = "default";
   state.enabled = false;
   state.pushStatus = "idle";
@@ -44,9 +45,20 @@ describe("porta de notificações do atendente", () => {
     state.permission = "granted";
     state.enabled = true;
     state.pushStatus = "server_unavailable";
-    render(<OperatorNotificationPrompt compact />);
+    render(<OperatorNotificationPrompt />);
     expect(screen.getByRole("status")).toHaveTextContent("servidor ainda não está configurado");
     expect(screen.queryByText("Notificações ativadas")).not.toBeInTheDocument();
+  });
+  it("não repete o aviso compacto a cada F5 quando a permissão já foi concedida", () => {
+    state.permission = "granted";
+    state.enabled = true;
+    state.pushStatus = "syncing";
+    const view = render(<OperatorNotificationPrompt compact />);
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    view.unmount();
+    state.pushStatus = "error";
+    render(<OperatorNotificationPrompt compact />);
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
   });
   it("erro nativo é recuperável e não liga preferência", async () => {
     state.request.mockRejectedValue(new Error("browser"));
@@ -75,9 +87,13 @@ describe("porta de notificações do atendente", () => {
     expect(screen.getByRole("status")).toHaveTextContent("inclusive com a aba fechada");
   });
   it("pode ser dispensado sem desligar avisos ou perder a porta de configurações", () => {
-    render(<OperatorNotificationPrompt compact />);
+    const view = render(<OperatorNotificationPrompt compact />);
     fireEvent.click(screen.getByRole("button", { name: "Ocultar aviso de notificações" }));
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    view.unmount();
+    render(<OperatorNotificationPrompt compact />);
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("operator-notification-prompt.dismissed.v1")).toBe("1");
     expect(state.request).not.toHaveBeenCalled();
     expect(state.save).not.toHaveBeenCalled();
   });
