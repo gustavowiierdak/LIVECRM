@@ -74,17 +74,14 @@ export function contagemSoNaoLidas(sp: URLSearchParams): boolean {
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) {
+  // loadAuthUser já chama getUser() no servidor; a segunda validação no mesmo
+  // request acrescentava uma ida à rede em toda atualização dos badges.
+  const authUser = await loadAuthUser();
+  if (!authUser) {
     return fail("unauthenticated", "Auth required.", 401, { requestId });
   }
 
-  const authUser = await loadAuthUser();
+  const supabase = await createClient();
   const ativa = await orgAtivaDaApi(authUser, requestId);
   if (!ativa.ok) return ativa.response;
   const activeOrg = ativa.org;
@@ -116,10 +113,13 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Pessoal não soma em nenhuma aba (spec 21, etapa 7 — critério 3): ao marcar,
   // a contagem cai exatamente nas não-lidas daquele contato. A MESMA exclusão
   // da lista, pela mesma primitiva — sem ela o badge diria o que a aba esconde.
-  const pessoais = await idsDeContatosPessoais(supabase, org);
-  // Canal desativado nunca entra na inbox: o mesmo corte da lista, para badge
-  // e aba nunca divergirem.
-  const idsDesativados = await idsDosCanaisDesativados(supabase, org);
+  // As exclusões e o estado do automático são independentes. Cada await em
+  // série atrasava as seis contagens, que só podem começar depois delas.
+  const [pessoais, idsDesativados, automaticoDaOrg] = await Promise.all([
+    idsDeContatosPessoais(supabase, org),
+    idsDosCanaisDesativados(supabase, org),
+    orgTemAutomatico(supabase, org),
+  ]);
   const countExact = () => {
     let q = supabase
       .from("conversations")
@@ -143,8 +143,6 @@ export async function GET(req: NextRequest): Promise<Response> {
   // O fato ORG-WIDE resolvido ANTES das contagens, porque ele escolhe QUAL
   // conjunto de comandos a Fila pede. `undefined` (não deu para saber) segue a
   // convenção da regra: assume que há automático.
-  const automaticoDaOrg = await orgTemAutomatico(supabase, org);
-
   const [fila, automatico, mine, all, closed, archived] = await Promise.all([
     // A FILA DEIXOU DE SER "sem dono + status de espera".
     //
@@ -161,7 +159,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     // caminho só em produção — por isso vivia quase vazia.
     countExact().eq("comando_da_conversa", "automatico"),
     countExact()
-      .eq("assigned_to_user_id", user.id)
+      .eq("assigned_to_user_id", authUser.id)
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
     countExact(),
     // A aba "Fechadas" existia SEM número nenhum. Num inbox antigo, é o número

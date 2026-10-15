@@ -210,7 +210,12 @@ export async function listConversationsHandler(
   // Contato pessoal some da lista (spec 21, etapa 7 — critério 1): conversa cujo
   // contato é pessoal não aparece em nenhuma visão. ANTES de todo filtro
   // opcional, para que cursor e `has_more` descrevam o conjunto já escondido.
-  const pessoais = await idsDeContatosPessoais(supabase, ctx.organization_id);
+  // São leituras independentes. Prepará-las juntas elimina uma volta de rede
+  // da lista sem mudar os filtros aplicados antes da paginação.
+  const [pessoais, idsDesativados] = await Promise.all([
+    idsDeContatosPessoais(supabase, ctx.organization_id),
+    idsDosCanaisDesativados(supabase, ctx.organization_id),
+  ]);
   if (pessoais.length > 0) {
     query = query.not("contact_id", "in", `(${pessoais.join(",")})`);
   }
@@ -237,7 +242,6 @@ export async function listConversationsHandler(
   // Canal desativado nunca entra na inbox (quarentena): exclui as conversas
   // dele aqui e nos badges, mantendo o acesso direto por id para auditoria e
   // suporte. Reativou, reaparecem sem reimportar nada.
-  const idsDesativados = await idsDosCanaisDesativados(supabase, ctx.organization_id);
   if (idsDesativados.length > 0) {
     query = query.not("channel_session_id", "in", `(${idsDesativados.join(",")})`);
   }

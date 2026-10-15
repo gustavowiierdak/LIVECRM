@@ -19,17 +19,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) {
+  // loadAuthUser já valida o JWT com getUser(). Repetir getUser() aqui fazia
+  // a lista da Inbox pagar duas idas ao Auth antes de consultar qualquer dado.
+  const authUser = await loadAuthUser();
+  if (!authUser) {
     return fail("unauthenticated", "Auth required.", 401, { requestId });
   }
 
-  const authUser = await loadAuthUser();
+  const supabase = await createClient();
   const t = (texto: string) => traduzir(texto, authUser?.idioma ?? "pt-BR");
   const ativa = await orgAtivaDaApi(authUser, requestId);
   if (!ativa.ok) return ativa.response;
@@ -93,7 +90,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       supabase,
       {
         organization_id: activeOrg.orgId,
-        actor: { type: "user", id: user.id },
+        actor: { type: "user", id: authUser.id },
         requestId,
         idioma: authUser?.idioma,
       },

@@ -167,11 +167,12 @@ describe("o marcador da contagem é o da lista — uma régua só", () => {
  */
 describe("nenhuma contagem é montada por fora da fábrica", () => {
   const fonte = readFileSync("app/api/v1/conversations/counts/route.ts", "utf8");
+  const inicioDasContagens = fonte.indexOf("const [fila, automatico, mine, all, closed, archived] = await Promise.all([");
 
   it("toda contagem sai de `countExact()`", () => {
     const dentroDoPromiseAll = fonte.slice(
-      fonte.indexOf("await Promise.all(["),
-      fonte.indexOf("]);", fonte.indexOf("await Promise.all([")),
+      inicioDasContagens,
+      fonte.indexOf("]);", inicioDasContagens),
     );
     expect(dentroDoPromiseAll).not.toBe("");
     const linhasDeContagem = dentroDoPromiseAll
@@ -187,7 +188,7 @@ describe("nenhuma contagem é montada por fora da fábrica", () => {
   it("a fábrica aplica os auxiliares E o não-lidas", () => {
     const fabrica = fonte.slice(
       fonte.indexOf("const countExact = () =>"),
-      fonte.indexOf("await Promise.all(["),
+      inicioDasContagens,
     );
     expect(fabrica).toContain("organization_id");
     expect(fabrica, "os filtros auxiliares não entram na fábrica").toContain("auxiliares");
@@ -200,7 +201,7 @@ describe("nenhuma contagem é montada por fora da fábrica", () => {
     // aba não mostra, que é o defeito que este arquivo existe para pegar.
     const fabrica = fonte.slice(
       fonte.indexOf("const countExact = () =>"),
-      fonte.indexOf("await Promise.all(["),
+      inicioDasContagens,
     );
     expect(fabrica, "o marcador não entra na fábrica").toContain("aplicarMarcadores(");
   });
