@@ -30,6 +30,7 @@
  * Roda com: npx vitest run tests/unit/aviso-de-mensagem-tem-nome.test.tsx
  */
 import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { toastFalso, fromDoBrowser, fetchFalso } = vi.hoisted(() => ({
@@ -106,7 +107,10 @@ function mensagem(campos: Record<string, unknown> = {}) {
 
 /** Renderiza o hook, entrega o payload do realtime e devolve a chamada do toast. */
 async function avisa(payload: unknown) {
-  renderHook(() => useInboundMessageAlerts());
+  const client = new QueryClient();
+  renderHook(() => useInboundMessageAlerts(), {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
   await waitFor(() => expect(canal.onChange).not.toBeNull());
   canal.onChange!(payload);
   await waitFor(() => expect(toastFalso).toHaveBeenCalled());

@@ -123,6 +123,7 @@ export function useRealtimeChannel(opts: UseRealtimeChannelOpts): {
     let active: RealtimeChannel | null = null;
     let cancelado = false;
     let tentativas = 0;
+    let jaAssinou = false;
     let retomada: ReturnType<typeof setTimeout> | null = null;
     setStatus("connecting");
 
@@ -197,13 +198,22 @@ export function useRealtimeChannel(opts: UseRealtimeChannelOpts): {
         setStatus(map[s] ?? "connecting");
 
         if (s === "SUBSCRIBED") {
+          // Se o SDK recuperou antes do nosso retry, ele já fez o trabalho.
+          // Não deixe o timer derrubar a assinatura saudável um segundo depois.
+          if (retomada) clearTimeout(retomada);
+          retomada = null;
           // Voltou depois de ter caído. O que aconteceu enquanto ele estava
           // morto NÃO vai chegar — o Realtime não guarda nada para entregar
           // depois. Uma entrega sintética força quem escuta a buscar de novo,
           // e é ela que fecha o buraco de verdade: sem isso o canal volta a
           // funcionar para o PRÓXIMO evento e a tela segue sem o anterior.
-          if (tentativas > 0) {
-            tentativas = 0;
+          // O próprio SDK também reassina ao recuperar o socket, sem passar
+          // pelo nosso timer de retry. Nesse caminho tentativas continua zero:
+          // antes, perdíamos os eventos da desconexão até um F5/refetch.
+          const precisaSincronizar = jaAssinou || tentativas > 0;
+          jaAssinou = true;
+          tentativas = 0;
+          if (precisaSincronizar) {
             handler({ tipo: "reassinado" });
           }
           return;

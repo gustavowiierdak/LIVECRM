@@ -73,6 +73,7 @@ export function useConversationCounts(
     queryKey: ["conversation-counts", orgId, sufixo],
     enabled: !!orgId,
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: () =>
       apiClient
         .get<{ data: ConversationCounts }>(

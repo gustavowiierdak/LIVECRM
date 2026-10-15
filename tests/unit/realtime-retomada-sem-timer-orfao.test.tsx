@@ -57,6 +57,35 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
+it("reconexão transparente do SDK relê eventos perdidos mesmo sem retry do hook", async () => {
+  const entregas: unknown[] = [];
+  const { unmount } = renderHook(() =>
+    useRealtimeChannel({ name: "inbox", onChange: (p) => entregas.push(p) }),
+  );
+  await act(async () => {});
+  await act(async () => mock.callbacks[0]!("SUBSCRIBED"));
+  expect(entregas).toEqual([]);
+  // O socket volta por conta do SDK e conserva o objeto do canal.
+  await act(async () => mock.callbacks[0]!("SUBSCRIBED"));
+  expect(entregas).toEqual([{ tipo: "reassinado" }]);
+  expect(mock.channel).toHaveBeenCalledTimes(1);
+  unmount();
+});
+
+it("SDK recupera antes do retry: cancela timer que derrubaria o canal já saudável", async () => {
+  const entregas: unknown[] = [];
+  const { unmount } = renderHook(() => useRealtimeChannel({ name: "inbox", onChange: (p) => entregas.push(p) }));
+  await act(async () => {});
+  await act(async () => mock.callbacks[0]!("SUBSCRIBED"));
+  await act(async () => mock.callbacks[0]!("CHANNEL_ERROR"));
+  await act(async () => mock.callbacks[0]!("SUBSCRIBED"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(entregas).toEqual([{ tipo: "reassinado" }]);
+  expect(mock.channel).toHaveBeenCalledTimes(1);
+  expect(mock.remove).not.toHaveBeenCalled();
+  unmount();
+});
+
 it("queda → retomada → canal saudável: nenhum segundo canal nasce depois", async () => {
   const entregas: unknown[] = [];
   const { unmount } = renderHook(() =>

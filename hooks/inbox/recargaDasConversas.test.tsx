@@ -33,6 +33,7 @@ vi.mock("@/components/feedback/ApiErrorToast", () => ({ showApiError: () => unde
 
 import { useConversationsRealtime } from "./useConversationsRealtime";
 import { useConversation } from "./useConversation";
+import { useConversationCounts } from "./useConversationCounts";
 
 const FILTROS = {};
 const lista = () => fakes.get.mock.calls.filter(([u]) => String(u).startsWith("/api/v1/conversations?")).length;
@@ -48,6 +49,7 @@ function montar() {
     () => {
       useConversationsRealtime(FILTROS, "org-1");
       useConversation("c1", true);
+      useConversationCounts("org-1");
     },
     { wrapper },
   );
@@ -67,6 +69,15 @@ describe("recarga do inbox pedida pelo realtime", () => {
     await waitFor(() => expect(lista()).toBe(1));
     for (let i = 0; i < 5; i++) fakes.onChange!({});
     await esperar(400);
+    expect(lista()).toBe(2);
+  });
+
+  it("atualiza lista e bolinhas juntas, sem esperar os 30 segundos nem F5", async () => {
+    montar();
+    const contagens = () => fakes.get.mock.calls.filter(([u]) => u === "/api/v1/conversations/counts").length;
+    await waitFor(() => expect(contagens()).toBe(1));
+    for (let i = 0; i < 5; i++) fakes.onChange!({});
+    await waitFor(() => expect(contagens()).toBe(2));
     expect(lista()).toBe(2);
   });
 

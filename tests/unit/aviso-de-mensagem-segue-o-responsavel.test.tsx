@@ -10,6 +10,7 @@
  * Roda com: npx vitest run tests/unit/aviso-de-mensagem-segue-o-responsavel.test.tsx
  */
 import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { toastFalso, fromDoBrowser, fetchFalso } = vi.hoisted(() => ({
@@ -80,7 +81,10 @@ function servidor(veredito: () => ReturnType<typeof resposta>) {
 }
 
 async function entrega() {
-  renderHook(() => useInboundMessageAlerts());
+  const client = new QueryClient();
+  renderHook(() => useInboundMessageAlerts(), {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
   await waitFor(() => expect(canal.onChange).not.toBeNull());
   canal.onChange!(mensagem());
   await waitFor(() =>

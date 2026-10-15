@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { getOpenConversationId } from "@/hooks/notifications/OpenConversationContext";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
+import { agendarRecargaDasConversas } from "@/hooks/inbox/recargaDasConversas";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { avatarUrlServivel } from "@/lib/notifications/avatar_url";
 import { entregarAviso } from "@/lib/notifications/deliver";
@@ -147,6 +149,7 @@ async function devoAvisar(conversationId: string | null): Promise<boolean> {
 
 export function useInboundMessageAlerts(): void {
   const orgId = useActiveOrg()?.orgId ?? null;
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (!orgId) return;
@@ -154,9 +157,16 @@ export function useInboundMessageAlerts(): void {
   }, [orgId]);
 
   const onChange = useCallback((payload: unknown) => {
+    // Atualizar os dados independe de exibir um aviso (permissão, foco ou
+    // conversa aberta). Este consumidor permanece montado fora do Inbox.
+    agendarRecargaDasConversas(qc);
     const row = rowFromRealtime(payload);
     if (!row) return;
     const conversationId = typeof row.conversation_id === "string" ? row.conversation_id : null;
+    if (conversationId) {
+      void qc.invalidateQueries({ queryKey: ["webchat-attendance"],
+        predicate: (query) => query.queryKey[3] === conversationId }, { cancelRefetch: false });
+    }
     const direction = typeof row.direction === "string" ? row.direction : null;
     if (
       !shouldNotifyInbound({
@@ -188,7 +198,7 @@ export function useInboundMessageAlerts(): void {
         icon: bits.icon,
       });
     })();
-  }, []);
+  }, [qc]);
 
   useRealtimeChannel({
     name: orgId ? `alerts-messages-${orgId}` : "alerts-messages-disabled",
