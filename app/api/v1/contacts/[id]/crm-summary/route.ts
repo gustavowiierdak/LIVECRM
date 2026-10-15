@@ -33,6 +33,7 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { camposDoFunil, settingsDoEmbed } from "@/lib/leads/campos-do-funil";
+import { corrigirMotivoDeVetoLegado } from "@/lib/leads/legacy-veto-activity";
 import { createClient } from "@/lib/supabase/server";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 
@@ -91,7 +92,7 @@ export async function GET(
   }
 
   const { data: contactScope, error: scopeError } = await supabase.from("contacts")
-    .select("organization_id, is_anonymized").eq("id", contactId).maybeSingle();
+    .select("organization_id, is_anonymized, is_blocked, force_human, is_personal").eq("id", contactId).maybeSingle();
   if (scopeError) return fail("internal_error", scopeError.message, 500, { requestId });
   if (!contactScope) return fail("not_found", "Contato não encontrado.", 404, { requestId });
   // Candidates are worker-only. Authorize the contact through RLS first, then
@@ -177,7 +178,7 @@ export async function GET(
       leads: (leads.data ?? []).map((row) => comCamposDoFunil(row as Record<string, unknown>)),
       orders: orders.data ?? [],
       activities: linhas.map((a) => ({
-        ...a,
+        ...corrigirMotivoDeVetoLegado(a, contactScope),
         performed_by_name: a.performed_by_user_id
           ? (nomes.get(a.performed_by_user_id) ?? null)
           : null,

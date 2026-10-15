@@ -50,6 +50,17 @@ export async function emitVetoActivity(
 
 /** Motivo legível — o humano lê "não enviei porque", não um código de gate. */
 export function vetoReason(gate: string, code: string): string {
+  if (gate === "stop") {
+    if (code === "automatico_pausado_para_humano") {
+      return "Não enviei: o automático foi pausado para atendimento humano";
+    }
+    if (code === "contato_pessoal") {
+      return "Não enviei: o contato está marcado como pessoal";
+    }
+    if (code === "parada_automatica_sem_motivo") {
+      return "Não enviei: pausa automática sem motivo confirmado";
+    }
+  }
   const porGate: Record<string, string> = {
     stop: "Não enviei: o contato pediu para parar de receber mensagens",
     window: "Não enviei: fora da janela de horário permitida",

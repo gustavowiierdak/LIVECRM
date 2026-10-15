@@ -14473,6 +14473,15 @@ export const DICIONARIO: Traducoes = {
   "Não enviei: o contato pediu para parar de receber mensagens": {
     es: "No envié: el contacto pidió dejar de recibir mensajes",
   },
+  "Não enviei: o automático foi pausado para atendimento humano": {
+    es: "No envié: la atención automática se pausó para atención humana",
+  },
+  "Não enviei: o contato está marcado como pessoal": {
+    es: "No envié: el contacto está marcado como personal",
+  },
+  "Não enviei: pausa automática sem motivo confirmado": {
+    es: "No envié: pausa automática sin motivo confirmado",
+  },
   "Não enviei: fora da janela de horário permitida": {
     es: "No envié: fuera del horario permitido",
   },
