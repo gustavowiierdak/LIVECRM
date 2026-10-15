@@ -183,13 +183,11 @@ export interface GateContext {
    */
   lgpd: (LgpdInput & { isFirstOutbound: boolean }) | null;
   /**
-   * Guardrail anti-alucinação de casos humanos (spec 15 §10.2, Wave 4) — a invariante
-   * sagrada é: o lead NUNCA recebe promessa-de-humano sem um caso aberto. `casesEnabled`
+   * Guardrail anti-promessa de ajuda humana sem ação correspondente. `casesEnabled`
    * false = feature off para a org → `casePromiseGate` no-op (default retrocompatível para
-   * TODOS os outros callers de `runBeforeSend`, que nem sabem desta camada). `hasOpenCase`
-   * (lido no turno via `hasOpenCaseForContact`) OU `openedCaseThisTurn` (a IA já chamou
-   * `open_human_case` neste turno) tornam o gate no-op também — só veta quando a candidata
-   * promete humano E não há caso nenhum.
+   * TODOS os outros callers de `runBeforeSend`, que nem sabem desta camada). Casos
+   * legados em aberto ainda satisfazem a promessa. O fluxo atual transfere antes
+   * de enviar e não usa `openedCaseThisTurn` no turno do agente.
    */
   casesEnabled: boolean;
   hasOpenCase: boolean;
@@ -438,12 +436,11 @@ export const semanticPromiseGate: Gate = {
 };
 
 /**
- * Gate anti-alucinação de casos humanos (spec 15 §10.2, Wave 4) — a garantia DURA da
- * invariante "o lead nunca recebe promessa-de-humano sem caso aberto". Off (`casesEnabled`
- * false) ou já há caso (`hasOpenCase`/`openedCaseThisTurn` — a IA abriu um NESTE turno) =
+ * Gate anti-promessa de ajuda humana sem ação correspondente. Off (`casesEnabled`
+ * false) ou já há caso legado (`hasOpenCase`/`openedCaseThisTurn`) =
  * no-op. Só veta quando ALGUMA das duas camadas — o detector léxico (`detectHumanPromise`) ou o sinal semântico (`ctx.semanticPromise?.prometeuRetornoHumano`) — acha uma promessa
- * clara na candidata E nenhum caso existe. O fail-safe de 2ª camada (auto-abre caso e
- * re-roda a cadeia) vive na orquestração do `send_message` (inbound-turn.ts), não aqui — o
+ * clara na candidata E não há ação humana registrada. O fail-safe da 2ª tentativa
+ * transfere a conversa na orquestração do `send_message` (inbound-turn.ts); o
  * gate em si é síncrono/puro como os demais. Posição 6.5 de `BEFORE_SEND_GATES` (logo após
  * `semanticPromiseGate`, antes do `disclosureGate`): roda depois das duas camadas de
  * promessa comercial (preço/desconto) porque é uma categoria distinta de promessa
@@ -478,9 +475,9 @@ export const casePromiseGate: Gate = {
         promessaDoAssistente && ctx.followup?.disponivel === true
           ? 'Você prometeu voltar a falar com o cliente, mas não deixou o retorno marcado. ' +
             'Chame a tool schedule_followup (agendando o retorno) OU open_human_case ' +
-            '(descrevendo o que precisa) OU reformule a mensagem sem prometer retorno.'
-          : 'Você prometeu envolver um humano mas não abriu um caso. Chame a tool ' +
-            'open_human_case (descrevendo o que precisa) OU reformule a mensagem sem prometer humano.',
+            '(transferindo o atendimento) OU reformule a mensagem sem prometer retorno.'
+          : 'Você prometeu envolver um humano mas não transferiu o atendimento. Chame a tool ' +
+            'open_human_case (transferindo à fila humana) OU reformule sem prometer humano.',
     };
   },
 };

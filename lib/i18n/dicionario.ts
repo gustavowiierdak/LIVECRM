@@ -3000,13 +3000,13 @@ export const DICIONARIO: Traducoes = {
     {
       es: 'Por agente y decidido por el admin: pasar la conversación a una persona cuando el cliente hable de asunto jurídico (Procon, abogado, proceso). Apagado, el asunto jurídico pasa a ser el trabajo normal de este agente y no es, por sí solo, motivo de paso — quien pide hablar con una persona sigue siendo derivado. Es OTRA llave: la "llamar a una persona" de "Ajustes de cada agente" enciende y apaga la herramienta entera; esta solo quita el paso por asunto jurídico.',
     },
-  "Pedir ajuda sem sair da conversa": { es: "Pedir ayuda sin salir de la conversación" },
-  "Deixar o agente pedir uma tarefa a alguém e seguir conversando": {
-    es: "Dejar que el agente pida una tarea a alguien y siga conversando",
+  "Transferir quando a IA não puder continuar": { es: "Transferir cuando la IA no pueda continuar" },
+  "Enviar o atendimento à fila humana do setor, sem esperar instruções para a IA": {
+    es: "Enviar la atención a la cola humana del sector, sin esperar instrucciones para la IA",
   },
-  "Diferente de passar a conversa: aqui o agente continua atendendo. Quando esbarra em algo que só uma pessoa resolve — aprovar um desconto, por exemplo — ele abre um pedido interno e retoma assim que for respondido.":
+  "Se faltarem fontes, ferramentas, permissão ou orientação para concluir, a IA avisa o cliente, transfere a conversa com o contexto e para de responder. Pedidos internos antigos continuam na tela Casos.":
     {
-      es: "A diferencia de transferir la conversación, aquí el agente sigue atendiendo. Si se topa con algo que solo una persona puede resolver, como aprobar un descuento, abre una solicitud interna y continúa en cuanto la responden.",
+      es: "Si faltan fuentes, herramientas, permisos u orientación para concluir, la IA avisa al cliente, transfiere la conversación con el contexto y deja de responder. Las solicitudes internas anteriores siguen en Casos.",
     },
   "Follow-up": { es: "Seguimiento" },
   "Retomar sozinho quem parou de responder, para o interessado não sumir sem ninguém perceber.": {
@@ -4357,9 +4357,9 @@ export const DICIONARIO: Traducoes = {
   Obrigatório: { es: "Obligatorio" },
   "Chave muito curta": { es: "Clave demasiado corta" },
   Casos: { es: "Casos" },
-  "Quando a IA trava em algo que só um humano resolve, ela abre um caso aqui — e continua conversando com o cliente enquanto espera sua resposta.":
+  "Pedidos internos anteriores continuam aqui. Quando a IA não consegue continuar, o atendimento vai para a fila humana do setor na Inbox.":
     {
-      es: "Cuando la IA se atora con algo que solo una persona puede resolver, abre un caso aquí y sigue conversando con el cliente mientras espera tu respuesta.",
+      es: "Las solicitudes internas anteriores siguen aquí. Cuando la IA no puede continuar, la atención pasa a la cola humana del sector en Inbox.",
     },
   Abertos: { es: "Abiertos" },
   Concluídos: { es: "Concluidos" },

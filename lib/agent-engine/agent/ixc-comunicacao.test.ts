@@ -65,19 +65,15 @@ describe("comunicação do diagnóstico financeiro do IXC", () => {
     );
   });
 
-  it("impede que o modelo transforme a ausência de bloqueio em passagem humana", () => {
+  it("não impede uma passagem humana depois que o diagnóstico encontra um limite real", () => {
     const fonte = readFileSync(new URL("./inbound-turn.ts", import.meta.url), "utf8");
     const inicioDaTool = fonte.indexOf("request_human_handoff: tool({");
     const fimDaTool = fonte.indexOf("// F3-02:", inicioDaTool);
     const ferramenta = fonte.slice(inicioDaTool, fimDaTool);
 
     expect(inicioDaTool).toBeGreaterThan(-1);
-    expect(ferramenta).toMatch(
-      /if \(ixcLiberouDiagnosticoTecnico\)[\s\S]*code: ["']diagnostico_tecnico_pendente["']/,
-    );
-    expect(ferramenta.indexOf("if (ixcLiberouDiagnosticoTecnico)")).toBeLessThan(
-      ferramenta.indexOf("passouParaAEquipe = true"),
-    );
-    expect(ferramenta).toContain("Continue atendendo e use send_message");
+    expect(ferramenta).not.toMatch(/if \(ixcLiberouDiagnosticoTecnico\)/);
+    expect(ferramenta).toContain("applyRequestHumanHandoff(");
+    expect(ferramenta).toContain("passouParaAEquipe = true");
   });
 });

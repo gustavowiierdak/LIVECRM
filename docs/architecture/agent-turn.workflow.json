@@ -148,7 +148,7 @@
       "col": 3,
       "type": "frontend",
       "label": "Handoff",
-      "sublabel": "humano: roteamento G5"
+      "sublabel": "limite da IA -> fila do setor; aviso antes de silenciar; briefing na passagem"
     },
     {
       "id": "memoryscreen",

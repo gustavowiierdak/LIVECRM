@@ -1,11 +1,12 @@
 import { currentExecutionBoundary, guardServiceEffect } from "@/lib/atendimento/fronteira-server";
 import { TIPOS_DE_CASO, type TipoDeCaso } from "@/lib/ai/case-copy";
 /**
- * Casos humanos (spec 15) — o loop assíncrono IA↔humano quando o agente esbarra
- * num bloqueio que só um humano resolve (aprovar desconto, confirmar política,
- * decidir algo fora do playbook). Duas tools nativas do engine:
- *   - open_human_case: o agente abre um caso (status='awaiting_human') com o
- *     bloqueio explicado — vira item na inbox humana (wiring da Wave 3+).
+ * Casos humanos legados (spec 15). O fluxo novo de limite da automação usa
+ * open_human_case como passagem imediata para a fila humana, em inbound-turn.ts;
+ * este módulo conserva a validação do payload e o ciclo de casos já existentes.
+ * Ferramentas nativas do engine:
+ *   - open_human_case: seu payload é validado aqui, mas a execução agora transfere
+ *     a conversa ao setor, sem criar um caso aguardando instrução.
  *   - provide_case_update: quando o caso está 'awaiting_lead' (humano pediu algo
  *     ao lead) e o lead responde, o agente repassa a info e o caso volta a
  *     'awaiting_human'.

@@ -1335,9 +1335,9 @@ export function AgentForm(props: Props) {
             />
           )}
 
-          {/* Casos humanos */}
+          {/* Limite da automação: transferência para a fila humana */}
           <Card className="space-y-3 p-4">
-            <h3 className="text-sm font-medium">{t("Pedir ajuda sem sair da conversa")}</h3>
+            <h3 className="text-sm font-medium">{t("Transferir quando a IA não puder continuar")}</h3>
             <div className="flex items-center gap-2">
               <Switch
                 id="cases_enabled"
@@ -1346,12 +1346,12 @@ export function AgentForm(props: Props) {
                 disabled={disabled}
               />
               <Label htmlFor="cases_enabled">
-                {t("Deixar o agente pedir uma tarefa a alguém e seguir conversando")}
+                {t("Enviar o atendimento à fila humana do setor, sem esperar instruções para a IA")}
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
               {t(
-                "Diferente de passar a conversa: aqui o agente continua atendendo. Quando esbarra em algo que só uma pessoa resolve — aprovar um desconto, por exemplo — ele abre um pedido interno e retoma assim que for respondido.",
+                "Se faltarem fontes, ferramentas, permissão ou orientação para concluir, a IA avisa o cliente, transfere a conversa com o contexto e para de responder. Pedidos internos antigos continuam na tela Casos.",
               )}
             </p>
           </Card>

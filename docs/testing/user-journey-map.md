@@ -3498,6 +3498,13 @@ Spec: `tests/e2e/mapas-em-provedores.spec.ts`.
 | J47.5 | Cliente agradece após receber fatura/PIX pela Bemobi, mesmo com uma demanda antiga ainda aberta                           | IA responde à cortesia e fecha somente a conversa; demanda/caso humano anterior e estado de pagamento não mudam                            | **PASS unitário + banco efêmero** — `lib/agent-engine/agent/encerramento-apos-fatura.test.ts`, `tests/invariants/encerramento-apos-fatura.test.ts`; prova visual em produção pendente |
 | J47.6 | Mensagem nova, pergunta, handoff humano ativo, caso humano novo após a fatura, ausência de recibo ou envio não confirmado | atendimento permanece aberto, sem fechamento prematuro nem reenvio da fatura                                                               | **PASS banco efêmero** — `tests/invariants/encerramento-apos-fatura.test.ts`                                                                                                          |
 
+## J48 — A IA não consegue continuar e entrega o atendimento `[P0]` (2026-10-14)
+
+| # | Caso | Expectativa | Resultado |
+| --- | --- | --- | --- |
+| J48.1 | Suporte web sem acesso a sinal, equipamento ou ordens após verificar o IXC | IA avisa o cliente, silencia e põe a conversa na fila de Suporte Técnico com briefing; não abre caso aguardando instrução | **PASS unitário + invariante de passagem** — `lib/agent-engine/agent/destino-do-limite.test.ts`, `tests/unit/handoff-fantasma-fiacao.test.ts`, `tests/invariants/escalacao-ciclo-humano.test.ts`. Prova pela tela com resposta real do agente ainda pendente. |
+| J48.2 | Canal sem setor prévio e assunto financeiro/agendamento/suporte/SAC | O assunto determina o setor configurado; se não houver setor, a fila geral continua recebendo o handoff | **PASS unitário** — `lib/agent-engine/agent/destino-do-limite.test.ts`. |
+
 ## J42 — Gestão de tenants pelo admin da plataforma `[P1]` (2026-09-29, recortada em 2026-10-05)
 
 Corrigir o e-mail de acesso de um membro, editar o cadastro e excluir um tenant pela

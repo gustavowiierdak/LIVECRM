@@ -21,7 +21,7 @@ export default async function CasesPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Casos", idioma)}</h1>
         <p className="text-sm text-muted-foreground">
           {traduzir(
-            "Quando a IA trava em algo que só um humano resolve, ela abre um caso aqui — e continua conversando com o cliente enquanto espera sua resposta.",
+            "Pedidos internos anteriores continuam aqui. Quando a IA não consegue continuar, o atendimento vai para a fila humana do setor na Inbox.",
             idioma,
           )}
         </p>

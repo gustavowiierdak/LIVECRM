@@ -75,6 +75,7 @@ import { encerrarConversaAposOs } from "./encerramento-apos-os";
 import { confirmouSolucaoIxc } from "@/lib/ixc/aviso-os";
 import { precisaFilaTecnica } from "@/lib/ixc/escalacao-tecnica";
 import { moverLeadParaEtapaDeHandoff } from "@/lib/leads/handoff-stage-move";
+import { destinoDoLimiteDaAutomacao } from "./destino-do-limite";
 import { detectUrgencySignal } from "../guardrails/sinal-de-urgencia";
 import { buildNativeMediaParts } from "./media-parts";
 import {
@@ -176,7 +177,6 @@ import { resolveConversationTurn, type TurnAgentResolution } from "./resolve-tur
 import {
   hasOpenCaseForContact,
   getCaseAwaitingLead,
-  openCase,
   provideCaseUpdate,
   openHumanCaseInputSchema,
   provideCaseUpdateInputSchema,
@@ -221,7 +221,6 @@ import {
 import { criarRecuperadorDeEvidencias } from "../guardrails/promise/recuperar-evidencias";
 import { classifyPromise, memoizarPorCandidata } from "../guardrails/promise/semantic";
 import { montarContextoDaRevisao } from "../guardrails/promise/contexto-da-revisao";
-import { expectativaDeAtendimento } from "@/lib/escalacao/disponibilidade";
 import {
   montarBriefingDaPassagem,
   type BriefingDaPassagem,
@@ -513,12 +512,10 @@ export const AGENT_TOOL_DEFS = {
   },
   open_human_case: {
     description:
-      "Abra um caso para um humano de retaguarda quando você NÃO conseguir resolver o pedido do lead " +
-      "sozinho (liberar acesso, corrigir algo num sistema, uma decisão que exige uma pessoa). Você CONTINUA " +
-      "conversando com o lead normalmente — não silencia. Use SEMPRE que for prometer ao lead que alguém vai " +
-      "verificar/resolver: prometer sem abrir o caso é proibido. Isso vale mesmo quando você nomeia a " +
-      'pessoa ("vou confirmar com o Fulano", "já registrei com a equipe") — nomear alguém não abre o caso; ' +
-      "só esta ferramenta abre. Chame-a NO MESMO turno em que fizer a promessa, nunca depois.",
+      "Transfere IMEDIATAMENTE a conversa ao atendente humano do setor correspondente quando " +
+      "faltam fontes, ferramentas, permissão ou instruções para resolver. Você NÃO continua " +
+      "atendendo nem espera orientação em Casos. O sistema avisa o cliente, entrega o contexto " +
+      "à equipe e silencia a IA. Chame no mesmo turno em que identificar o limite.",
     // Schema LARGO para o SDK (o modelo vê os campos); a validação REAL é a whitelist
     // .strict() openHumanCaseInputSchema (human-cases.ts) — campo extra/forjado vira
     // erro de ENSINO ao modelo, nunca exceção do SDK nem strip silencioso.
@@ -882,15 +879,15 @@ async function briefingDoCheckpointDuravel(
  * conversa longa (ao contrário do índice de skills, este bloco não some).
  */
 const CASES_SYSTEM_BLOCK =
-  "## Casos para um humano de retaguarda\n" +
+  "## Limite da automação\n" +
   "Quando você NÃO conseguir resolver o pedido do lead sozinho (liberar acesso, corrigir algo num " +
-  "sistema, uma decisão que exige uma pessoa), use a tool open_human_case — você CONTINUA conversando " +
-  "com o lead, não silencia. NUNCA prometa ao lead que um humano vai verificar/resolver sem antes chamar " +
-  "open_human_case. Quando um caso estiver esperando informação do cliente e você já a obteve na " +
-  "conversa, use provide_case_update para devolver ao responsável. Ao avisar o lead que abriu o caso, " +
+  "sistema, uma decisão que exige uma pessoa), use open_human_case para TRANSFERIR a conversa " +
+  "ao setor humano correspondente. A IA silencia; NÃO espere instruções em Casos. NUNCA prometa " +
+  "que um humano vai resolver sem chamar open_human_case no mesmo turno. Para casos antigos que " +
+  "esperam informação do cliente, use provide_case_update quando a tiver. Ao avisar o lead, " +
   "NUNCA narre a causa técnica ou interna (erro de sistema, falha de confirmação, nome de ferramenta, " +
   "log ou qualquer diagnóstico) — isso é assunto técnico e não vai pro cliente. `title`/`summary`/`blocker` " +
-  "são só para o humano; a mensagem ao lead diz apenas, em linguagem simples, que você vai verificar/ajustar " +
+  "são só para o humano; a mensagem ao lead diz apenas, em linguagem simples, que a equipe vai continuar " +
   "e volta com uma resposta, sem explicar o motivo interno.";
 
 /**
@@ -2966,12 +2963,8 @@ async function executarTurnoDoAgente(
     deps.jev ?? {},
   );
   let outOfTablePromiseAttempted = false;
-  // Spec 15 (Wave 4 lê este flag): true quando open_human_case abriu um caso NESTE
-  // turno — aqui só declara e seta; o consumo (ex.: guardrail de promessa) é da Wave 4.
-  let openedCaseThisTurn = false;
   // Wave 4 — contador do fail-safe do guardrail anti-alucinação (case_promise_without_case):
-  // 1º veto no turno é erro-de-ensino (o modelo re-tenta); persistir uma 2ª vez aciona o
-  // auto-abre-caso (ver send_message.execute). Por turno (closure), nunca cross-turno.
+  // 1º veto no turno é erro-de-ensino; persistir uma 2ª vez transfere a conversa.
   let casePromiseVetoCount = 0;
   // Contador do fail-safe do gate de vazamento de vocabulário interno
   // (`internal_vocabulary_leak`): 1º veto no turno ensina o modelo a reescrever; persistir
@@ -3015,8 +3008,8 @@ async function executarTurnoDoAgente(
   const capDeEnvioAtingido = (): boolean => pacingCapVeto !== null;
   // Best-effort: move o lead pra etapa `crm_stages.slug='chamar-humano'` do pipeline
   // dele (se o tenant tiver criado essa etapa — opt-in, ver `lib/leads/handoff-stage-move.ts`)
-  // sempre que um caso humano abre neste turno, deliberado (open_human_case) ou pelo
-  // fail-safe do `case_promise`. Sem isto, o funil no CRM não refletia o handoff que o
+  // sempre que o limite da automação transfere a conversa para a equipe.
+  // Sem isto, o funil no CRM não refletia o handoff que o
   // PRÓPRIO PROMPT do tenant promete ao lead ("vou verificar/encaminhar com o Fulano")
   // — medido num tenant de produção: caso aberto, funil parado em "Novo contato".
   // Nunca bloqueia nem derruba o turno — mesma disciplina de `triggerHandoff` (G1-G4),
@@ -3027,10 +3020,44 @@ async function executarTurnoDoAgente(
       leadId,
       reason,
     }).catch((err) => {
-      runLog.warn("moverLeadParaEtapaDeHandoff falhou (best-effort, caso humano)", {
+      runLog.warn("moverLeadParaEtapaDeHandoff falhou (best-effort, passagem humana)", {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+  };
+  // Um limite real da IA é uma PASSAGEM, não uma solicitação para alguém
+  // ensinar a IA a prosseguir. O setor da conversa vence a classificação do
+  // modelo; o assunto só serve de fallback para canais sem setor prévio.
+  const encaminharLimiteDaAutomacao = async (caso: {
+    title: string;
+    summary: string;
+    blocker: string;
+    kind?: string;
+  }, origem: "ferramenta_do_modelo" | "runtime_nativo" = "ferramenta_do_modelo"): Promise<void> => {
+    const destino = await destinoDoLimiteDaAutomacao(
+      pool, tenantId, input.conversationId, caso.kind,
+    );
+    const aviso = await avisarLeadDaEscalacao(pool, avisoDaEscalacao().ids, {
+      ...avisoDaEscalacao().base,
+      motivo: "outro",
+      ...(destino.setorNome ? { setorNome: destino.setorNome } : {}),
+    });
+    const briefing = montarBriefingDaPassagem({
+      checkpoint: previous,
+      pendentesDoCliente: inboundsPendentes,
+      motivo: { codigo: "low_confidence", texto: caso.blocker },
+      caso: { titulo: caso.title, summary: caso.summary, blocker: caso.blocker },
+    });
+    await performHumanHandoff(pool, { tenantId, leadId, conversationId: input.conversationId }, {
+      reason: "automation_limit",
+      ...(destino.setorId ? { setorId: destino.setorId } : {}),
+      conversationSummary: briefing.body,
+      passagem: { origem, motivoCodigo: "low_confidence", briefing },
+      avisoAoLead: aviso,
+      log: runLog,
+    });
+    passouParaAEquipe = true;
+    moverParaHandoffBestEffort("automation_limit");
   };
   // Arma o `agendaStallGate` (before-send.ts): true assim que crm_find_free_slots,
   // crm_book_appointment ou crm_reschedule_appointment executar neste turno — marcado no
@@ -3494,16 +3521,15 @@ async function executarTurnoDoAgente(
         // seq só avança quando o envio é de fato tentado (gate veto não gasta seq
         // — preserva o alinhamento (job_id, seq) do ledger F2-06 entre re-runs).
         try {
-          // Wave 4 (spec 15 §10.2): estado de caso lido FRESCO a cada tentativa de envio
-          // (pode ter mudado dentro deste MESMO turno via open_human_case, chamado antes
-          // deste send_message). casesEnabled false (tela não habilita) → sempre false,
+          // Casos legados ainda podem estar abertos; ler fresco a cada envio.
+          // casesEnabled false (tela não habilita) → sempre false,
           // sem query — o casePromiseGate já é no-op nesse caso de qualquer forma.
           const hasOpenCase =
             agentConfig?.casesEnabled === true
               ? await hasOpenCaseForContact(pool, tenantId, input.conversationId)
               : false;
-          // Args reusados EXATAMENTE (mesmo objeto) no re-run do fail-safe abaixo — só
-          // hasOpenCase/openedCaseThisTurn mudam depois do auto-abre-caso.
+          // Casos legados ainda contam, mas o limite novo da automação transfere
+          // diretamente; não há caso recém-aberto neste turno.
           const beforeSendArgs = {
             pool,
             log: runLog,
@@ -3527,7 +3553,7 @@ async function executarTurnoDoAgente(
             lgpd,
             casesEnabled: agentConfig?.casesEnabled ?? false,
             hasOpenCase,
-            openedCaseThisTurn,
+            openedCaseThisTurn: false,
             // Nome(s) próprio(s) que o prompt do tenant usa pra retaguarda humana (ex.:
             // "Fulano") — o mesmo vocabulário que `matchesHandoffKeyword` já usa do lado
             // do CLIENTE, agora somado ao alvo genérico do `casePromiseGate` do lado do
@@ -3680,47 +3706,23 @@ async function executarTurnoDoAgente(
           };
           let chain = await runBeforeSend(beforeSendArgs);
           if (chain.status === "vetoed" && chain.code === "case_promise_without_case") {
-            // Wave 4 — fail-safe da invariante sagrada: o lead NUNCA recebe promessa-de-
-            // humano sem caso aberto. 1ª vez no turno: erro-de-ensino (o modelo re-tenta —
-            // abre o caso OU reformula sem prometer humano). Persistiu (2ª vez): o SISTEMA
-            // abre um caso mínimo e libera o envio — nunca deixa a promessa passar sem caso.
+            // Promessa de ajuda humana sem ação: uma correção ao modelo; se ele
+            // insistir, o runtime TRANSFERE a conversa. Não cria um caso que
+            // fica aguardando instruções enquanto o cliente espera.
             casePromiseVetoCount += 1;
             if (casePromiseVetoCount < 2) {
               return { ok: false, error: { code: chain.code, message: chain.message } };
             }
-            const auto = await openCase(
-              pool,
-              {
-                tenantId,
-                conversationId: input.conversationId,
-                agentId: agentConfig?.agentId ?? null,
-              },
-              {
-                title: "Atendimento que precisa de um humano",
-                summary: body, // a mensagem-promessa que a IA tentou enviar
-                blocker:
-                  "Aberto automaticamente: a IA prometeu envolver um humano e não abriu o caso (fail-safe do guardrail).",
-                source: "guardrail_autofallback",
-                contextSnapshot: buildCaseContextSnapshot(),
-              },
-            );
-            if (!auto.ok) {
-              // openCase falhou (ex.: já existe outro caso aberto por corrida) — NÃO envie
-              // prometendo humano sem caso; mantém a invariante com o erro de ensino original.
-              return { ok: false, error: { code: chain.code, message: chain.message } };
-            }
-            openedCaseThisTurn = true;
-            moverParaHandoffBestEffort("case_promise_autofallback");
-            // Re-roda a cadeia INTEIRA agora que há caso aberto — o send real acontece
-            // DENTRO do runBeforeSend (via args.send); nunca chamamos o canal por fora
-            // (perderia pacing/lgpd/stop). ponytail: re-roda a cadeia inteira no fail-safe
-            // (raro) — pode reaplicar 1 espera de pacing; aceitável pelo caminho ser
-            // excepcional.
-            chain = await runBeforeSend({
-              ...beforeSendArgs,
-              hasOpenCase: true,
-              openedCaseThisTurn: true,
-            });
+            await encaminharLimiteDaAutomacao({
+              title: "Atendimento que precisa de uma pessoa",
+              summary: body,
+              blocker: "A IA prometeu ajuda humana sem acionar a transferência.",
+              kind: "outro",
+            }, "runtime_nativo");
+            return {
+              ok: false,
+              error: { code: "handoff_solicitado", message: "A conversa já está na fila humana. Encerre o turno." },
+            };
           }
           if (chain.status === "vetoed" && chain.code === "clinical_claim") {
             // Fail-safe do gate de afirmação clínica. Ao contrário do vocabulário interno,
@@ -3733,40 +3735,21 @@ async function executarTurnoDoAgente(
             if (
               clinicalClaimVetoCount >= MAX_VETOS_DE_AFIRMACAO_CLINICA &&
               agentConfig?.casesEnabled === true &&
-              !openedCaseThisTurn &&
               !hasOpenCase
             ) {
-              const auto = await openCase(
-                pool,
-                {
-                  tenantId,
-                  conversationId: input.conversationId,
-                  agentId: agentConfig?.agentId ?? null,
+              await encaminharLimiteDaAutomacao({
+                title: "Pergunta clínica que precisa de um profissional",
+                summary: body,
+                blocker: "A IA insistiu numa afirmação clínica; o envio foi barrado.",
+                kind: "outro",
+              }, "runtime_nativo");
+              return {
+                ok: false,
+                error: {
+                  code: "handoff_solicitado",
+                  message: "A mensagem clínica continua barrada e a conversa foi transferida. Encerre o turno.",
                 },
-                {
-                  title: "Pergunta clínica que precisa de um profissional",
-                  summary: body, // a mensagem que o assistente tentou enviar e foi barrada
-                  blocker:
-                    "Aberto automaticamente: o assistente insistiu numa afirmação clínica " +
-                    "(diagnóstico, remédio, promessa de resultado ou câncer) e o envio foi barrado.",
-                  source: "guardrail_autofallback",
-                  contextSnapshot: buildCaseContextSnapshot(),
-                },
-              );
-              if (auto.ok) {
-                openedCaseThisTurn = true;
-                moverParaHandoffBestEffort("clinical_claim_autofallback");
-                return {
-                  ok: false,
-                  error: {
-                    code: chain.code,
-                    message:
-                      "A mensagem continua barrada. A equipe já foi acionada: diga à pessoa, " +
-                      "em uma frase, que um profissional da equipe vai falar com ela, sem " +
-                      "repetir nada sobre diagnóstico, remédio ou resultado.",
-                  },
-                };
-              }
+              };
             }
             return { ok: false, error: { code: chain.code, message: chain.message } };
           }
@@ -3794,12 +3777,8 @@ async function executarTurnoDoAgente(
                 vetos: internalVocabularyVetoCount,
               },
             );
-            // `openedCaseThisTurn` vai pelo valor VIVO (o fail-safe de casos acima pode
-            // tê-lo mudado); reusar o do objeto capturado re-vetaria no case_promise.
             chain = await runBeforeSend({
               ...beforeSendArgs,
-              openedCaseThisTurn,
-              hasOpenCase: hasOpenCase || openedCaseThisTurn,
               enforceInternalVocabulary: false,
             });
           }
@@ -4048,25 +4027,11 @@ async function executarTurnoDoAgente(
     request_human_handoff: tool({
       ...AGENT_TOOL_DEFS.request_human_handoff,
       execute: async (raw) => {
-        // Uma consulta sem bloqueio financeiro não é falha nem motivo para
-        // abandonar o diagnóstico. O modelo já tentou transformar esse
-        // resultado interno em passagem humana; além de desnecessário, isso
-        // silencia o automático justamente quando ele deve seguir investigando
-        // a conexão. Recusar aqui mantém a conversa viva e ensina o próximo
-        // passo ao mesmo turno.
-        if (ixcLiberouDiagnosticoTecnico) {
-          runLog.info(
-            "handoff humano recusado — consulta sem bloqueio deve seguir no diagnóstico técnico",
-          );
-          return {
-            ok: false,
-            error: {
-              code: "diagnostico_tecnico_pendente",
-              message:
-                "Não passe para uma pessoa: a consulta liberou o diagnóstico técnico. Continue atendendo e use send_message para fazer a próxima pergunta técnica, sem mencionar a consulta financeira nem a ausência de bloqueio.",
-            },
-          };
-        }
+        // Não bloquear toda transferência porque uma consulta anterior não
+        // encontrou bloqueio financeiro: depois dela a IA pode descobrir um
+        // limite REAL (sem acesso a sinal, equipamento ou ordens). A instrução
+        // de continuar o diagnóstico fica na resposta da consulta IXC, não
+        // num veto permanente a esta ferramenta.
         try {
           const validado = requestHumanHandoffInputSchema.safeParse(raw);
           if (!validado.success) return { ok: false, error: { code: "invalid_payload", message: "Confira os dados de encaminhamento e o setor." } };
@@ -4232,16 +4197,6 @@ async function executarTurnoDoAgente(
   // turno (tests/unit/chave-juridico-so-troca-a-descricao.test.ts).
   aplicaAChaveDeAssuntoJuridico(rawTools, agentConfig?.handoffLegalEnabled);
 
-  // Spec 15: snapshot mínimo do contexto disponível pro humano que for atender o
-  // caso — campo de CONVENIÊNCIA pra UI, não load-bearing (nada aqui é relido pelo
-  // agente). ponytail: snapshot mínimo; enriquecer se a UI precisar de mais.
-  const buildCaseContextSnapshot = (): Record<string, unknown> => ({
-    contact_name: effectiveContext.contact.name,
-    last_messages: effectiveContext.messages
-      .slice(-5)
-      .map((m) => ({ direction: m.direction, body: m.body })),
-  });
-
   // Spec 15 (Wave 3a): tools de caso humano (open_human_case/provide_case_update) só
   // entram quando a tela habilita (cases_enabled) — mesmo padrão do handoff acima.
   // Ids do closure (row do job), nunca do payload; payload inválido é erro de ENSINO
@@ -4261,25 +4216,11 @@ async function executarTurnoDoAgente(
           };
         }
         try {
-          const res = await openCase(
-            pool,
-            { tenantId, conversationId: input.conversationId, agentId: agentConfig.agentId },
-            { ...parsed.data, contextSnapshot: buildCaseContextSnapshot() },
-          );
-          if (!res.ok) return res;
-          openedCaseThisTurn = true;
-          moverParaHandoffBestEffort("open_human_case");
-          // ACH-03: a expectativa vai junto com a confirmação. Medido num turno
-          // real: o agente abria o caso e prometia ao cliente que "alguém entra
-          // em contato" sem nunca ter olhado se havia alguém — a capacidade de
-          // consultar existia, estava ligada e montada no turno, e ele não a
-          // usou. Capacidade que depende de o modelo lembrar não existe metade
-          // das vezes; esta o sistema garante.
-          const { frase } = await expectativaDeAtendimento(pool, tenantId, new Date());
+          await encaminharLimiteDaAutomacao(parsed.data);
           return {
             ok: true,
-            case_id: res.caseId,
-            message: `caso aberto; continue a conversa com o lead normalmente. ${frase}`,
+            status: "handoff_solicitado",
+            message: "Atendimento transferido para a fila humana. O cliente foi avisado quando o canal permitiu. Encerre o turno: a IA está silenciada.",
           };
         } catch (err) {
           noteRunError(err instanceof Error ? err : new Error(String(err)));
@@ -4287,7 +4228,7 @@ async function executarTurnoDoAgente(
             ok: false,
             error: {
               code: "internal_error",
-              message: "erro interno ao abrir o caso — encerre o turno.",
+              message: "erro interno ao transferir o atendimento — encerre o turno.",
             },
           };
         }
