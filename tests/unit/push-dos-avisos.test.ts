@@ -17,11 +17,15 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/notifications/vapid", () => ({ vapidPronto: () => true, vapidPublica: () => "pub", vapidSubject: async () => "mailto:x@y" }));
 vi.mock("@/lib/notifications/web_push", () => ({
   enviarPushDaOrg: vi.fn().mockResolvedValue({ sent: 1, gone: 0 }),
+  enviarPushAQuemVeAConversa: vi.fn().mockResolvedValue({ sent: 1, gone: 0 }),
   enviarPushAoUsuario: vi.fn().mockResolvedValue({ sent: 1, gone: 0 }),
+}));
+vi.mock("@/lib/notifications/destinatarios-da-mensagem", () => ({
+  carregarDestinatariosDaMensagem: vi.fn().mockResolvedValue({ tipo: "restrito", userIds: ["u-suporte"] }),
 }));
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enviarPushDaOrg } from "@/lib/notifications/web_push";
+import { enviarPushDaOrg, enviarPushAQuemVeAConversa } from "@/lib/notifications/web_push";
 import { webPushInboundHandler } from "@/lib/notifications/push.handler";
 import type { EventRow } from "@/lib/event-log/dispatcher";
 import { corpoDoAvisoDeEtapa, tituloDoAvisoDeEtapa } from "@/lib/leads/aviso-de-etapa";
@@ -53,6 +57,7 @@ const evento = (event_type: string, payload: Record<string, unknown>): EventRow 
 
 beforeEach(() => {
   vi.mocked(enviarPushDaOrg).mockClear();
+  vi.mocked(enviarPushAQuemVeAConversa).mockClear();
   filtros.length = 0;
 });
 
@@ -92,24 +97,24 @@ describe("aviso da Central → celular", () => {
       organizations: { locale: "es" },
     }) as never);
     await webPushInboundHandler.handle(evento("central.aviso_criado", { item_id: "i2" }));
-    expect(vi.mocked(enviarPushDaOrg).mock.calls[0]![1]).toEqual({
+    expect(enviarPushDaOrg).not.toHaveBeenCalled();
+    expect(enviarPushAQuemVeAConversa).toHaveBeenCalledWith(ORG, "c1", {
       title: "La IA pasó una conversación al equipo",
       body: "Abre la conversación para responder al cliente.",
       tag: "aviso:i2",
       href: "/app/inbox/c1",
-    });
+    }, ["u-suporte"]);
   });
 
-  it("passagem de clone antigo (ref no contato) abre o contato", async () => {
+  it("passagem antiga sem conversa identificada não avisa a organização inteira", async () => {
     vi.mocked(createAdminClient).mockReturnValue(banco({
       agent_inbox_items: { id: "i3", kind: "handoff", ref_kind: "contact", ref_id: "k1", title: "Handoff", body: null },
       organizations: { locale: "pt-BR" },
     }) as never);
-    await webPushInboundHandler.handle(evento("central.aviso_criado", { item_id: "i3" }));
-    expect(vi.mocked(enviarPushDaOrg).mock.calls[0]![1]).toMatchObject({
-      title: "A IA passou uma conversa para a equipe",
-      href: "/app/contacts/k1",
-    });
+    const result = await webPushInboundHandler.handle(evento("central.aviso_criado", { item_id: "i3" }));
+    expect(result).toMatchObject({ status: "skipped", detail: "handoff_sem_conversa" });
+    expect(enviarPushDaOrg).not.toHaveBeenCalled();
+    expect(enviarPushAQuemVeAConversa).not.toHaveBeenCalled();
   });
 
   it("IA sem saldo: o título da Central e o remédio, levando às credenciais", async () => {

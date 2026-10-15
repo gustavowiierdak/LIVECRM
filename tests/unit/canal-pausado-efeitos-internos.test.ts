@@ -88,6 +88,10 @@ vi.mock("@/lib/notifications/web_push", () => ({
 }));
 vi.mock("@/lib/notifications/vapid", () => ({ vapidPronto: () => true }));
 vi.mock("@/lib/branding/saida", () => ({ marcaDaSaida: async () => ({ nome: "Marca" }) }));
+// Este arquivo mede o bloqueio do canal, não a seleção de destinatários.
+vi.mock("@/lib/notifications/destinatarios-da-mensagem", () => ({
+  carregarDestinatariosDaMensagem: async () => ({ tipo: "restrito", userIds: ["atendente-1"] }),
+}));
 
 // ─── 2. reatividade do fluxo ────────────────────────────────────────────────
 const applyReactivityEvent = vi.fn(async (_db: unknown, _clock: unknown, _row: unknown) => ({

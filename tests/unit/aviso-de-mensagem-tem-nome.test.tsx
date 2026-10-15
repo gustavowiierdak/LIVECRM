@@ -107,6 +107,14 @@ function mensagem(campos: Record<string, unknown> = {}) {
 
 /** Renderiza o hook, entrega o payload do realtime e devolve a chamada do toast. */
 async function avisa(payload: unknown) {
+  // Estes casos verificam o título de um aviso AUTORIZADO. O veredito de
+  // destinatário é uma rota separada; sem ele a política correta silencia.
+  const respostaConfigurada = fetchFalso.getMockImplementation();
+  fetchFalso.mockImplementation(async (url: string, ...args: unknown[]) =>
+    url.includes("/aviso-de-mensagem")
+      ? resposta(true, { data: { avisar: true } })
+      : respostaConfigurada?.(url, ...args),
+  );
   const client = new QueryClient();
   renderHook(() => useInboundMessageAlerts(), {
     wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
