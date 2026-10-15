@@ -4,8 +4,8 @@ import { useSetores } from "@/hooks/team/useSetores";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { InboxQueuePlacement, useInboxRail } from "@/components/shell/InboxRail";
 import {
-  CaretLeft, CaretRight, MagnifyingGlass, Clock, UserCircle,
-  ChatsCircle, CheckCircle, Robot, Funnel,
+  CaretLeft, CaretRight, MagnifyingGlass, Clock, ChatCircle,
+  ChatsCircle, FolderSimple, Robot, Funnel,
 } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,17 +46,15 @@ export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
 
 const QUEUE_ICONS = {
   unassigned: Clock,
-  mine: UserCircle,
+  mine: ChatCircle,
   all: ChatsCircle,
-  closed: CheckCircle,
+  closed: FolderSimple,
   ai: Robot,
 };
 
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
   { value: "mine", label: "Minhas" },
-  { value: "all", label: "Todas" },
-  { value: "closed", label: "Encerrados" },
   // "Automático", não "IA": a palavra deste ator já é contrato em quatro arquivos
   // e no dicionário, e `handoff-por-orcamento.test.ts` usa literalmente "Voltar
   // para a IA" como a sabotagem que deve reprovar. A aba era a última fora do
@@ -64,6 +62,9 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   // passou a perguntar a régua do motor), então o rótulo velho descreveria outra
   // coisa.
   { value: "ai", label: "Automático" },
+  { value: "closed", label: "Encerrados" },
+  // Visão adicional do CRM: preservada depois das quatro filas do padrão Opa.
+  { value: "all", label: "Todas" },
 ];
 
 /**
@@ -633,9 +634,14 @@ export function InboxFilters({ value, onChange, onReturnHome, searchResetVersion
                   title={t(meta.label)}
                   className="shrink-0 gap-1 rounded-none border-b-2 border-transparent px-0 pb-2 pt-1 text-xs font-medium text-text-muted data-[state=active]:border-accent data-[state=active]:bg-transparent data-[state=active]:text-text data-[state=active]:shadow-none"
                 >
-                  <Icon size={15} aria-hidden className="shrink-0" />
+                  <Icon
+                    size={15}
+                    weight={tab === "mine" ? "fill" : "regular"}
+                    aria-hidden
+                    className={cn("crm-queue-icon shrink-0", tab === "mine" && "crm-queue-icon--mine")}
+                  />
                   <span className="crm-queue-label">{t(meta.label)}</span>
-                  {typeof count === "number" && count > 0 && (
+                  {typeof count === "number" && (count > 0 || tab === "unassigned" || tab === "mine" || tab === "ai") && (
                     <span className="crm-queue-count text-[11px] tabular-nums text-text-subtle">{count}</span>
                   )}
                 </TabsTrigger>

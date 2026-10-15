@@ -800,12 +800,24 @@
   .workspace :global(.crm-rail-queues) [role="tab"][data-state="active"] {
     box-shadow: inset 3px 0 var(--color-accent);
   }
+  /* The operator rail follows the Opa pictograms: a warm filled conversation
+     bubble for personal chats, outlined clock/robot/folder for the other views. */
+  .workspace :global(.crm-rail-queues) :global(.crm-queue-icon--mine) {
+    color: #f28c00;
+  }
   .workspace :global(.crm-rail-queues) :global(.crm-queue-count) {
     right: 0;
     top: 0;
+    display: grid;
+    min-width: 14px;
+    height: 14px;
+    place-items: center;
+    padding: 0 2px;
+    border-radius: 999px;
     font-size: 9px;
-    background: var(--color-accent);
-    color: var(--color-accent-foreground);
+    line-height: 1;
+    background: #1688e9;
+    color: #fff;
   }
   .workspace :global(.crm-navigation.w-60) :global(.crm-queue-label) {
     position: static;

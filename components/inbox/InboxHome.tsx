@@ -3,7 +3,7 @@
 import { useT } from "@/hooks/i18n/useT";
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import { Button } from "@/components/ui/button";
-import { ChatCircle, CheckCircle, Clock, Keyboard, MagnifyingGlass, Robot, UserCircle } from "@/lib/ui/icons";
+import { ChatCircle, Clock, FolderSimple, Keyboard, MagnifyingGlass, Robot } from "@/lib/ui/icons";
 import type { InboxTab } from "./InboxFilters";
 
 interface Props {
@@ -24,9 +24,9 @@ export function InboxHome({ orgId, name, onQueue, onSearch, onHelp }: Props) {
   const data = counts.isError ? undefined : counts.data;
   const queues = [
     { tab: "unassigned", label: t("Fila"), description: t("Conversas aguardando atendimento humano."), icon: Clock, count: data?.fila ?? data?.unassigned },
-    { tab: "mine", label: t("Minhas"), description: t("Conversas em aberto atribuídas a você."), icon: UserCircle, count: data?.mine },
+    { tab: "mine", label: t("Minhas"), description: t("Conversas em aberto atribuídas a você."), icon: ChatCircle, count: data?.mine },
     { tab: "ai", label: t("Automático"), description: t("Conversas conduzidas pelo atendimento automático."), icon: Robot, count: data?.automatico },
-    { tab: "closed", label: t("Encerrados"), description: t("Histórico de conversas encerradas."), icon: CheckCircle, count: data?.encerrados ?? (data?.closed != null && data?.archived != null ? data.closed + data.archived : undefined) },
+    { tab: "closed", label: t("Encerrados"), description: t("Histórico de conversas encerradas."), icon: FolderSimple, count: data?.encerrados ?? (data?.closed != null && data?.archived != null ? data.closed + data.archived : undefined) },
   ] as const;
 
   return (

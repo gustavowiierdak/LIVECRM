@@ -3546,3 +3546,15 @@ do commit (resposta perdida, processo reiniciado) e retomada pela segunda tentat
 partir da lápide, com o 500 que não diz "nada foi apagado": medida por unidade em
 `lib/tenants/exclusao.test.ts` e `…/delete/route.test.ts`, e o inventário da lápide em
 `tests/invariants/gestao-de-tenants.test.ts`.
+
+## J49 — Ícones do trilho de atendimento (15/10/2026)
+
+| Caso | Expectativa | Medição |
+| --- | --- | --- |
+| J49.1 | No trilho, Fila usa relógio, Minhas usa balão preenchido, Automático usa robô e Encerrados usa pasta, nessa ordem; Todas permanece disponível como quinta aba. | PASS no Chromium contra o dev server local e Supabase local; captura em `evidence/inbox-icones-opa.png`. `tests/unit/inbox-filters-scope.test.tsx` compara os SVGs renderizados e a ordem. |
+| J49.2 | Fila, Minhas e Automático mostram selo azul com zero quando a contagem é zero; Encerrados não vira notificação. | PASS no teste unitário; a captura local mostra os três zeros e a pasta sem selo. |
+
+Limite: a captura foi feita no dev server já em execução, com organização de teste;
+não prova um build fresco nem a publicação na VPS. A prova do teste de ícone foi
+sabotada trocando temporariamente a pasta por relógio: ele falhou e voltou a
+passar após restaurar a pasta.
