@@ -49,3 +49,60 @@ de segurança, recurso de servidor ou rede foi aplicada.
 Não compara desempenho do OPA (aba sem sessão autenticada), redes móveis,
 centenas de atendimentos simultâneos, envio de WhatsApp ou latência do modelo
 de IA/IXC. A comparação de ganho após publicação usa os mesmos critérios acima.
+
+## Resultado publicado
+
+Código e imagem em produção: `f1afaa237d0decb25f5a46597edf2b7abf50e0d4`.
+Build publicado com sucesso: Actions run `38662230846`. Atualização pelo kit,
+com backup do banco, sessões e anexos, checagem de saúde e crons confirmados.
+61 testes focados passaram; typecheck passou. Não foi executada a suíte completa.
+Os testes de regressão do cache e do filtro também falharam quando suas respectivas
+correções foram temporariamente removidas, e passaram após restauração.
+
+Primeiro acesso após deploy: lista 5774 ms, histórico/ficha/contadores 7209 ms.
+Esse acesso aquece a aplicação e fica separado da comparação aquecida.
+
+| Amostra após | Lista pronta (ms) | Histórico pronto (ms) | Histórico + ficha + contadores (ms) |
+| --- | ---: | ---: | ---: |
+| 1 | 2952 | 4389 | 4389 |
+| 2 | 4099 | 5688 | 5688 |
+| 3 | 3506 | 4619 | 4619 |
+| 4 | 3495 | 5061 | 5061 |
+
+Trocas entre os mesmos atendimentos: 1609, 426, 425, 425, 419, 411 ms.
+A primeira entrada no segundo atendimento ainda busca os dados; as demais
+reutilizam os dados em memória e revalidam em segundo plano. Não é uma promessa
+de que a leitura atualizada no servidor terminou em 425 ms.
+
+Trocas entre Fechadas/Todas: 978, 407, 414, 416, 417, 420 ms.
+
+| Mediana | Antes (ms) | Depois (ms) | Leitura |
+| --- | ---: | ---: | --- |
+| Lista após recarregar | 2967,5 | 3500,5 | 18% mais lenta nesta amostra; sem ganho comprovado |
+| Histórico + ficha + contadores | 5001 | 4840 | 3,2% menor; diferença pequena, não conclusiva |
+| Alternância entre conversas | 1653 | 425 | 74,3% menos espera, graças ao cache de retorno |
+| Alternância entre abas | 1142,5 | 416,5 | 63,5% menos espera |
+
+Nenhum erro de console foi observado após as verificações na versão nova.
+
+## Diagnóstico restante
+
+A otimização da navegação não resolve o primeiro carregamento. Prioridades
+para a próxima rodada, com instrumentação de tempos antes de novas mudanças:
+
+1. Medir separadamente renderização autenticada inicial, hidratação e leituras
+   iniciais de lista/detalhe/ficha. Não remover controles de acesso para ganhar tempo.
+2. Avaliar consultas/contadores da Inbox com planos executados sob a mesma RLS.
+   `pg_stat_statements` já estava habilitado: algumas consultas de lista/contagem
+   têm médias históricas de 106–166 ms; uma contagem frequente tem média de 31 ms.
+   São estatísticas acumuladas, não tempos isolados desta navegação. Não havia
+   custo JIT nas três consultas inspecionadas. Não foram criados índices nem
+   alteradas policies com base apenas nesses números.
+3. Avaliar divisão do dicionário de idiomas e de módulos não usados na abertura:
+   o dicionário é importado estaticamente no cliente mesmo em português. Reduzir
+   bytes precisa preservar traduções, SSR e troca de idioma; não foi alterado aqui.
+
+Na amostra adicional do host: 8 CPUs, load de 1,13/1,32/1,32, ~12,5 GiB de RAM
+disponível e zero swap usado. Banco consumiu ~110% de uma CPU num instante;
+isso não caracteriza saturação das 8 CPUs. Disco em 88% antes deste deploy:
+requer planejamento de capacidade/retenção, sem limpeza manual nesta tarefa.
