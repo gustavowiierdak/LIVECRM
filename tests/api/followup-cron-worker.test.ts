@@ -13,6 +13,11 @@ import { audit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runFollowupTick, createSupabaseAdminClient } from "@/lib/followup/engine";
 import { enviarTextoFixoPendente } from "@/lib/followup/enviar-texto-fixo";
+import { acompanharInatividade } from "@/lib/atendimento/inatividade";
+
+vi.mock("@/lib/atendimento/inatividade", () => ({
+  acompanharInatividade: vi.fn(async () => ({ avisos: 0, encerrados: 0, falhas: 0 })),
+}));
 
 vi.mock("@/lib/env", () => ({ env: { INTERNAL_SECRET: "dev-secret", INTERNAL_CRON_SECRET: "" } }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async () => undefined) }));
@@ -65,7 +70,8 @@ describe("GET/POST /api/v1/cron/followup-flow-worker", () => {
     const res = await POST(req({ authorization: "Bearer dev-secret" }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: typeof summary & { confirmation_sweep: unknown } };
-    expect(body.data).toEqual({ ...summary, confirmation_sweep: { ok: true, avisos: 0 } });
+    expect(body.data).toEqual({ ...summary, confirmation_sweep: { ok: true, avisos: 0 }, inactivity_sweep: { avisos: 0, encerrados: 0, falhas: 0 } });
+    expect(acompanharInatividade).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createSupabaseAdminClient)).toHaveBeenCalledWith(expect.anything());
     expect(vi.mocked(createAdminClient)).toHaveBeenCalled();
     expect(vi.mocked(enviarTextoFixoPendente)).toHaveBeenCalled();
@@ -139,7 +145,7 @@ describe("GET/POST /api/v1/cron/followup-flow-worker", () => {
       expect(vi.mocked(runFollowupTick)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(enviarTextoFixoPendente)).toHaveBeenCalled();
       const body = (await res.json()) as { data: Record<string, unknown> };
-      expect(body.data).toEqual({ ...summary, confirmation_sweep: { ok: false, erro } });
+      expect(body.data).toEqual({ ...summary, confirmation_sweep: { ok: false, erro }, inactivity_sweep: { avisos: 0, encerrados: 0, falhas: 0 } });
       expect(logErro).toHaveBeenCalledWith(
         expect.stringContaining("fn_appointment_confirmation_sweep"),
         expect.objectContaining({ error: erro }),
