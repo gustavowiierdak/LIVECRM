@@ -37,6 +37,15 @@ import type { Idioma } from "./idiomas";
 type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>>>;
 
 export const DICIONARIO: Traducoes = {
+  "Consumo deste mês": { es: "Consumo de este mes" },
+  "Não foi possível carregar o consumo de IA.": { es: "No se pudo cargar el consumo de IA." },
+  "Carregando consumo...": { es: "Cargando consumo..." },
+  "Sem limite definido": { es: "Sin límite definido" },
+  "Consumo do limite mensal": { es: "Consumo del límite mensual" },
+  "Valores em US$ · gasto registrado de IA": { es: "Valores en US$ · gasto registrado de IA" },
+  "Total parcial: há chamadas sem preço conhecido. Confira também o painel do provedor.": { es: "Total parcial: hay llamadas sin precio conocido. Consulta también el panel del proveedor." },
+  "Reinicia mensalmente": { es: "Se reinicia mensualmente" },
+  "Ver consumo e configurações de IA": { es: "Ver consumo y configuración de IA" },
   "Início do operador": { es: "Inicio del agente" },
   "Visões do atendimento": { es: "Vistas de atención" },
   "Contagens do seu acesso, sem os filtros da lista. Os atalhos abrem a visão completa.": {

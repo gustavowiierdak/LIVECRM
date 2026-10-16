@@ -22,6 +22,7 @@ export {
   Sparkle,
   ShieldCheck,
   Gear,
+  Coins,
   House,
   // admin platform
   Buildings,

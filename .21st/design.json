@@ -21,6 +21,11 @@
   },
   "decisions": [
     {
+      "date": "2026-10-16",
+      "scope": "AI hub monthly consumption",
+      "decision": "Compact reference-inspired monthly usage card using existing Card, Button, canonical icons and budget query. Preserve USD denomination, show partial pricing, unknown/loading/error states and clamp only the visual progress bar. Gear links to existing budget settings. No fabricated BRL conversion, new dependency or automatic budget policy."
+    },
+    {
       "date": "2026-10-15",
       "scope": "Customer inspector service details",
       "decision": "Present protocol, start date, channel, assignee and sector in one consistently aligned two-column definition list. Keep internal observations clearly named but remove duplicate privacy copy and the divider immediately above them. Retain all data sources and actions; this is a compact presentation-only refinement for desktop and mobile contact sheet."

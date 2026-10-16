@@ -15,6 +15,7 @@ import { hubSections, type NavGroupId } from "@/lib/navigation/registry";
 import { BookOpen, Lightbulb, ListChecks, Warning } from "@/lib/ui/icons";
 
 interface NavHubProps {
+  summary?: React.ReactNode;
   interfaceSettings?: InterfaceSettings;
   /**
    * Módulos opcionais ligados na instalação. OBRIGATÓRIO: quando era opcional,
@@ -73,6 +74,7 @@ function slug(texto: string): string {
 }
 
 export function NavHub({
+  summary,
   group,
   isPlatformAdmin,
   role,
@@ -93,6 +95,8 @@ export function NavHub({
         <h1 className="text-2xl font-semibold tracking-tight">{traduzir(title, locale)}</h1>
         {subtitle && <p className="text-sm text-muted-foreground">{traduzir(subtitle, locale)}</p>}
       </header>
+
+      {summary}
 
       {secoes.map(({ section, items }) => (
         <section

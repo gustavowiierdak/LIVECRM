@@ -17,6 +17,7 @@
   ],
   "mainPath": ["card", "patch", "budgets", "credentials", "decidir", "runmodel", "handoff"],
   "nodes": [
+    { "id": "monthlySummary", "lane": "humano", "col": 0, "type": "frontend", "label": "MonthlyUsageCard (/app/ai)", "sublabel": "manager+ · resumo USD do mês · atualização 60s visível · falha e total parcial explícitos" },
     { "id": "card", "lane": "humano", "col": 1, "type": "frontend", "label": "BudgetCard (/app/ai/usage)", "sublabel": "radio off → avisar → bloquear · faixa do kill switch · ressalva de medição" },
     { "id": "hook", "lane": "humano", "col": 2, "type": "frontend", "label": "useAiBudget / useUpdateBudget", "sublabel": "GET + PATCH; sem action_at_100pct (o produto nunca o honrou)" },
     { "id": "inbox", "lane": "humano", "col": 3, "type": "frontend", "label": "Central de avisos (/app/ai/inbox)", "sublabel": "budget_warning (warn) · budget_exceeded (critical) · handoff" },
@@ -53,6 +54,8 @@
     { "id": "retrata", "lane": "volta", "col": 1, "type": "service", "label": "retratarAvisos + CTE retrata", "sublabel": "gasto abaixo do limiar, teto apagado ou afrouxamento pela tela" }
   ],
   "edges": [
+    { "from": "hook", "to": "monthlySummary", "label": "mesma medição GET, cache compartilhado" },
+    { "from": "monthlySummary", "to": "card", "label": "engrenagem → detalhes e configuração existente" },
     { "id": "e1", "from": "card", "to": "hook", "label": "escolher o degrau · digitar o teto · marcar \"começar agora\"" },
     { "id": "e2", "from": "hook", "to": "patch", "label": "PATCH { enforcement_mode?, monthly_limit_cents?, alarm_threshold_pct?, confirmar_imediato? }" },
     { "id": "e3", "from": "hook", "to": "get", "label": "GET a cada 30s (staleTime)" },

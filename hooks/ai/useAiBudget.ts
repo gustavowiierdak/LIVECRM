@@ -27,7 +27,7 @@ interface SingleResponse {
 
 export const aiBudgetQueryKey = ["ai", "budget"] as const;
 
-export function useAiBudget(opts?: { initialData?: BudgetStatus }) {
+export function useAiBudget(opts?: { initialData?: BudgetStatus; refetchInterval?: number }) {
   return useQuery({
     queryKey: aiBudgetQueryKey,
     queryFn: async () => {
@@ -41,6 +41,7 @@ export function useAiBudget(opts?: { initialData?: BudgetStatus }) {
     },
     initialData: opts?.initialData,
     staleTime: 30_000,
+    refetchInterval: opts?.refetchInterval,
   });
 }
 
