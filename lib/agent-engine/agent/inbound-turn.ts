@@ -4,6 +4,7 @@ import { TIPOS_DE_CASO, TIPOS_DE_CASO_PARA_A_IA } from "@/lib/ai/case-copy";
 import { DEFAULT_CHANNEL_PROVIDER } from "@/lib/channels/capabilities";
 import { applyPreviewPolicy, previewGateContext, type TurnPreview } from "./preview";
 import { claimOfJob } from "../queue/claim";
+import { provedorSemSaldo } from "../queue/espera-de-saldo";
 import { currentExecutionBoundary, guardServiceEffect } from "@/lib/atendimento/fronteira-server";
 /**
  * Loop do agente v0 — handler do job `inbound_turn` (F2-09; blueprint 8.8).
@@ -719,6 +720,22 @@ export const RESUMO_DO_HANDOFF_POR_ORCAMENTO =
 /** Título do item da Central que este handoff abre — rótulo visível, logo constante. */
 export const TITULO_DO_HANDOFF_POR_ORCAMENTO = "Teto de gasto com IA atingido — assumir a conversa";
 
+const RESUMO_DO_HANDOFF_SEM_SALDO =
+  "O provedor de IA recusou o atendimento por falta de créditos. O cliente NÃO pediu um atendente; " +
+  "a resposta automática não foi enviada. Assuma a conversa e continue a partir da última mensagem. " +
+  "A administração precisa regularizar os créditos do provedor antes de devolver à IA.";
+const TITULO_DO_HANDOFF_SEM_SALDO = "IA sem créditos — assumir atendimento";
+
+/** A fila pode encerrar o job: a conversa já foi entregue a uma pessoa. */
+export class SaldoDoProvedorEncaminhadoError extends Error {
+  readonly terminal = true;
+
+  constructor() {
+    super("provedor de IA sem créditos; atendimento encaminhado à fila humana");
+    this.name = "SaldoDoProvedorEncaminhadoError";
+  }
+}
+
 /**
  * ORÇAMENTO ESGOTADO NÃO PODE VIRAR SILÊNCIO PARA O LEAD.
  *
@@ -793,7 +810,9 @@ export async function comHandoffSeOrcamentoAcabar<T>(
      * então não gasta um token — o que aqui não é detalhe, é o único jeito de
      * ele existir: o motivo do desvio é justamente não haver mais orçamento.
      */
-    avisarLead: () => Promise<DesfechoDoAviso>;
+    avisarLead: (motivo?: "orcamento_de_ia" | "sem_saldo_provedor") => Promise<DesfechoDoAviso>;
+    /** Assunto conhecido antes do erro, para preservar a fila especializada. */
+    assunto?: string;
     log: Logger;
   },
   chamada: () => Promise<T>,
@@ -801,7 +820,8 @@ export async function comHandoffSeOrcamentoAcabar<T>(
   try {
     return await chamada();
   } catch (err) {
-    if (!(err instanceof LlmBudgetExceededError)) throw err;
+    const semSaldo = provedorSemSaldo(err) !== null;
+    if (!(err instanceof LlmBudgetExceededError) && !semSaldo) throw err;
     const doCheckpoint = await ctx.briefingDoCheckpoint();
     // AVISA antes de silenciar — ver a nota de ORDEM no gatilho determinístico:
     // `performHumanHandoff` arma a trava que o gate de envio lê, então a única
@@ -815,9 +835,9 @@ export async function comHandoffSeOrcamentoAcabar<T>(
     // passagem"), que reprovava a versão anterior desta linha.
     let aviso: DesfechoDoAviso;
     try {
-      aviso = await ctx.avisarLead();
+      aviso = await ctx.avisarLead(semSaldo ? "sem_saldo_provedor" : "orcamento_de_ia");
     } catch (erroDoAviso) {
-      ctx.log.warn("aviso ao lead falhou antes da passagem por orçamento", {
+      ctx.log.warn("aviso ao lead falhou antes da passagem por indisponibilidade da IA", {
         error:
           erroDoAviso instanceof Error ? erroDoAviso.message.slice(0, 200) : "erro desconhecido",
       });
@@ -829,23 +849,30 @@ export async function comHandoffSeOrcamentoAcabar<T>(
     // aqui, e é o ponto: o motivo do desvio é justamente não haver orçamento.
     const briefing: BriefingDaPassagem = {
       ...doCheckpoint,
-      body: `${RESUMO_DO_HANDOFF_POR_ORCAMENTO}\n\n${doCheckpoint.body}`,
+      body: `${semSaldo ? RESUMO_DO_HANDOFF_SEM_SALDO : RESUMO_DO_HANDOFF_POR_ORCAMENTO}\n\n${doCheckpoint.body}`,
     };
+    const destino = semSaldo
+      ? await destinoDoLimiteDaAutomacao(ctx.pool, ctx.tenantId, ctx.conversationId, ctx.assunto)
+      : {};
     await performHumanHandoff(
       ctx.pool,
       { tenantId: ctx.tenantId, leadId: ctx.leadId, conversationId: ctx.conversationId },
       {
-        reason: HANDOFF_REASON_ORCAMENTO,
+        reason: semSaldo ? "provedor_ia_sem_creditos" : HANDOFF_REASON_ORCAMENTO,
+        ...("setorId" in destino && destino.setorId ? { setorId: destino.setorId } : {}),
         conversationSummary: briefing.body,
-        inboxTitle: TITULO_DO_HANDOFF_POR_ORCAMENTO,
-        passagem: { origem: "teto_de_gasto", motivoCodigo: "orcamento_de_ia", briefing },
+        inboxTitle: semSaldo ? TITULO_DO_HANDOFF_SEM_SALDO : TITULO_DO_HANDOFF_POR_ORCAMENTO,
+        ...(!semSaldo ? { passagem: { origem: "teto_de_gasto" as const, motivoCodigo: "orcamento_de_ia" as const, briefing } } : {}),
         avisoAoLead: aviso,
         log: ctx.log,
       },
     );
-    ctx.log.warn("turno interrompido pelo teto de gasto — conversa devolvida à fila humana", {
+    ctx.log.warn(semSaldo
+      ? "provedor de IA sem créditos — conversa devolvida à fila humana"
+      : "turno interrompido pelo teto de gasto — conversa devolvida à fila humana", {
       lead_avisado: aviso.avisado,
     });
+    if (semSaldo) throw new SaldoDoProvedorEncaminhadoError();
     throw err;
   }
 }
@@ -1862,6 +1889,57 @@ export async function deteccoesDeterministicasDoAssistido(
  * caminho para o turno rodar desescoltado, e a guarda de artefato
  * (`tests/unit/handoff-por-orcamento.test.ts`) conta exatamente um call site.
  */
+function contextoDeHandoffDoJob(
+  deps: InboundTurnDeps,
+  job: JobRow,
+  pool: pg.Pool,
+  input: Pick<AgentTurnInput, "conversationId" | "channelSessionId" | "resolvedAgent">,
+  leadId: string,
+): Parameters<typeof comHandoffSeOrcamentoAcabar>[0] {
+  const log = withFields(deps.log, {
+    job_id: job.id,
+    tenant_id: job.organization_id,
+    lead_id: leadId,
+  });
+  const nomeAgente = input.resolvedAgent?.config?.agentName?.toLowerCase() ?? "";
+  return {
+    pool,
+    tenantId: job.organization_id,
+    leadId,
+    conversationId: input.conversationId,
+    briefingDoCheckpoint: () =>
+      briefingDoCheckpointDuravel(pool, job.organization_id, leadId, log),
+    avisarLead: (motivo) =>
+      avisarLeadLendoOContato(
+        pool,
+        {
+          tenantId: job.organization_id,
+          leadId,
+          conversationId: input.conversationId,
+          channelSessionId: input.channelSessionId,
+          jobId: job.id,
+        },
+        {
+          motivo: motivo ?? "orcamento_de_ia",
+          channel: (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(pool),
+          origem: tipoDeEnvio(eTurnoDeResposta(job)),
+          now: deps.clock?.() ?? new Date(),
+          log,
+          ...(deps.knobs.disclosureMode !== undefined
+            ? { disclosureMode: deps.knobs.disclosureMode }
+            : {}),
+          ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
+        },
+      ),
+    assunto: nomeAgente.includes("suporte") || nomeAgente.includes("técnic")
+      ? "problema"
+      : nomeAgente.includes("cobran") || nomeAgente.includes("financeir")
+        ? "financeiro"
+        : input.resolvedAgent?.intentName ?? undefined,
+    log,
+  };
+}
+
 export async function runAgentTurn(
   deps: InboundTurnDeps,
   job: JobRow,
@@ -1873,51 +1951,8 @@ export async function runAgentTurn(
   if (leadIdDoJob === null) {
     throw new Error("job de turno sem contact_id — o CHECK da fila deveria impedir");
   }
-  const logDaEscolta = withFields(deps.log, {
-    job_id: job.id,
-    tenant_id: job.organization_id,
-    lead_id: leadIdDoJob,
-  });
   await comHandoffSeOrcamentoAcabar(
-    {
-      pool,
-      tenantId: job.organization_id,
-      leadId: leadIdDoJob,
-      conversationId: input.conversationId,
-      briefingDoCheckpoint: () =>
-        briefingDoCheckpointDuravel(pool, job.organization_id, leadIdDoJob, logDaEscolta),
-      // O canal nasce DENTRO da closure: instanciá-lo aqui faria todo turno feliz
-      // pagar por um adapter que só o caminho de erro usa. Sem `agentActorId` de
-      // propósito — quando o teto estoura antes da primeira chamada, não houve
-      // agente resolvido para creditar.
-      avisarLead: () =>
-        avisarLeadLendoOContato(
-          pool,
-          {
-            tenantId: job.organization_id,
-            leadId: leadIdDoJob,
-            conversationId: input.conversationId,
-            channelSessionId: input.channelSessionId,
-            jobId: job.id,
-          },
-          {
-            motivo: "orcamento_de_ia",
-            channel: (deps.channel ?? ((p: pg.Pool) => new WahaChannelAdapter(p, deps.crmCfg)))(
-              pool,
-            ),
-            // #2112: a escolta roda no turno INTEIRO, inclusive num follow-up —
-            // o tipo do turno é o que diz qual janela o gate do aviso avalia.
-            origem: tipoDeEnvio(eTurnoDeResposta(job)),
-            now: deps.clock?.() ?? new Date(),
-            log: logDaEscolta,
-            ...(deps.knobs.disclosureMode !== undefined
-              ? { disclosureMode: deps.knobs.disclosureMode }
-              : {}),
-            ...(deps.sleep !== undefined ? { sleep: deps.sleep } : {}),
-          },
-        ),
-      log: logDaEscolta,
-    },
+    contextoDeHandoffDoJob(deps, job, pool, input, leadIdDoJob),
     () => executarTurnoDoAgente(deps, job, pool, ctx, input),
   );
 }
@@ -4298,6 +4333,7 @@ async function executarTurnoDoAgente(
   // role/scope da ponte nativa; envio e handoff do catálogo são bloqueados —
   // ver edge/crm/mcp-tools.ts). As 8 tools do engine têm precedência de nome.
   let mcpCleanup: (() => Promise<void>) | null = null;
+  let indicouDigitando = false;
   try {
     if (agentConfig !== null && agentConfig.toolIds.length > 0) {
       try {
@@ -4789,6 +4825,7 @@ async function executarTurnoDoAgente(
     // inteira do modelo sem indicador nenhum. Só em turno que fala com o lead:
     // turno de retaguarda não abre o WhatsApp de ninguém.
     if (channel?.signalTyping && turnoVaiFalarComOLead(liveJob())) {
+      indicouDigitando = true;
       acenderDigitando(
         () => channel.signalTyping!({ tenantId, conversationId: input.conversationId }),
         runLog,
@@ -5601,6 +5638,15 @@ async function executarTurnoDoAgente(
       model: turn.model,
     });
   } finally {
+    if (indicouDigitando && channel?.signalPaused) {
+      try {
+        await channel.signalPaused({ tenantId, conversationId: input.conversationId });
+      } catch (err) {
+        runLog.warn('não consegui apagar o indicador de digitando', {
+          error: err instanceof Error ? err.name : 'unknown',
+        });
+      }
+    }
     await mcpCleanup?.();
   }
 }
@@ -5701,19 +5747,34 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
         error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
       });
     }
-    const resolvedAgent = await resolveConversationTurn(
-      pool,
-      deps.llmCfg,
-      {
-        tenantId: job.organization_id,
-        leadId: job.contact_id,
-        jobId: job.id,
-        conversationId: payload.conversation_id,
-        channelSessionId: payload.channel_session_id,
-        inbound: true,
-      },
-      { log: deps.log, jev: deps.jev },
-    );
+    let resolvedAgent: TurnAgentResolution;
+    try {
+      resolvedAgent = await resolveConversationTurn(
+        pool,
+        deps.llmCfg,
+        {
+          tenantId: job.organization_id,
+          leadId: job.contact_id,
+          jobId: job.id,
+          conversationId: payload.conversation_id,
+          channelSessionId: payload.channel_session_id,
+          inbound: true,
+        },
+        { log: deps.log, jev: deps.jev },
+      );
+    } catch (err) {
+      if (provedorSemSaldo(err) === null) throw err;
+      // O classificador pode falhar ANTES de runAgentTurn. Ele precisa da mesma
+      // saída humana que o modelo principal, sem deixar o cliente no automático.
+      await comHandoffSeOrcamentoAcabar(
+        contextoDeHandoffDoJob(deps, job, pool, {
+          conversationId: payload.conversation_id,
+          channelSessionId: payload.channel_session_id,
+        }, job.contact_id),
+        async () => { throw err; },
+      );
+      throw err;
+    }
     const operationAgent = resolvedAgent.config;
     if (operationAgent?.operationMode === "assisted") {
       // As travas do assistido (handoff e elegibilidade) já rodaram acima, antes

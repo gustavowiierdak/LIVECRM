@@ -472,7 +472,7 @@ export async function startWorker(
       // Conta do provedor sem crédito: a resposta espera a recarga, sem gastar
       // tentativa, até o teto de `espera-de-saldo.ts` — e a Central diz a causa.
       // Passado o teto, segue o caminho comum abaixo (`failJob` → `job_dead`).
-      if (deveEsperarSaldo(job, err)) {
+      if (!ehVetoPermanenteDeNegocio(err) && deveEsperarSaldo(job, err)) {
         log.warn("provedor de IA sem saldo — resposta esperando a recarga", {
           job_id: job.id,
           kind: job.kind,

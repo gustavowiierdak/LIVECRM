@@ -67,6 +67,21 @@ export async function sinalizarDigitando(
   supabase: SupabaseClient,
   input: SinalizarDigitandoInput,
 ): Promise<void> {
+  await sinalizarPresenca(supabase, input, "typing");
+}
+
+export async function sinalizarPausa(
+  supabase: SupabaseClient,
+  input: SinalizarDigitandoInput,
+): Promise<void> {
+  await sinalizarPresenca(supabase, input, "paused");
+}
+
+async function sinalizarPresenca(
+  supabase: SupabaseClient,
+  input: SinalizarDigitandoInput,
+  estado: "typing" | "paused",
+): Promise<void> {
   const { data } = await supabase
     .from("conversations")
     .select(
@@ -88,7 +103,7 @@ export async function sinalizarDigitando(
   const adapter = getAdapter(sessao.provider ?? DEFAULT_CHANNEL_PROVIDER);
   // Testa a presença do método — nunca pergunta QUAL provider é (invariante 1
   // da doutrina de restrição de canal).
-  if (!adapter.signalTyping) return;
+  if (estado === "typing" ? !adapter.signalTyping : !adapter.signalPaused) return;
 
   const recipient = adapter.resolveRecipient({
     isGroup: conversa.is_group,
@@ -99,12 +114,14 @@ export async function sinalizarDigitando(
   });
   if (!recipient) return;
 
-  await adapter.signalTyping({
+  const endereco = {
     organizationId: input.organizationId,
     sessionRef: resolveSessionRef(sessao),
     recipient,
     inboundExternalId: await ultimaMensagemDoCliente(supabase, input),
-  });
+  };
+  if (estado === "typing") await adapter.signalTyping?.(endereco);
+  else await adapter.signalPaused?.(endereco);
 }
 
 /**

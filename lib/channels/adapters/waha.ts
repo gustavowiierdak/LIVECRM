@@ -165,6 +165,12 @@ export const wahaAdapter: ChannelAdapter = {
     await client.setPresence(input.sessionRef, input.recipient, "typing");
   },
 
+  async signalPaused(input: { sessionRef: string; recipient: string }): Promise<void> {
+    const client = getWahaClient();
+    if (!client) return;
+    await client.setPresence(input.sessionRef, input.recipient, "paused");
+  },
+
   async editMessage(input: {
     sessionRef: string;
     recipient: string | null;

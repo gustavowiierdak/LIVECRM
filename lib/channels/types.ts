@@ -368,6 +368,13 @@ export interface ChannelAdapter {
     inboundExternalId: string | null;
   }): Promise<void>;
 
+  /** Apaga o indicador quando o turno termina sem resposta. Canal sem presença ignora. */
+  signalPaused?(input: ChannelTenantScope & {
+    sessionRef: string;
+    recipient: string;
+    inboundExternalId: string | null;
+  }): Promise<void>;
+
   /**
    * Troca o texto de uma mensagem que o próprio atendente já enviou.
    *

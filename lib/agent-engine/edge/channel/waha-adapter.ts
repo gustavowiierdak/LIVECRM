@@ -21,7 +21,7 @@ import type {
   ChannelSessionHealth,
 } from '../../channel-adapter';
 
-import { sinalizarDigitando } from '@/lib/messaging/presenca';
+import { sinalizarDigitando, sinalizarPausa } from '@/lib/messaging/presenca';
 import { ehSessaoDeAtendimentoWeb } from '@/lib/channels';
 
 import { CrmTransportError, type CrmEdgeConfig } from '../crm/mcp-client';
@@ -92,6 +92,20 @@ export class WahaChannelAdapter implements ChannelAdapter {
     );
     if (ehSessaoDeAtendimentoWeb(rows[0]?.provider)) return;
     await sinalizarDigitando(this.crmCfg.supabase, {
+      organizationId: input.tenantId,
+      conversationId: input.conversationId,
+    });
+  }
+
+  async signalPaused(input: { tenantId: string; conversationId: string }): Promise<void> {
+    const { rows } = await this.db.query<{ provider: string }>(
+      `select s.provider from conversations c
+       join channel_sessions s on s.id=c.channel_session_id and s.organization_id=c.organization_id
+       where c.organization_id=$1 and c.id=$2`,
+      [input.tenantId, input.conversationId],
+    );
+    if (ehSessaoDeAtendimentoWeb(rows[0]?.provider)) return;
+    await sinalizarPausa(this.crmCfg.supabase, {
       organizationId: input.tenantId,
       conversationId: input.conversationId,
     });

@@ -70,6 +70,8 @@ export type MotivoDoAviso =
   | "suspeita_de_opt_out"
   /** O teto de gasto com IA parou o atendimento automático. */
   | "orcamento_de_ia"
+  /** O provedor recusou novas chamadas por falta de créditos. */
+  | "sem_saldo_provedor"
   /** O sistema decidiu escalar (sentimento, baixa confiança, etapa, termo jurídico…). */
   | "outro";
 
@@ -81,6 +83,7 @@ export function motivoDoAviso(reason: string): MotivoDoAviso {
   if (reason === "requested_human") return "pediu_humano";
   if (reason === "suspected_optout") return "suspeita_de_opt_out";
   if (reason === "orcamento_de_ia") return "orcamento_de_ia";
+  if (reason === "provedor_ia_sem_creditos") return "sem_saldo_provedor";
   return "outro";
 }
 
@@ -126,6 +129,11 @@ const ABERTURAS: Record<MotivoDoAviso, readonly string[]> = {
     "Vou passar seu atendimento para uma pessoa da equipe.",
     "A partir daqui quem continua com você é alguém do time.",
     "Estou transferindo esta conversa para um atendente humano.",
+  ],
+  sem_saldo_provedor: [
+    "Não consegui concluir sua solicitação automaticamente. Vou encaminhá-la à equipe.",
+    "Vou pedir que uma pessoa continue este atendimento com você.",
+    "Para você não ficar sem resposta, passei a conversa para nossa equipe.",
   ],
   outro: [
     "Esse caso é melhor resolvido por uma pessoa. Já acionei o time.",
@@ -181,6 +189,11 @@ const ABERTURAS_ES: Record<MotivoDoAviso, readonly string[]> = {
     "Voy a pasar tu atención a una persona del equipo.",
     "A partir de aquí te atiende alguien del equipo.",
     "Estoy transfiriendo esta conversación a una persona del equipo.",
+  ],
+  sem_saldo_provedor: [
+    "No pude completar tu consulta automáticamente. Voy a derivarla al equipo.",
+    "Pediré a una persona que continúe este caso contigo.",
+    "Para que no te quedes sin respuesta, pasé la conversación a nuestro equipo.",
   ],
   outro: [
     "Esto lo resuelve mejor una persona del equipo. Ya les avisé.",

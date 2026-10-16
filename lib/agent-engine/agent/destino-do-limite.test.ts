@@ -19,6 +19,8 @@ describe("destino humano quando a IA não pode continuar", () => {
     ["problema", "suporte-tecnico"],
     ["acesso", "suporte-tecnico"],
     ["outro", "sac"],
+    ["Suporte Técnico", "suporte-tecnico"],
+    ["Cobrança", "cobranca"],
   ])("usa %s para localizar a fila %s quando a conversa não tem setor", async (kind, slug) => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
@@ -27,6 +29,15 @@ describe("destino humano quando a IA não pode continuar", () => {
       setorId: "setor", setorNome: "Fila",
     });
     expect(query.mock.calls[1]?.[1]).toEqual([org, slug]);
+  });
+
+  it("usa a intenção ativa quando o classificador ficou sem saldo antes de escolher agente", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: null, nome: null, active_intent: "suporte" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "setor-suporte", nome: "Suporte Técnico" }] });
+    expect(await destinoDoLimiteDaAutomacao({ query } as never, org, conversa, undefined))
+      .toEqual({ setorId: "setor-suporte", setorNome: "Suporte Técnico" });
+    expect(query.mock.calls[1]?.[1]).toEqual([org, "suporte-tecnico"]);
   });
 
   it("ainda encaminha à fila geral se o setor específico não estiver configurado", async () => {

@@ -20,7 +20,7 @@ vi.mock("@/lib/waha/client", async (original) => ({
 }));
 
 import { getAdapter } from "@/lib/channels";
-import { sinalizarDigitando } from "@/lib/messaging/presenca";
+import { sinalizarDigitando, sinalizarPausa } from "@/lib/messaging/presenca";
 
 interface LinhaDeConversa {
   is_group: boolean;
@@ -94,6 +94,11 @@ beforeEach(() => {
 });
 
 describe("sinalizarDigitando", () => {
+  it("apaga o indicador ao terminar o turno, no mesmo canal e endereço", async () => {
+    await sinalizarPausa(supabaseDeTeste(), { organizationId: "org-1", conversationId: "conv-1" });
+    expect(setPresence).toHaveBeenCalledWith("sessao-do-sitio", "5527999998888@c.us", "paused");
+    expect(filtros.conversations).toContainEqual(["organization_id", "org-1"]);
+  });
   it("acende 'digitando' no número da sessão e no endereço do contato", async () => {
     await sinalizarDigitando(supabaseDeTeste(), { organizationId: "org-1", conversationId: "conv-1" });
 
