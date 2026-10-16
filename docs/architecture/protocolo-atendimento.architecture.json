@@ -82,6 +82,6 @@
     { "id": "p12", "from": "falha", "to": "ficha" }
   ],
   "contracts": {
-    "scope": "Núcleo; sem configuração nova, sem mudança de layout e sem avisos retroativos no backfill. Os avisos são sistema/automação, nunca prosa gerada por IA. Repetição usa a mesma identidade de mensagem; avisos de episódio ou responsável obsoletos são descartados. A restrição de janela do transporte não é contornada: falha vai ao dreno e à Central, sem inventar template."
+    "scope": "Núcleo: avisos de sistema/automação, nunca prosa gerada por IA. Inatividade é opt-in por organização em Configurações / Atendimento. Repetição usa a mesma identidade; avisos de episódio, responsável ou silêncio obsoletos são descartados. Encerramento exige recibo e respeita o prazo informado. A restrição de janela do transporte não é contornada: falha vai ao dreno e à Central, sem inventar template."
   }
 }

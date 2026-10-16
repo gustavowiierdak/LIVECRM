@@ -8229,6 +8229,26 @@ export const DICIONARIO: Traducoes = {
   },
   "Ler o log de auditoria": { es: "Leer el registro de auditoría" },
   // ─── Configurações: Distribuição de atendimento ───
+  "Encerrar atendimento da IA por falta de resposta": {
+    es: "Cerrar la atención de la IA por falta de respuesta",
+  },
+  "Só vale enquanto o cliente está com a IA. Ela pergunta se precisa de mais ajuda antes de encerrar. Uma resposta do cliente reinicia a contagem; fila humana e mensagens sem resposta da IA não são encerradas.":
+    {
+      es: "Solo se aplica mientras el cliente está con la IA. Pregunta si necesita más ayuda antes de cerrar. Una respuesta del cliente reinicia la cuenta; no se cierran la cola humana ni los mensajes sin respuesta de la IA.",
+    },
+  "Ativar lembrete e encerramento por inatividade": {
+    es: "Activar recordatorio y cierre por inactividad",
+  },
+  "Perguntar após quantos minutos sem resposta?": {
+    es: "¿Después de cuántos minutos sin respuesta se debe preguntar?",
+  },
+  "Aguardar mais quantos minutos depois do lembrete?": {
+    es: "¿Cuántos minutos más se debe esperar después del recordatorio?",
+  },
+  "O segundo prazo só começa quando o lembrete é enviado. Ao encerrar, o cliente recebe o motivo e o protocolo. Silêncio não é confirmação de problema resolvido.":
+    {
+      es: "El segundo plazo solo comienza cuando se envía el recordatorio. Al cerrar, el cliente recibe el motivo y el número de atención. El silencio no confirma que el problema esté resuelto.",
+    },
   "Distribuição de atendimento salva.": { es: "Distribución de atención guardada." },
   "Não consegui salvar.": { es: "No pude guardar." },
   "Quem recebe o cliente novo": { es: "Quién recibe al cliente nuevo" },
