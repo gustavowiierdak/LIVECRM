@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { PRAZO_MAX_MINUTOS, PRAZO_MIN_MINUTOS } from "@/lib/escalacao/devolucao-automatica";
 import { fusoValido } from "@/lib/tempo/fusos";
+import { aiInactivitySchema } from "@/lib/atendimento/inatividade-schema";
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -29,6 +30,7 @@ export type RoutingMode = (typeof ROUTING_MODES)[number];
  * derivado de G1-06b). Defaults dos knobs = spec 13 §3.5.
  */
 export const routingConfigSchema = z.object({
+  ai_inactivity: aiInactivitySchema.nullable().default(null),
   mode: z.enum(ROUTING_MODES).default("manual"),
   max_retries: z.number().int().min(0).max(20).default(5),
   backoff_seconds: z.number().int().min(1).max(3600).default(60),
@@ -118,6 +120,7 @@ export type VisibilityModeInput = (typeof VISIBILITY_MODES)[number];
  * org perder a restrição por descuido de um cliente antigo.
  */
 export const atendimentoConfigPatchSchema = routingConfigSchema.extend({
+  ai_inactivity: aiInactivitySchema.nullable().optional(),
   visibility_mode: z.enum(VISIBILITY_MODES).optional(),
   /**
    * Opcional pela MESMA razão de `visibility_mode`: a rota preserva o prazo em
@@ -161,6 +164,7 @@ export function mesclarSettingsDeAtendimento(
   input: AtendimentoConfigPatch,
 ): { settings: Record<string, unknown>; routing: RoutingConfig } {
   const {
+    ai_inactivity,
     visibility_mode,
     handoff_return_after_minutes,
     conversation_stays_with_attendant,
@@ -172,6 +176,7 @@ export function mesclarSettingsDeAtendimento(
     .parse(atual.routing ?? {});
   const routing: RoutingConfig = {
     ...routingInput,
+    ai_inactivity: ai_inactivity !== undefined ? ai_inactivity : routingAtual.ai_inactivity,
     handoff_return_after_minutes:
       handoff_return_after_minutes !== undefined
         ? handoff_return_after_minutes

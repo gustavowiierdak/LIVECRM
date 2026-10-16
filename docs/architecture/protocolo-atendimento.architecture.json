@@ -12,6 +12,21 @@
   ],
   "nodes": [
     {
+      "id": "inatividade",
+      "lane": "db",
+      "label": "fn_atendimento_inatividade_tick: silêncio, recibo do lembrete, revisão e lock"
+    },
+    {
+      "id": "relogio",
+      "lane": "app",
+      "label": "followup-flow-worker: acompanharInatividade por organização"
+    },
+    {
+      "id": "config",
+      "lane": "ui",
+      "label": "Configurações / Atendimento: ai_inactivity, desligado por padrão"
+    },
+    {
       "id": "estado",
       "lane": "db",
       "label": "conversations: criação, assunção, encerramento e reabertura"
@@ -47,6 +62,12 @@
     }
   ],
   "edges": [
+    { "id": "i1", "from": "config", "to": "relogio" },
+    { "id": "i2", "from": "relogio", "to": "inatividade" },
+    { "id": "i3", "from": "inatividade", "to": "outbox" },
+    { "id": "i4", "from": "inatividade", "to": "web" },
+    { "id": "i5", "from": "envio", "to": "inatividade" },
+    { "id": "i6", "from": "inatividade", "to": "estado" },
     { "id": "p1", "from": "estado", "to": "protocolo" },
     { "id": "p2", "from": "protocolo", "to": "ficha" },
     { "id": "p3", "from": "estado", "to": "web" },

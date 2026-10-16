@@ -39,4 +39,12 @@ export async function assertAttendanceNotice(
     (notice.kind === "assumido" && notice.assigned_to_user_id !== conv.assigned_to_user_id)
   )
     throw new StaleServiceBoundaryError();
+  if (notice.kind === "inatividade") {
+    const { data: valid, error: validityError } = await admin.rpc(
+      "fn_atendimento_inatividade_aviso_valido",
+      { p_org: org, p_notice: context.noticeId },
+    );
+    if (validityError) throw validityError;
+    if (valid !== true) throw new StaleServiceBoundaryError();
+  }
 }

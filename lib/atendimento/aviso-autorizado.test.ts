@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertAttendanceNotice } from "./aviso-autorizado";
 
-function client(overrides: Record<string, unknown> = {}) {
+function client(overrides: Record<string, unknown> = {}, kind = "encerrado", valid = true) {
   const from = vi.fn((table: string) => {
     const q = {
       select: () => q,
@@ -13,7 +13,7 @@ function client(overrides: Record<string, unknown> = {}) {
           table === "attendance_notices"
             ? {
                 protocol: "p-1",
-                kind: "encerrado",
+                kind,
                 body: "Seu atendimento foi encerrado. Protocolo: p-1.",
                 assigned_to_user_id: null,
               }
@@ -29,8 +29,23 @@ function client(overrides: Record<string, unknown> = {}) {
     };
     return q;
   });
-  return { from } as unknown as SupabaseClient;
+  return {
+    from,
+    rpc: vi.fn(async () => ({ data: valid, error: null })),
+  } as unknown as SupabaseClient;
 }
+it("revalida o silêncio no transporte e recusa aviso após resposta ou handoff", async () => {
+  await expect(
+    assertAttendanceNotice(client({ status: "open" }, "inatividade", true), "org", "conv", body, {
+      noticeId: "notice",
+    }),
+  ).resolves.toBeUndefined();
+  await expect(
+    assertAttendanceNotice(client({ status: "open" }, "inatividade", false), "org", "conv", body, {
+      noticeId: "notice",
+    }),
+  ).rejects.toThrow();
+});
 const body = "Seu atendimento foi encerrado. Protocolo: p-1.";
 it("autoriza só o texto registrado da finalização, mesmo com conversa fechada", async () => {
   await expect(

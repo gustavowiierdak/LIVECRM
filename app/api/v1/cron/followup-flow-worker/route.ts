@@ -36,6 +36,7 @@ import { createSupabaseAdminClient, runFollowupTick, type FollowupJobRequest } f
 import { createSupabaseFollowupGateDb } from "@/lib/followup/agent-followup-gate";
 import { enviarTextoFixoPendente } from "@/lib/followup/enviar-texto-fixo";
 import { encerrarRoteirosVencidos } from "@/lib/followup/atendimento";
+import { acompanharInatividade } from "@/lib/atendimento/inatividade";
 import { createSupabaseSilenceSweepDb, runSilenceSweep } from "@/lib/followup/silence-sweep";
 import { autorizaCron } from "@/lib/auth/cron-auth";
 
@@ -74,6 +75,13 @@ async function handle(req: NextRequest): Promise<Response> {
   // isolada aqui (log + Sentry + trilha) e volta na resposta em
   // `confirmation_sweep`, sem esconder — mas sem derrubar o tick.
   const confirmationSweep = await varrerConfirmacoesDePresenca(admin, requestId);
+  let inactivitySweep;
+  try {
+    inactivitySweep = await acompanharInatividade(admin, requestId);
+  } catch {
+    logger.error("[followup-flow-worker.cron] inatividade falhou", { requestId });
+    inactivitySweep = { falhas: 1 };
+  }
 
   let summary;
   try {
@@ -176,7 +184,7 @@ async function handle(req: NextRequest): Promise<Response> {
     logger.error("[followup-flow-worker.cron] enviarTextoFixoPendente threw", { error: detail, requestId });
   }
 
-  return ok({ ...summary, confirmation_sweep: confirmationSweep }, { requestId });
+  return ok({ ...summary, confirmation_sweep: confirmationSweep, inactivity_sweep: inactivitySweep }, { requestId });
 }
 
 /**

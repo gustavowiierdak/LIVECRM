@@ -3,6 +3,7 @@ import type { EventHandler } from "@/lib/event-log/dispatcher";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { estadoDaJanela } from "@/lib/channels/janela";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
+import { StaleServiceBoundaryError } from "./fronteira";
 
 export const AVISO_ATENDIMENTO_KEY = "attendance-notice.v1";
 const payloadSchema = z.object({ notice_id: z.uuid() });
@@ -90,6 +91,8 @@ export const avisoDoAtendimentoHandler: EventHandler = {
       if (["sent", "delivered", "read"].includes(sent.status)) return result("ok", "enviado");
       return result(sent.status === "failed" ? "error" : "retry", "aguardando_entrega");
     } catch (error) {
+      if (error instanceof StaleServiceBoundaryError)
+        return result("skipped", "cliente_respondeu_ou_atendimento_mudou");
       if (error instanceof OrgNaoOperanteError) return result("skipped", "org_nao_operante");
       // Recusa fica no evento e, após o teto do dreno, na Central de avisos.
       // Não imprimir erro bruto: transportes podem carregar dados do cliente.
