@@ -1257,6 +1257,9 @@ export async function sendMessageHandler(
           .from("messages")
           .update({
             status: "sent",
+            // Aviso que ficou queued não pode consumir o prazo do cliente
+            // enquanto esperava transporte. O recibo começa no envio efetivo.
+            ...(ctx.attendanceNotice ? { sent_at: new Date().toISOString() } : {}),
             ...(comId ? { external_id: idCanonico } : {}),
             ack: 0,
             // Colunas só do template — é o que responde custo e conformidade de

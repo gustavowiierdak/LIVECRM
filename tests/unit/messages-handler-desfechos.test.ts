@@ -41,6 +41,8 @@ vi.mock('@/lib/supabase/admin', () => ({
 }));
 // Audit é fire-and-forget e escreve em outra tabela; fora do escopo dos desfechos.
 vi.mock('@/lib/audit', () => ({ audit: vi.fn(async () => {}) }));
+// A autorização do aviso tem suíte própria; aqui medimos o recibo do transporte.
+vi.mock('@/lib/atendimento/aviso-autorizado', () => ({ assertAttendanceNotice: vi.fn(async () => {}) }));
 
 type Row = Record<string, unknown>;
 
@@ -121,6 +123,23 @@ afterEach(() => {
 });
 
 describe('sendMessageHandler — os 6 desfechos do envio', () => {
+  it('aviso conta o prazo do envio efetivo, não da inserção em queued', async () => {
+    wahaConfigured(true);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-16T10:00:00Z'));
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        vi.setSystemTime(new Date('2026-10-16T10:05:00Z'));
+        return Response.json({ id: { _serialized: 'NOTICE1' } });
+      }));
+      const msg = await sendMessageHandler(dubleDo(conversationRow()),
+        { ...ctx, attendanceNotice: { noticeId: USER } }, textInput());
+      expect(msg.status).toBe('sent');
+      expect(msg.sent_at).toBe('2026-10-16T10:05:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("revalida a lista no sink, inclusive para automação, sem transformar teste em opt-out", async () => {
     wahaConfigured(true);
     const fetchMock = vi.fn();
