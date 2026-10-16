@@ -8,7 +8,7 @@ import {
 describe("configuração de inatividade", () => {
   const policy = { warn_after_minutes: 15, close_after_warning_minutes: 15 };
   it("nasce desligada e preserva escolha ao salvar formulário antigo", () => {
-    expect(routingConfigSchema.parse({}).ai_inactivity).toBeNull();
+    expect(routingConfigSchema.parse({}).ai_inactivity).toBeUndefined();
     expect(
       mesclarSettingsDeAtendimento(
         { routing: { ai_inactivity: policy } },

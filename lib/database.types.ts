@@ -35,9 +35,9 @@ export type Database = {
   public: {
     Tables: {
       attendance_notices: {
-        Row: { id: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id: string | null; created_at: string }
-        Insert: { id?: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id?: string | null; created_at?: string }
-        Update: { id?: string; organization_id?: string; conversation_id?: string; protocol?: string; kind?: string; body?: string; assigned_to_user_id?: string | null; created_at?: string }
+        Row: { id: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id: string | null; created_at: string; source_message_id: string | null; service_revision: number | null; inactivity_close_after_minutes: number | null }
+        Insert: { id?: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id?: string | null; created_at?: string; source_message_id?: string | null; service_revision?: number | null; inactivity_close_after_minutes?: number | null }
+        Update: { id?: string; organization_id?: string; conversation_id?: string; protocol?: string; kind?: string; body?: string; assigned_to_user_id?: string | null; created_at?: string; source_message_id?: string | null; service_revision?: number | null; inactivity_close_after_minutes?: number | null }
         Relationships: [
           { foreignKeyName: "attendance_notices_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
           { foreignKeyName: "attendance_notices_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "conversations"; referencedColumns: ["id"] },
@@ -10594,6 +10594,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      fn_atendimento_inatividade_tick: {
+        Args: { p_org: string; p_limite?: number }
+        Returns: Json
+      }
+      fn_atendimento_inatividade_elegivel: {
+        Args: { p_org: string; p_conversation: string; p_source: string; p_revision: number }
+        Returns: boolean
+      }
+      fn_atendimento_inatividade_aviso_valido: {
+        Args: { p_org: string; p_notice: string }
+        Returns: boolean
       }
       fn_service_status: {
         Args: {

@@ -30,7 +30,7 @@ export type RoutingMode = (typeof ROUTING_MODES)[number];
  * derivado de G1-06b). Defaults dos knobs = spec 13 §3.5.
  */
 export const routingConfigSchema = z.object({
-  ai_inactivity: aiInactivitySchema.nullable().default(null),
+  ai_inactivity: aiInactivitySchema.nullable().optional(),
   mode: z.enum(ROUTING_MODES).default("manual"),
   max_retries: z.number().int().min(0).max(20).default(5),
   backoff_seconds: z.number().int().min(1).max(3600).default(60),

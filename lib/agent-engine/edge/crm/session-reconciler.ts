@@ -324,6 +324,9 @@ export async function redriveQueued(
      join conversations v on v.id = m.conversation_id and v.organization_id = m.organization_id
      join contacts c on c.id = m.contact_id and c.organization_id = m.organization_id
      where m.sent_via in ('ai', 'automation', 'system') and m.status = 'queued'
+       -- O lembrete tem consumidor próprio que revalida silêncio e episódio.
+       -- Este resgate direto não pode reenviá-lo depois de o cliente responder.
+       and coalesce(m.metadata->>'attendance_notice', '') <> 'inatividade'
        and s.status = 'WORKING'
        and c.is_blocked = false
        -- ─── Só as sessões que ESTE resgate consegue alcançar ───────────────
@@ -353,6 +356,7 @@ export async function redriveQueued(
      from messages m
      join channel_sessions s on s.id = m.channel_session_id
      where m.sent_via in ('ai', 'automation', 'system') and m.status = 'queued'
+       and coalesce(m.metadata->>'attendance_notice', '') <> 'inatividade'
        and s.status = 'WORKING'
        and s.waha_session_name is null
        and m.created_at < now() - make_interval(secs => $1 / 1000.0)`,
