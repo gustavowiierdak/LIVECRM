@@ -27,7 +27,6 @@ import { guardServiceEffect } from "@/lib/atendimento/fronteira-server";
 import { z } from 'zod';
 import type pg from 'pg';
 
-import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import {
   CHAVE_DO_HANDOFF_TECNICO,
   derivacaoPendenteDoGatilho,
@@ -571,12 +570,6 @@ export async function applyRequestHumanHandoff(
     log: opts.log,
   });
 
-  // ACH-03: a expectativa vai JUNTO com a confirmação. Antes, a mensagem afirmava
-  // que "um atendente vai assumir" sem que ninguém tivesse olhado se havia
-  // alguém — e o agente repassava essa promessa ao cliente. Agora a resposta
-  // carrega o estado real da equipe, e o modelo não precisa lembrar de perguntar.
-  const { frase } = await expectativaDeAtendimento(db, ids.tenantId, new Date(), ids.conversationId);
-
   // ⚠️ A frase anterior era "encerre o turno AGORA, sem enviar mais mensagens ao
   // lead além do aviso" — e prometia uma saída que a PRIMEIRA linha de
   // `performHumanHandoff` acabou de fechar: `force_human = true` arma o
@@ -593,7 +586,7 @@ export async function applyRequestHumanHandoff(
     ok: true,
     status: 'handoff_solicitado',
     message:
-      `Handoff humano acionado; a conversa saiu do atendimento automático. ${jaAvisado} ${frase} ` +
+      `Handoff humano acionado; a conversa saiu do atendimento automático e entrou na fila de atendimento. ${jaAvisado} ` +
       'Encerre o turno AGORA — você não consegue mais enviar mensagens a este lead.',
   };
 }

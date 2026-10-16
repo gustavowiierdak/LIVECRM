@@ -312,6 +312,8 @@ test.describe("perguntar ao acervo no painel da conversa", () => {
     await page.goto(`/app/inbox?id=${conversaA}&filter=all`);
     await expect(bolhas(page)).toHaveCount(MENSAGENS_A.length, { timeout: 30_000 });
 
+    await page.getByText("Perguntar sobre o atendimento").click();
+    await page.getByText("Consultar documentos da empresa").click();
     const caixa = page.getByTestId("inbox-acervo");
     await caixa.scrollIntoViewIfNeeded();
     await expect(caixa).toBeVisible();
@@ -349,5 +351,22 @@ test.describe("perguntar ao acervo no painel da conversa", () => {
 
     fs.mkdirSync(EVIDENCE, { recursive: true });
     await caixa.screenshot({ path: path.join(EVIDENCE, "3-acervo-na-conversa.png") });
+  });
+
+  test("não transforma anexos sem descrição em diagnóstico do cliente", async ({ page }) => {
+    const conversaImagem = await conversaCom(`Cliente com anexo ${SUFIXO}`, [
+      { direcao: "inbound", texto: "Imagem enviada" },
+    ]);
+    await login(page);
+    await page.goto(`/app/inbox?id=${conversaImagem}&filter=all`);
+    await page.getByText("Perguntar sobre o atendimento").click();
+    const caixa = page.getByTestId("pergunta-atendimento");
+    await caixa
+      .getByRole("textbox", { name: "Perguntar sobre este atendimento" })
+      .fill("Qual é o problema deste cliente?");
+    await caixa.getByRole("button", { name: "Perguntar" }).click();
+    await expect(caixa.getByRole("status")).toContainText("Anexos sem descrição");
+    fs.mkdirSync(EVIDENCE, { recursive: true });
+    await caixa.screenshot({ path: path.join(EVIDENCE, "4-pergunta-atendimento-sem-relato.png") });
   });
 });

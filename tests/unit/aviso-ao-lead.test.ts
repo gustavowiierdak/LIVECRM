@@ -83,9 +83,10 @@ describe("o texto respeita o estado REAL da equipe", () => {
     expect(semLeitura).toBe(semEquipe);
   });
 
-  it("equipe existe mas ninguém livre: não convida a aguardar", () => {
+  it("equipe existe mas ninguém livre: não revela a escala ao cliente", () => {
     const t = textoDoAviso("pediu_humano", { disponiveis: 0, total: 3 }, LEAD);
-    expect(t).toMatch(/ninguém|não há atendente/i);
+    expect(t).toMatch(/fila|setor|equipe responsável/i);
+    expect(t).not.toMatch(/ninguém|não há atendente|disponível/i);
     expect(t).not.toMatch(/aguarde só um momento|é só aguardar/i);
   });
 
@@ -219,9 +220,9 @@ describe("o aviso sai no idioma da organização", () => {
     }
   });
 
-  it("o estado da equipe muda o fecho em espanhol como muda em português", () => {
+  it("o estado da equipe muda o fecho em espanhol sem expor disponibilidade", () => {
     expect(textoDoAviso("outro", { disponiveis: 0, total: 0 }, LEAD, "es")).toMatch(/registrad|anotado|primera oportunidad/i);
-    expect(textoDoAviso("outro", { disponiveis: 0, total: 3 }, LEAD, "es")).toMatch(/no hay/i);
+    expect(textoDoAviso("outro", { disponiveis: 0, total: 3 }, LEAD, "es")).toMatch(/cola|equipo responsable/i);
     expect(textoDoAviso("outro", { disponiveis: 2, total: 3 }, LEAD, "es")).toMatch(/espera|quédate/i);
   });
 

@@ -39,16 +39,22 @@ type Traducoes = Record<string, Partial<Record<Exclude<Idioma, "pt-BR">, string>
 export const DICIONARIO: Traducoes = {
   "Início do operador": { es: "Inicio del agente" },
   "Visões do atendimento": { es: "Vistas de atención" },
-  "Contagens do seu acesso, sem os filtros da lista. Os atalhos abrem a visão completa.": { es: "Recuentos de tu acceso, sin los filtros de la lista. Los accesos directos abren la vista completa." },
+  "Contagens do seu acesso, sem os filtros da lista. Os atalhos abrem a visão completa.": {
+    es: "Recuentos de tu acceso, sin los filtros de la lista. Los accesos directos abren la vista completa.",
+  },
   "Conversas aguardando atendimento humano.": { es: "Conversaciones esperando atención humana." },
   "Conversas em aberto atribuídas a você.": { es: "Conversaciones abiertas asignadas a ti." },
-  "Conversas conduzidas pelo atendimento automático.": { es: "Conversaciones gestionadas por la atención automática." },
+  "Conversas conduzidas pelo atendimento automático.": {
+    es: "Conversaciones gestionadas por la atención automática.",
+  },
   "Histórico de conversas encerradas.": { es: "Historial de conversaciones cerradas." },
   "Abrir {visao}": { es: "Abrir {visao}" },
   "Contagem indisponível": { es: "Recuento no disponible" },
   "Não foi possível atualizar as contagens.": { es: "No se pudieron actualizar los recuentos." },
   "Carregando contagens…": { es: "Cargando recuentos…" },
-  "Escolha um atendimento na lista para ver as mensagens e a ficha do contato.": { es: "Elige una atención de la lista para ver los mensajes y la ficha del contacto." },
+  "Escolha um atendimento na lista para ver as mensagens e a ficha do contato.": {
+    es: "Elige una atención de la lista para ver los mensajes y la ficha del contacto.",
+  },
   "Não foi possível carregar esta conversa.": { es: "No se pudo cargar esta conversación." },
   "Carregando conversa…": { es: "Cargando conversación…" },
   "Ações do contato": { es: "Acciones del contacto" },
@@ -57,29 +63,47 @@ export const DICIONARIO: Traducoes = {
   "Início do atendimento": { es: "Inicio de la atención" },
   "Copiar telefone": { es: "Copiar teléfono" },
   "Telefone copiado.": { es: "Teléfono copiado." },
-  "Atendimentos": { es: "Atenciones" },
+  Atendimentos: { es: "Atenciones" },
   "Setores atualizados.": { es: "Sectores actualizados." },
   "Carregando setores…": { es: "Cargando sectores…" },
-  "Não foi possível carregar os setores. Recarregue a página.": { es: "No se pudieron cargar los sectores. Recarga la página." },
-  "Vincule as pessoas às filas em que vão atender. Uma pessoa pode participar de mais de um setor. Sem atendentes vinculados, a conversa permanece na fila do setor para a gestão acompanhar.": { es: "Vincula a las personas con las colas que atenderán. Una persona puede participar en varios sectores. Sin agentes vinculados, la conversación permanece en la cola del sector para que la gerencia la supervise." },
+  "Não foi possível carregar os setores. Recarregue a página.": {
+    es: "No se pudieron cargar los sectores. Recarga la página.",
+  },
+  "Vincule as pessoas às filas em que vão atender. Uma pessoa pode participar de mais de um setor. Sem atendentes vinculados, a conversa permanece na fila do setor para a gestão acompanhar.":
+    {
+      es: "Vincula a las personas con las colas que atenderán. Una persona puede participar en varios sectores. Sin agentes vinculados, la conversación permanece en la cola del sector para que la gerencia la supervise.",
+    },
   "Criar setores de atendimento": { es: "Crear sectores de atención" },
   "atendente(s) vinculado(s)": { es: "agente(s) vinculado(s)" },
-  "Sem atendentes vinculados — os clientes aguardam nesta fila.": { es: "Sin agentes vinculados: los clientes esperan en esta cola." },
+  "Sem atendentes vinculados — os clientes aguardam nesta fila.": {
+    es: "Sin agentes vinculados: los clientes esperan en esta cola.",
+  },
   "Atendentes de": { es: "Agentes de" },
   "Salvar vínculos": { es: "Guardar vínculos" },
-  "Setores": { es: "Sectores" },
+  Setores: { es: "Sectores" },
   "Filtrar por setor": { es: "Filtrar por sector" },
   "Filtros de atendimento": { es: "Filtros de atención" },
   "Conta e preferências": { es: "Cuenta y preferencias" },
   "Ferramentas da conversa": { es: "Herramientas de la conversación" },
   "Ações do atendimento": { es: "Acciones de la atención" },
   "Todos os setores": { es: "Todos los sectores" },
-  "Escolha um atendente ou encaminhe à fila de um setor. A mudança fica registrada no histórico.": { es: "Elige un agente o deriva a la cola de un sector. El cambio queda registrado en el historial." },
+  "Escolha um atendente ou encaminhe à fila de um setor. A mudança fica registrada no histórico.": {
+    es: "Elige un agente o deriva a la cola de un sector. El cambio queda registrado en el historial.",
+  },
   "Fila do setor": { es: "Cola del sector" },
   "Escolha o setor": { es: "Elige el sector" },
-  "A IA será pausada. Sem atendente disponível, a conversa permanece na fila do setor até alguém assumir.": { es: "La IA se pausará. Sin un agente disponible, la conversación permanece en la cola del sector hasta que alguien la asuma." },
-  "Você não está vinculado ao setor desta conversa. Peça à gestão para vincular você em Equipe → Setores.": { es: "No estás vinculado al sector de esta conversación. Pide a la gerencia que te vincule en Equipo → Sectores." },
-  "O atendente não está vinculado ao setor. Transfira para o setor correto ou peça à gestão para ajustar o vínculo.": { es: "El agente no está vinculado al sector. Transfiere al sector correcto o pide a la gerencia que ajuste el vínculo." },
+  "A IA será pausada. Sem atendente disponível, a conversa permanece na fila do setor até alguém assumir.":
+    {
+      es: "La IA se pausará. Sin un agente disponible, la conversación permanece en la cola del sector hasta que alguien la asuma.",
+    },
+  "Você não está vinculado ao setor desta conversa. Peça à gestão para vincular você em Equipe → Setores.":
+    {
+      es: "No estás vinculado al sector de esta conversación. Pide a la gerencia que te vincule en Equipo → Sectores.",
+    },
+  "O atendente não está vinculado ao setor. Transfira para o setor correto ou peça à gestão para ajustar o vínculo.":
+    {
+      es: "El agente no está vinculado al sector. Transfiere al sector correcto o pide a la gerencia que ajuste el vínculo.",
+    },
   "Escolha o canal em que ele atende. O rascunho está salvo; habilite um canal em Conexões e volte aqui para publicar.":
     {
       es: "Elige el canal en el que atiende. El borrador está guardado; habilita un canal en Conexiones y vuelve aquí para publicarlo.",
@@ -2503,15 +2527,38 @@ export const DICIONARIO: Traducoes = {
   "Ativar notificações": { es: "Activar notificaciones" },
   "Configurar avisos": { es: "Configurar avisos" },
   "Ocultar aviso de notificações": { es: "Ocultar aviso de notificaciones" },
-  "Não foi possível pedir a permissão. Tente novamente.": { es: "No se pudo solicitar el permiso. Inténtalo de nuevo." },
-  "Este navegador não oferece notificações do sistema. Use um navegador compatível.": { es: "Este navegador no admite notificaciones del sistema. Usa un navegador compatible." },
-  "O navegador bloqueou os avisos. Libere Notificações nas permissões deste site e volte para ativar.": { es: "El navegador bloqueó los avisos. Habilita Notificaciones en los permisos de este sitio y vuelve para activarlas." },
-  "Este navegador está inscrito para receber novas mensagens e atendimentos encaminhados à equipe, inclusive com a aba fechada. O navegador e o sistema precisam permitir avisos em segundo plano.": { es: "Este navegador está suscrito para recibir nuevos mensajes y atenciones derivadas al equipo, incluso con la pestaña cerrada. El navegador y el sistema deben permitir avisos en segundo plano." },
-  "Permissão liberada, mas o servidor ainda não está configurado para avisar com a aba fechada. Por enquanto, mantenha o site aberto. Avise o administrador.": { es: "Permiso concedido, pero el servidor aún no está configurado para avisar con la pestaña cerrada. Por ahora, mantén el sitio abierto. Avisa al administrador." },
-  "Este navegador só poderá avisar com o site aberto. Não foi possível ativar o recebimento em segundo plano.": { es: "Este navegador solo podrá avisar con el sitio abierto. No se pudo activar la recepción en segundo plano." },
-  "Não foi possível concluir a ativação em segundo plano. Confira a conexão e tente novamente.": { es: "No se pudo completar la activación en segundo plano. Comprueba la conexión e inténtalo de nuevo." },
-  "Receba avisos de novas mensagens e atendimentos neste computador.": { es: "Recibe avisos de nuevos mensajes y atenciones en este ordenador." },
-  "O servidor permite receber avisos com a aba fechada. Ative as notificações neste navegador abaixo. Email ainda não está disponível.": { es: "El servidor permite recibir avisos con la pestaña cerrada. Activa las notificaciones en este navegador a continuación. El correo electrónico aún no está disponible." },
+  "Não foi possível pedir a permissão. Tente novamente.": {
+    es: "No se pudo solicitar el permiso. Inténtalo de nuevo.",
+  },
+  "Este navegador não oferece notificações do sistema. Use um navegador compatível.": {
+    es: "Este navegador no admite notificaciones del sistema. Usa un navegador compatible.",
+  },
+  "O navegador bloqueou os avisos. Libere Notificações nas permissões deste site e volte para ativar.":
+    {
+      es: "El navegador bloqueó los avisos. Habilita Notificaciones en los permisos de este sitio y vuelve para activarlas.",
+    },
+  "Este navegador está inscrito para receber novas mensagens e atendimentos encaminhados à equipe, inclusive com a aba fechada. O navegador e o sistema precisam permitir avisos em segundo plano.":
+    {
+      es: "Este navegador está suscrito para recibir nuevos mensajes y atenciones derivadas al equipo, incluso con la pestaña cerrada. El navegador y el sistema deben permitir avisos en segundo plano.",
+    },
+  "Permissão liberada, mas o servidor ainda não está configurado para avisar com a aba fechada. Por enquanto, mantenha o site aberto. Avise o administrador.":
+    {
+      es: "Permiso concedido, pero el servidor aún no está configurado para avisar con la pestaña cerrada. Por ahora, mantén el sitio abierto. Avisa al administrador.",
+    },
+  "Este navegador só poderá avisar com o site aberto. Não foi possível ativar o recebimento em segundo plano.":
+    {
+      es: "Este navegador solo podrá avisar con el sitio abierto. No se pudo activar la recepción en segundo plano.",
+    },
+  "Não foi possível concluir a ativação em segundo plano. Confira a conexão e tente novamente.": {
+    es: "No se pudo completar la activación en segundo plano. Comprueba la conexión e inténtalo de nuevo.",
+  },
+  "Receba avisos de novas mensagens e atendimentos neste computador.": {
+    es: "Recibe avisos de nuevos mensajes y atenciones en este ordenador.",
+  },
+  "O servidor permite receber avisos com a aba fechada. Ative as notificações neste navegador abaixo. Email ainda não está disponível.":
+    {
+      es: "El servidor permite recibir avisos con la pestaña cerrada. Activa las notificaciones en este navegador a continuación. El correo electrónico aún no está disponible.",
+    },
   "Automático pausado": { es: "Automático pausado" },
   // Os motivos do silêncio (lib/inbox/comando-da-conversa.ts). "Automático
   // pausado" sozinho respondia a três situações que pedem ações diferentes:
@@ -3021,7 +3068,9 @@ export const DICIONARIO: Traducoes = {
     {
       es: 'Por agente y decidido por el admin: pasar la conversación a una persona cuando el cliente hable de asunto jurídico (Procon, abogado, proceso). Apagado, el asunto jurídico pasa a ser el trabajo normal de este agente y no es, por sí solo, motivo de paso — quien pide hablar con una persona sigue siendo derivado. Es OTRA llave: la "llamar a una persona" de "Ajustes de cada agente" enciende y apaga la herramienta entera; esta solo quita el paso por asunto jurídico.',
     },
-  "Transferir quando a IA não puder continuar": { es: "Transferir cuando la IA no pueda continuar" },
+  "Transferir quando a IA não puder continuar": {
+    es: "Transferir cuando la IA no pueda continuar",
+  },
   "Enviar o atendimento à fila humana do setor, sem esperar instruções para a IA": {
     es: "Enviar la atención a la cola humana del sector, sin esperar instrucciones para la IA",
   },
@@ -9195,8 +9244,12 @@ export const DICIONARIO: Traducoes = {
   "Enviar anexo": { es: "Enviar adjunto" },
   "Legenda (opcional)": { es: "Descripción (opcional)" },
   "Modo de escrita": { es: "Modo de escritura" },
-  "Esta nota fica visível apenas para a equipe.": { es: "Esta nota solo es visible para el equipo." },
-  "Este anexo ficará na nota interna, visível apenas para a equipe.": { es: "Este archivo quedará en la nota interna, visible solo para el equipo." },
+  "Esta nota fica visível apenas para a equipe.": {
+    es: "Esta nota solo es visible para el equipo.",
+  },
+  "Este anexo ficará na nota interna, visível apenas para a equipe.": {
+    es: "Este archivo quedará en la nota interna, visible solo para el equipo.",
+  },
   "Este anexo será enviado ao cliente.": { es: "Este archivo se enviará al cliente." },
   Legenda: { es: "Descripción" },
   "Gravar áudio": { es: "Grabar audio" },
@@ -9285,9 +9338,10 @@ export const DICIONARIO: Traducoes = {
   "Automático pausado para atendimento humano": {
     es: "Atención automática pausada para atención humana",
   },
-  "O atendimento foi encaminhado à equipe. A IA não enviou esta resposta; um atendente pode continuar a conversa.": {
-    es: "La atención fue derivada al equipo. La IA no envió esta respuesta; un agente puede continuar la conversación.",
-  },
+  "O atendimento foi encaminhado à equipe. A IA não enviou esta resposta; um atendente pode continuar a conversa.":
+    {
+      es: "La atención fue derivada al equipo. La IA no envió esta respuesta; un agente puede continuar la conversación.",
+    },
   "Automático desativado para contato pessoal": {
     es: "Atención automática desactivada para contacto personal",
   },
@@ -9295,9 +9349,10 @@ export const DICIONARIO: Traducoes = {
     es: "Este contacto está marcado como personal. La IA no envió la respuesta.",
   },
   "Resposta automática não enviada": { es: "Respuesta automática no enviada" },
-  "Um registro antigo não informa por que o automático foi pausado. Confira o estado atual do contato antes de retomar o envio.": {
-    es: "Un registro anterior no indica por qué se pausó la atención automática. Verifica el estado actual del contacto antes de reanudar el envío.",
-  },
+  "Um registro antigo não informa por que o automático foi pausado. Confira o estado atual do contato antes de retomar o envio.":
+    {
+      es: "Un registro anterior no indica por qué se pausó la atención automática. Verifica el estado actual del contacto antes de reanudar el envío.",
+    },
   "Este contato foi anonimizado (LGPD) — é proibido enviar qualquer mensagem a ele.": {
     es: "Este contacto fue anonimizado (LGPD). Está prohibido enviarle cualquier mensaje.",
   },
@@ -13238,6 +13293,27 @@ export const DICIONARIO: Traducoes = {
   "Não consegui consultar o acervo.": { es: "No pude consultar el acervo." },
   "Não foi possível ler o acervo.": { es: "No fue posible leer el acervo." },
   "Não foi possível consultar o acervo.": { es: "No fue posible consultar el acervo." },
+  "Perguntar sobre o atendimento": { es: "Preguntar sobre esta atención" },
+  "Consultar documentos da empresa": { es: "Consultar documentos de la empresa" },
+  "Esta busca mostra trechos do acervo geral. Ela não lê a conversa do cliente.": {
+    es: "Esta búsqueda muestra fragmentos del acervo general. No lee la conversación del cliente.",
+  },
+  "Perguntar sobre este atendimento": { es: "Preguntar sobre esta atención" },
+  "O que aconteceu com este cliente?": { es: "¿Qué pasó con este cliente?" },
+  "A resposta considera as mensagens deste atendimento e não é enviada ao cliente.": {
+    es: "La respuesta considera los mensajes de esta atención y no se envía al cliente.",
+  },
+  "Pergunta ou conversa inválida.": { es: "Pregunta o conversación no válida." },
+  "Este contato não pode ser consultado pela IA.": {
+    es: "La IA no puede consultar este contacto.",
+  },
+  "Este atendimento ainda não tem relato textual suficiente do cliente. Anexos sem descrição não permitem identificar o problema; peça que ele explique o que está acontecendo.":
+    {
+      es: "Esta atención aún no tiene suficiente relato escrito del cliente. Los archivos adjuntos sin descripción no permiten identificar el problema; pídale que explique qué está pasando.",
+    },
+  "Não foi possível consultar este atendimento agora.": {
+    es: "No fue posible consultar esta atención ahora.",
+  },
   "Este acervo ainda não tem material publicado.": {
     es: "Este acervo todavía no tiene material publicado.",
   },

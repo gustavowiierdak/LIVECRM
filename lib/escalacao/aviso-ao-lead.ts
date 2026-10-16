@@ -40,13 +40,11 @@
  * (`conversations.last_handoff_reason`), então a frase o respeita em vez de
  * escolher um genérico que serve mal aos dois.
  *
- * ## Por que o texto muda com a DISPONIBILIDADE
+ * ## A transferência não depende da DISPONIBILIDADE
  *
- * Mesma razão de `fraseDeExpectativa` em `./disponibilidade.ts`, e a mesma
- * fonte: prometer "alguém já vai te atender" para uma conta que não tem NINGUÉM
- * configurado é a pior primeira impressão possível num produto self-host, e é o
- * estado real de toda instalação recém-feita. A diferença é o destinatário —
- * lá a frase é INSTRUÇÃO ao modelo, aqui é FALA ao cliente.
+ * Os emissores passam `null` para o parâmetro legado de disponibilidade: basta
+ * colocar a conversa na fila. A frase não deve revelar escala, prometer prazo
+ * nem condicionar o encaminhamento à presença de um atendente.
  */
 
 import { createHash } from "node:crypto";
@@ -150,11 +148,11 @@ const FECHOS = {
     "Deixei tudo anotado; retornamos para você assim que der.",
     "Já registrei aqui, e alguém te responde na primeira oportunidade.",
   ],
-  /** Tem equipe, ninguém elegível agora: nada de prazo curto. */
+  /** Legado de seleção por estado: texto neutro, sem expor escala ao cliente. */
   fora_de_expediente: [
-    "No momento ninguém está disponível, mas seu pedido ficou registrado.",
-    "Agora não tem ninguém livre; deixei sua solicitação anotada para o time.",
-    "Não há atendente disponível neste instante; sua conversa entrou na fila.",
+    "Sua conversa entrou na fila do setor responsável.",
+    "O setor responsável recebeu seu pedido e dará continuidade por aqui.",
+    "Seu atendimento foi encaminhado para a fila da equipe responsável.",
   ],
   /** Há gente elegível: pode convidar a aguardar. */
   com_equipe: [
@@ -209,9 +207,9 @@ const FECHOS_ES = {
     "Ya quedó registrado, y alguien te responde en la primera oportunidad.",
   ],
   fora_de_expediente: [
-    "En este momento no hay nadie disponible, pero tu consulta quedó registrada.",
-    "Ahora no hay nadie libre; dejé tu consulta anotada para el equipo.",
-    "No hay una persona disponible en este instante: tu conversación quedó en la cola.",
+    "Tu conversación entró en la cola del equipo responsable.",
+    "El equipo responsable recibió tu consulta y seguirá por aquí.",
+    "Tu atención fue derivada a la cola del equipo correspondiente.",
   ],
   com_equipe: [
     "Solo espera un momento aquí en la conversación.",

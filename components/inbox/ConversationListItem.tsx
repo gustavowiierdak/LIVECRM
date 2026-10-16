@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { rotuloDoCanalDaConversa } from "@/lib/channels/estado";
+import { chaveDaEtiqueta } from "@/lib/tags/cor-da-etiqueta";
 
 interface Props {
   conversation: ConversationWithContact;
@@ -107,11 +108,22 @@ function relativeTime(iso: string | null, locale: Locale): string {
  */
 function waitingLabel(
   conversation: ConversationWithContact,
-  t: (texto: string) => string = (texto) => texto, locale: Locale,
+  t: (texto: string) => string = (texto) => texto,
+  locale: Locale,
 ): string {
   const since = esperaDaConversa(conversation);
   if (!since) return t("Aguardando");
   return `${t("Aguardando")} ${formatDistanceToNowStrict(new Date(since), { addSuffix: true, locale: locale })}`;
+}
+
+function etiquetasDaLista(conversationTags: string[], contactTags: string[]): string[] {
+  const seen = new Set<string>();
+  return [...conversationTags, ...contactTags].filter((tag) => {
+    const key = chaveDaEtiqueta(tag);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function ConversationListItem({
@@ -128,8 +140,11 @@ export function ConversationListItem({
   const t = useT();
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c, t);
-  const tags = c?.tags ?? [];
-  const visibleTags = tags.slice(0, 2);
+  // As etiquetas que o atendente marca na ficha pertencem à CONVERSA. A lista
+  // mostrava só as do contato, por isso a marcação parecia não funcionar. As
+  // do contato continuam aqui depois, sem repetir a mesma etiqueta.
+  const tags = etiquetasDaLista(conversation.tags ?? [], c?.tags ?? []);
+  const visibleTags = tags.slice(0, 4);
   const overflow = tags.length - visibleTags.length;
   const preview = conversation.last_message_preview?.trim() || t("Sem mensagens");
   const truncated = preview.length > 60 ? `${preview.slice(0, 60)}…` : preview;
@@ -151,12 +166,9 @@ export function ConversationListItem({
    * fallback: duas respostas para o mesmo "desde quando?" na mesma linha, a 40px
    * de distância, seriam a próxima divergência.
    */
-  const horaDaOrdem = naFila
-    ? esperaDaConversa(conversation)
-    : conversation.last_message_at;
+  const horaDaOrdem = naFila ? esperaDaConversa(conversation) : conversation.last_message_at;
   const time = relativeTime(horaDaOrdem, localeDaData);
   const unread = conversation.unread_count_for_assignee ?? 0;
-
 
   /**
    * Quem manda, pela MESMA regra do cabeçalho.
@@ -223,19 +235,17 @@ export function ConversationListItem({
       onClick={() => onSelect(conversation.id)}
       className={cn(
         "group relative flex w-full items-start gap-3 border-b border-border/70 px-3 py-2.5 text-left transition-colors hover:bg-surface-elevated",
-        "focus-visible:outline-hidden focus-visible:bg-surface-elevated",
+        "focus-visible:bg-surface-elevated focus-visible:outline-hidden",
         isSelected && "bg-accent-50 hover:bg-accent-50",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
-      {isSelected && (
-        <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" aria-hidden />
-      )}
+      {isSelected && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" aria-hidden />}
       <div className="crm-list-content flex min-w-0 flex-1 flex-col">
         {naFila && (
           <div className="order-4 mt-1 flex items-center gap-1.5">
             <span
-              className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-soft px-1 text-[10px] font-medium tabular-nums text-accent"
+              className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-soft px-1 text-[10px] font-medium text-accent tabular-nums"
               aria-label={`${t("Posição")} ${queuePosition} ${t("na fila")}`}
             >
               {queuePosition}º
@@ -247,12 +257,17 @@ export function ConversationListItem({
         )}
         <div className="order-1 flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} role="img" aria-label={rotuloDoComando} title={rotuloDoComando} />
+            <span
+              className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)}
+              role="img"
+              aria-label={rotuloDoComando}
+              title={rotuloDoComando}
+            />
             <span
               className={cn(
                 "truncate text-sm",
                 unread > 0 ? "font-semibold text-text" : "font-medium text-text",
-                c?.is_anonymized && "font-normal italic text-text-muted",
+                c?.is_anonymized && "font-normal text-text-muted italic",
               )}
             >
               {displayName}
@@ -272,7 +287,7 @@ export function ConversationListItem({
             )}
           </span>
           <span
-            className="shrink-0 text-[11px] tabular-nums text-text-subtle"
+            className="shrink-0 text-[11px] text-text-subtle tabular-nums"
             // O mesmo lugar da tela mostra duas coisas diferentes conforme a aba:
             // na Fila é "desde quando o cliente ESPERA" (a mensagem mais antiga sem
             // resposta — #990), nas outras é "há quanto tempo a conversa mexeu". O
@@ -297,7 +312,7 @@ export function ConversationListItem({
             {truncated}
           </p>
           {unread > 0 && (
-            <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-semibold tabular-nums text-accent-foreground">
+            <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-foreground tabular-nums">
               {unread}
             </span>
           )}
@@ -307,11 +322,14 @@ export function ConversationListItem({
           <div className="order-2 mt-1 flex flex-wrap items-center gap-1">
             <SetorDaConversa id={conversation.atendimento_setor_id} />
             {visibleTags.map((t) => (
-              <ChipDeEtiqueta key={t} tag={t} className="h-4 px-1.5 text-[10px]" />
+              <ChipDeEtiqueta
+                key={t}
+                tag={t}
+                title={t}
+                className="h-4 max-w-full min-w-0 truncate px-1.5 text-[10px]"
+              />
             ))}
-            {overflow > 0 && (
-              <span className="text-[10px] text-text-muted">+{overflow}</span>
-            )}
+            {overflow > 0 && <span className="text-[10px] text-text-muted">+{overflow}</span>}
             {mostrarAtendente && comando.quem === "humano" && (
               <OwnerBadge ownerKind="user" ownerName={comando.nome ?? t("Atendente")} compacto />
             )}
@@ -323,7 +341,7 @@ export function ConversationListItem({
             {mostrarCanal && rotuloCanal && (
               <Badge
                 variant="outline"
-                className="h-4 min-w-0 max-w-[9rem] gap-1 truncate px-1.5 text-[10px] font-normal text-text-muted"
+                className="h-4 max-w-[9rem] min-w-0 gap-1 truncate px-1.5 text-[10px] font-normal text-text-muted"
                 title={`${t("Entrou por")} ${rotuloCanal}`}
               >
                 <span className="truncate">{rotuloCanal}</span>

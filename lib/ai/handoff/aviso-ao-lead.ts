@@ -49,7 +49,6 @@ import {
   type MotivoDoAviso as MotivoDaFrase,
 } from "@/lib/escalacao/aviso-ao-lead";
 import { comecaComPalavraDeSaida } from "@/lib/opt-out/deteccao";
-import { carregarRosterDeAtendimento, podeAssumirAgora } from "@/lib/escalacao/atendentes";
 // Dois `MotivoDoAviso` no repositório: o de `escalacao/aviso-ao-lead` diz QUE
 // FRASE o cliente lê; este diz POR QUE ele não leu nada. O apelido impede a
 // confusão numa leitura rápida.
@@ -58,7 +57,6 @@ import type {
   MotivoDoAviso as MotivoDoAvisoDaPassagem,
   OrigemDaPassagem,
 } from "@/lib/escalacao/passagem";
-import type { QuemPodeAssumir } from "@/lib/escalacao/disponibilidade";
 import { logger } from "@/lib/logger";
 
 /** Ator do envio — é o automático falando, não uma pessoa. */
@@ -222,7 +220,7 @@ export async function avisarLeadDoCrm(
     }
     const body = textoDoAviso(
       await motivoDaFrase(admin, input),
-      await quemPodeAssumir(admin, input.organizationId),
+      null,
       input.contactId,
       idioma,
     );
@@ -308,36 +306,5 @@ async function motivoDaFrase(
     return comecaComPalavraDeSaida(ultima) ? "suspeita_de_opt_out" : gravado;
   } catch {
     return gravado;
-  }
-}
-
-/**
- * Quantos podem assumir agora, no vocabulário que o texto espera.
- *
- * Reusa `carregarRosterDeAtendimento` + `podeAssumirAgora` — o par supabase-js
- * que a rota do painel e a capacidade do agente já usam. Não é um terceiro
- * leitor: é o MESMO predicado (`isAttendantEligible`) que o motor lê por `pg` em
- * `quemPodeAssumirAgora`. Duas portas, uma régua.
- *
- * `null` quando a leitura falha — e `textoDoAviso` lê `null` como "não prometa
- * prazo", que é a direção certa do erro.
- */
-async function quemPodeAssumir(
-  admin: SupabaseClient,
-  organizationId: string,
-): Promise<QuemPodeAssumir | null> {
-  try {
-    const agora = new Date();
-    const roster = await carregarRosterDeAtendimento(admin, organizationId, agora);
-    return {
-      total: roster.length,
-      disponiveis: roster.filter((a) => podeAssumirAgora(a, agora)).length,
-    };
-  } catch (err) {
-    logger.warn("[handoff-orchestrator] disponibilidade não lida — aviso sem prazo", {
-      organization_id: organizationId,
-      error: err instanceof Error ? err.message.slice(0, 200) : String(err),
-    });
-    return null;
   }
 }

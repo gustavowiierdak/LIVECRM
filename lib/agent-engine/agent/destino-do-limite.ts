@@ -12,7 +12,6 @@ const SETOR_POR_ASSUNTO: Readonly<Record<string, string>> = {
   problema: "suporte-tecnico",
   acesso: "suporte-tecnico",
   duvida: "sac",
-  outro: "sac",
   suporte: "suporte-tecnico",
   "suporte tecnico": "suporte-tecnico",
   "sem conexao": "suporte-tecnico",
@@ -21,10 +20,10 @@ const SETOR_POR_ASSUNTO: Readonly<Record<string, string>> = {
   comercial: "comercial",
 };
 
-function slugDoAssunto(assunto: string | null | undefined): string {
-  const normalizado = (assunto ?? "outro").toLowerCase().normalize("NFD")
+function slugDoAssunto(assunto: string | null | undefined): string | undefined {
+  const normalizado = (assunto ?? "").toLowerCase().normalize("NFD")
     .replace(/[\u0300-\u036f]/gu, "").trim();
-  return SETOR_POR_ASSUNTO[normalizado] ?? "sac";
+  return SETOR_POR_ASSUNTO[normalizado];
 }
 
 export async function destinoDoLimiteDaAutomacao(
@@ -44,7 +43,10 @@ export async function destinoDoLimiteDaAutomacao(
     return { setorId: atual.rows[0].id, setorNome: atual.rows[0].nome };
   }
 
-  const slug = slugDoAssunto(assunto ?? atual.rows[0]?.active_intent);
+  // "oi" numa demanda recém-aberta ainda não revela setor. Não herdar o SAC
+  // do atendimento anterior nem transformar falha do provedor em classificação.
+  const slug = slugDoAssunto(assunto) ?? slugDoAssunto(atual.rows[0]?.active_intent);
+  if (!slug) return {};
   const fallback = await db.query<{ id: string; nome: string }>(
     "select id, nome from atendimento_setores where organization_id=$1 and slug=$2",
     [organizationId, slug],

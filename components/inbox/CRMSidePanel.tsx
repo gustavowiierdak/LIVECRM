@@ -2,6 +2,7 @@
 
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { AcervoSearch } from "./AcervoSearch";
+import { AtendimentoQuestion } from "./AtendimentoQuestion";
 import { LeadEnrichment } from "./LeadEnrichment";
 import type { ProspectEnrichment } from "@/lib/prospecting/schema";
 import { useAuth } from "@/hooks/auth/AuthProvider";
@@ -1265,20 +1266,26 @@ export function CRMSidePanel({ conversation }: Props) {
 
       <Separator />
 
-      {/* Perguntar ao acervo — a MESMA busca que a IA faz, com a origem de cada
-          trecho. Não é busca própria: o componente só pergunta e mostra, e quem
-          decide limiar/top-K é a rota, que chama `buscarConhecimento`. Colocada
-          DEPOIS das seções de trabalho: é consulta, não é o que o atendente abre
-          a conversa para fazer. */}
+      {/* A pergunta sobre o cliente usa o histórico DESTA conversa. A busca de
+          documentos continua disponível separadamente, mas não se apresenta
+          mais como se conhecesse o caso do cliente. */}
       <section>
         <details className="crm-contact-disclosure">
           <summary>
-            <h3 className="text-xs font-semibold">{t("Acervo")}</h3>
+            <h3 className="text-xs font-semibold">{t("Perguntar sobre o atendimento")}</h3>
           </summary>
-          <p className="mt-1 mb-2 text-xs text-muted-foreground">
-            {t("Pergunte como a IA perguntaria — a resposta vem com a origem de cada trecho.")}
-          </p>
-          <AcervoSearch />
+          <div className="mt-2">
+            <AtendimentoQuestion key={conversation.id} conversationId={conversation.id} />
+          </div>
+          <details className="mt-4 border-t border-border pt-2">
+            <summary className="cursor-pointer text-xs font-medium">
+              {t("Consultar documentos da empresa")}
+            </summary>
+            <p className="mt-1 mb-2 text-xs text-muted-foreground">
+              {t("Esta busca mostra trechos do acervo geral. Ela não lê a conversa do cliente.")}
+            </p>
+            <AcervoSearch />
+          </details>
         </details>
       </section>
     </aside>

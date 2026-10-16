@@ -18,7 +18,6 @@ describe("destino humano quando a IA não pode continuar", () => {
     ["agendamento", "agendamento"],
     ["problema", "suporte-tecnico"],
     ["acesso", "suporte-tecnico"],
-    ["outro", "sac"],
     ["Suporte Técnico", "suporte-tecnico"],
     ["Cobrança", "cobranca"],
   ])("usa %s para localizar a fila %s quando a conversa não tem setor", async (kind, slug) => {
@@ -39,6 +38,16 @@ describe("destino humano quando a IA não pode continuar", () => {
       .toEqual({ setorId: "setor-suporte", setorNome: "Suporte Técnico" });
     expect(query.mock.calls[1]?.[1]).toEqual([org, "suporte-tecnico"]);
   });
+
+  it.each(["outro", "triagem", undefined])(
+    "não inventa SAC quando a nova demanda começa sem assunto específico (%s)",
+    async (assunto) => {
+      const query = vi.fn(async () => ({ rows: [{ id: null, nome: null, active_intent: null }] }));
+      expect(await destinoDoLimiteDaAutomacao({ query } as never, org, conversa, assunto))
+        .toEqual({});
+      expect(query).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("ainda encaminha à fila geral se o setor específico não estiver configurado", async () => {
     const query = vi.fn(async () => ({ rows: [] }));

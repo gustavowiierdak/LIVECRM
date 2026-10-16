@@ -849,6 +849,9 @@ export const AUDIT_ACTIONS = [
    * sai pela cascata de LGPD.
    */
   "ai.case_chat_asked",
+  // Pergunta da equipe sobre a conversa da Inbox, sem guardar pergunta ou
+  // resposta no log append-only (ambas podem conter dados do cliente).
+  "ai.conversation_asked",
   /**
    * O aviso de caso no WhatsApp da equipe (migration 0292).
    *

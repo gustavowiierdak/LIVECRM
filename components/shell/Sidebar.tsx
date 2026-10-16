@@ -134,21 +134,24 @@ export function SidebarContent({
       <div
         className={cn(
           "flex h-14 items-center border-b px-4",
-          collapsed ? "justify-center" : "justify-start",
+          collapsed ? "justify-center" : "justify-start gap-2",
         )}
       >
-        {compactInbox ? (
+        {inbox && (
           <button type="button" disabled={isPending}
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
-            aria-label={t("Expandir sidebar")} title={t("Expandir sidebar")}
-            className="flex h-10 w-10 items-center justify-center rounded-md hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring">
+            aria-label={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
+            title={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring">
             <List size={23} aria-hidden />
           </button>
-        ) : (logo || logoEscuro) && !collapsed ? (
+        )}
+        {compactInbox ? null : (logo || logoEscuro) && !collapsed ? (
           // Sem arte própria para o escuro, preserva a proteção de contraste.
           <div
             className={cn(
               "rounded-md",
+              inbox && "min-w-0 max-w-[8.5rem]",
               !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
             )}
           >
@@ -163,7 +166,8 @@ export function SidebarContent({
                 src={logo}
                 alt={nome}
                 className={cn(
-                  "h-7 w-auto max-w-[10rem] object-contain",
+                  "h-7 w-auto object-contain",
+                  inbox ? "max-w-full" : "max-w-[10rem]",
                   logoEscuro && "dark:hidden",
                 )}
               />
@@ -175,7 +179,7 @@ export function SidebarContent({
               <img
                 src={logoEscuro}
                 alt={nome}
-                className="hidden h-7 w-auto max-w-[10rem] object-contain dark:block"
+                className={cn("hidden h-7 w-auto object-contain dark:block", inbox ? "max-w-full" : "max-w-[10rem]")}
               />
             ) : null}
           </div>
@@ -185,7 +189,7 @@ export function SidebarContent({
           collapsed ? (
             <SimboloDoProduto nome={nome} className="h-8 w-8" />
           ) : (
-            <LogotipoDoProduto nome={nome} className="h-8 w-auto" />
+            <LogotipoDoProduto nome={nome} className={cn("h-8 w-auto", inbox && "max-w-[8.5rem]")} />
           )
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
@@ -372,7 +376,7 @@ export function SidebarContent({
           </Link>
         )}
         {!compactInbox && <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />}
-        {showCollapseControl && !compactInbox && (
+        {showCollapseControl && !inbox && (
           <button
             type="button"
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
