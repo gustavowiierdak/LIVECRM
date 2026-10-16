@@ -17,7 +17,8 @@ const SETORES = [
   { id: "cancelamento", label: "Cancelamento" },
 ] as const;
 
-type ApiResponse = { data?: ConfiguracaoWebchat; error?: { message?: string } };
+type WebchatSettings = ConfiguracaoWebchat & { ai_replies_24h?: boolean };
+type ApiResponse = { data?: WebchatSettings; error?: { message?: string } };
 
 const DEFAULT_CONFIG: ConfiguracaoWebchat = {
   enabled: false,
@@ -32,7 +33,7 @@ const getServerSiteOrigin = () => "";
 
 export function WebchatSettingsForm() {
   const t = useT();
-  const [config, setConfig] = useState<ConfiguracaoWebchat>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<WebchatSettings>(DEFAULT_CONFIG);
   const [originsText, setOriginsText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,6 +44,7 @@ export function WebchatSettingsForm() {
     getServerSiteOrigin,
   );
   const [savedEnabled, setSavedEnabled] = useState(false);
+  const [replyWindowChanged, setReplyWindowChanged] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,6 +58,7 @@ export function WebchatSettingsForm() {
         if (!response.ok || !payload.data)
           throw new Error(payload.error?.message ?? t("Não foi possível ler a configuração."));
         setConfig(payload.data);
+        setReplyWindowChanged(false);
         setSavedEnabled(payload.data.enabled);
         setOriginsText(payload.data.allowed_origins.join("\n"));
       } catch (cause) {
@@ -105,6 +108,7 @@ export function WebchatSettingsForm() {
           ),
         ],
         handoff_ttl_seconds: config.handoff_ttl_seconds,
+        ...(replyWindowChanged ? { ai_replies_24h: config.ai_replies_24h ?? false } : {}),
       };
       const response = await fetch("/api/v1/settings/webchat", {
         method: "PATCH",
@@ -115,7 +119,11 @@ export function WebchatSettingsForm() {
       const payload = (await response.json()) as ApiResponse;
       if (!response.ok || !payload.data)
         throw new Error(payload.error?.message ?? t("Não foi possível salvar a configuração."));
-      setConfig(payload.data);
+      setConfig({
+        ...payload.data,
+        ai_replies_24h: replyWindowChanged ? payload.data.ai_replies_24h : config.ai_replies_24h,
+      });
+      setReplyWindowChanged(false);
       setSavedEnabled(payload.data.enabled);
       setOriginsText(payload.data.allowed_origins.join("\n"));
       toast.success(t("Atendimento web salvo."));
@@ -171,6 +179,23 @@ export function WebchatSettingsForm() {
               ))}
             </div>
           </fieldset>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={config.ai_replies_24h ?? false}
+                disabled={disabled || !config.enabled}
+                onChange={(event) => {
+                  setConfig((current) => ({ ...current, ai_replies_24h: event.target.checked }));
+                  setReplyWindowChanged(true);
+                }}
+              />
+              {t("A IA responde 24 horas por dia")}
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {t("Vale somente para respostas do atendimento web. Não altera o horário do WhatsApp nem os disparos.")}
+            </p>
+          </div>
           <div className="space-y-1">
             <Label htmlFor="webchat-origins">{t("Endereços permitidos")}</Label>
             <textarea

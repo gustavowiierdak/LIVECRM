@@ -1,16 +1,40 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { iphoneOuIpad, instaladoNaTelaInicial } from "@/lib/webchat/push-client";
+
+vi.mock("@/lib/webchat/push-client", () => {
+  const iphone = vi.fn(() => false);
+  const instalado = vi.fn(() => false);
+  return {
+    inscreverPushVisitante: vi.fn(async () => "ok"),
+    instaladoNaTelaInicial: instalado,
+    iphoneOuIpad: iphone,
+    precisaInstalarNoIphone: () => iphone() && !instalado(),
+    assinarInstalacao: () => () => {},
+  };
+});
 
 import { PortalDeAtendimento } from "./PortalDeAtendimento";
 
 describe("PortalDeAtendimento", () => {
-  beforeEach(() =>
+  it("mostra a mensagem citada recebida junto da resposta do atendente", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json({ data: url.includes("/session")
+      ? { sector: "suporte", active: true, expires_at: "2030-10-07T00:00:00Z" }
+      : [{ id: "reply", direction: "operator", sender_name: "Ana", body: "Vamos conferir o sinal", created_at: "2026-10-08T12:01:00Z", reply_to: { id: "original", direction: "visitor", body: "A luz LOS está vermelha", created_at: "2026-10-08T12:00:00Z" } }] })));
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByLabelText("Mensagem citada")).toHaveTextContent("A luz LOS está vermelha");
+    expect(screen.getByLabelText("Mensagem citada")).toHaveTextContent("Você");
+    expect(screen.getByText("Vamos conferir o sinal")).toBeVisible();
+  });
+  beforeEach(() => {
+    vi.mocked(iphoneOuIpad).mockReturnValue(false);
+    vi.mocked(instaladoNaTelaInicial).mockReturnValue(false);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => Response.json({ error: { message: "sem sessão" } }, { status: 401 })),
-    ),
-  );
+    );
+  });
   afterEach(() => {
     document.documentElement.setAttribute("data-theme", "light");
     vi.unstubAllGlobals();
@@ -61,12 +85,9 @@ describe("PortalDeAtendimento", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /Financeiro/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Cancelamento/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Financeiro/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /Suporte técnico/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Cancelamento/ })).not.toBeInTheDocument();
   });
 
   it("cliente abre o link e envia a primeira mensagem sem código", async () => {
@@ -100,9 +121,15 @@ describe("PortalDeAtendimento", () => {
       />,
     );
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Escolher assunto" })).not.toBeInTheDocument();
+    const iniciar = screen.getByRole("button", { name: "Iniciar atendimento" });
+    expect(iniciar).toBeDisabled();
     await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
     await user.type(screen.getByRole("textbox", { name: "Como podemos ajudar?" }), message.body);
-    await user.click(screen.getByRole("button", { name: "Iniciar atendimento" }));
+    expect(iniciar).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: /Suporte técnico/ }));
+    expect(iniciar).toBeEnabled();
+    await user.click(iniciar);
     expect(await screen.findByText(message.body)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/public/webchat/start",
@@ -153,6 +180,85 @@ describe("PortalDeAtendimento", () => {
     );
   });
 
+  it("identifica cada autor, distingue IA e mantém fallback sem nome", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith("/session"))
+          return Response.json({ data: { sector: "suporte", active: true } });
+        return Response.json({
+          data: [
+            {
+              id: "ana",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "Ana Souza",
+              body: "Primeira resposta",
+            },
+            {
+              id: "joao",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "João Silva",
+              body: "Após transferência",
+            },
+            {
+              id: "ai",
+              direction: "operator",
+              sender_kind: "ai",
+              sender_name: "Suporte Técnico",
+              body: "Resposta automática",
+            },
+            { id: "legacy-ai", direction: "operator", sender_kind: "ai", body: "IA sem nome" },
+            {
+              id: "legacy-human",
+              direction: "operator",
+              sender_kind: "human",
+              sender_name: "  ",
+              body: "Pessoa sem nome",
+            },
+            { id: "visitor", direction: "visitor", sender_name: "Ignorar", body: "Cliente" },
+          ].map((m) => ({ ...m, created_at: "2026-10-13T12:00:00Z" })),
+        });
+      }),
+    );
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByText(/^Ana Souza ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^João Silva ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Suporte Técnico · IA ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^IA ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Equipe ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^Você ·/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ignorar/)).not.toBeInTheDocument();
+  });
+
+  it("mostra a fatura PDF como documento para baixar", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith("/session"))
+        return Response.json({ data: { sector: "financeiro", active: true } });
+      return Response.json({
+        data: [
+          {
+            id: "pdf-1",
+            direction: "operator",
+            type: "document",
+            body: "Segunda via da sua fatura.",
+            media_url: "https://faturas.example/segunda-via.pdf",
+            media_mime: "application/pdf",
+            created_at: "2026-10-10T12:00:00Z",
+          },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    const link = await screen.findByRole("link", { name: /Segunda via.*Baixar PDF/ });
+    expect(link).toHaveAttribute("href", "https://faturas.example/segunda-via.pdf");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it("retoma a sessão por cookie após recarregar, sem reutilizar o código", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith("/session"))
@@ -169,6 +275,114 @@ describe("PortalDeAtendimento", () => {
     expect(screen.queryByRole("textbox", { name: "Código de acesso" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Suporte técnico/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/public/webchat/consume", expect.anything());
+  });
+
+  it("pede permissão somente após o clique do cliente", async () => {
+    const pedir = vi.fn(async () => {
+      navegador.permission = "granted";
+      return "granted" as const;
+    });
+    const navegador = Object.assign(vi.fn(), { permission: "default", requestPermission: pedir });
+    vi.stubGlobal("Notification", navegador);
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: [] })));
+    const user = userEvent.setup();
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    const ativar = await screen.findByRole("button", { name: "Ativar notificações de novas respostas" });
+    expect(pedir).not.toHaveBeenCalled();
+    await user.click(ativar);
+    expect(pedir).toHaveBeenCalledOnce();
+    expect(await screen.findByLabelText("Notificações ativadas")).toBeInTheDocument();
+  });
+
+  it("no iPhone oferece adicionar à Tela de Início antes de pedir permissão", async () => {
+    vi.mocked(iphoneOuIpad).mockReturnValue(true);
+    const pedir = vi.fn(async () => "granted" as const);
+    vi.stubGlobal("Notification", Object.assign(vi.fn(), { permission: "default", requestPermission: pedir }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : String(input).endsWith("/push")
+          ? Response.json({ data: { enabled: true, public_key: "public" } })
+          : Response.json({ data: [] })));
+    const user = userEvent.setup();
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    await user.click(await screen.findByRole("button", { name: "Adicionar à Tela de Início" }));
+    expect(screen.getByText(/No iPhone: toque em Compartilhar/)).toBeInTheDocument();
+    expect(pedir).not.toHaveBeenCalled();
+  });
+
+  it("avisa só a resposta nova, uma vez, sem notificar o histórico ao reabrir", async () => {
+    let chegouResposta = false;
+    const historico = [{ id: "antiga", direction: "operator", body: "Mensagem antiga",
+      created_at: "2026-10-14T12:00:00Z" }];
+    const resposta = { id: "nova", direction: "operator", body: "Vamos ajudar você",
+      created_at: "2026-10-14T12:01:00Z" };
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: chegouResposta ? [...historico, resposta] : historico })));
+    const navegador = Object.assign(vi.fn(), { permission: "granted" });
+    vi.stubGlobal("Notification", navegador);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const intervalo = vi.spyOn(window, "setInterval");
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+
+    expect(await screen.findByText("Mensagem antiga")).toBeInTheDocument();
+    expect(navegador).not.toHaveBeenCalled();
+    chegouResposta = true;
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    act(() => atualizar());
+    expect(await screen.findByText("Vamos ajudar você")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Nova resposta no atendimento");
+    expect(navegador).toHaveBeenCalledOnce();
+    expect(navegador).toHaveBeenCalledWith("Nova resposta no atendimento", expect.objectContaining({
+      body: "Abra o atendimento para ver a mensagem.",
+    }));
+    act(() => atualizar());
+    await waitFor(() => expect(screen.getByText("Vamos ajudar você")).toBeInTheDocument());
+    expect(navegador).toHaveBeenCalledOnce();
+  });
+
+  it("não tira o cliente do ponto lido e rola só o histórico quando ele pede a resposta", async () => {
+    let chegouResposta = false;
+    const antiga = { id: "antiga", direction: "visitor", body: "Mensagem anterior",
+      created_at: "2026-10-14T12:00:00Z" };
+    const nova = { id: "nova", direction: "operator", body: "Resposta mais recente",
+      created_at: "2026-10-14T12:01:00Z" };
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) =>
+      String(input).endsWith("/session")
+        ? Response.json({ data: { sector: "suporte", active: true } })
+        : Response.json({ data: chegouResposta ? [antiga, nova] : [antiga] })));
+    const intervalo = vi.spyOn(window, "setInterval");
+    render(<PortalDeAtendimento marca="Marca teste" logoUrl={null} accent="#550CA1" />);
+    expect(await screen.findByText("Mensagem anterior")).toBeInTheDocument();
+
+    const historico = screen.getByRole("log", { name: "Mensagens do atendimento" });
+    Object.defineProperty(historico, "scrollHeight", { configurable: true, value: 800 });
+    Object.defineProperty(historico, "clientHeight", { configurable: true, value: 200 });
+    historico.scrollTop = 100;
+    fireEvent.scroll(historico);
+
+    chegouResposta = true;
+    const atualizar = intervalo.mock.calls.find(([, delay]) => delay === 7_000)?.[0];
+    expect(typeof atualizar).toBe("function");
+    if (typeof atualizar !== "function") return;
+    await act(async () => {
+      atualizar();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(await screen.findByText("Resposta mais recente")).toBeInTheDocument();
+    expect(historico.scrollTop).toBe(100);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Ver resposta" }));
+    expect(historico.scrollTop).toBe(800);
+    expect(screen.queryByRole("button", { name: "Ver resposta" })).not.toBeInTheDocument();
   });
 
   it("retira o aviso quando a leitura das mensagens se recupera", async () => {
@@ -315,7 +529,7 @@ describe("PortalDeAtendimento", () => {
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Novo atendimento" }));
     expect(screen.queryByText("Conversa antiga")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Financeiro/ }));
+    await user.click(screen.getByRole("radio", { name: /Financeiro/ }));
     await user.type(screen.getByRole("textbox", { name: "Seu nome" }), "Cliente Novo");
     await user.type(
       screen.getByRole("textbox", { name: "Como podemos ajudar?" }),

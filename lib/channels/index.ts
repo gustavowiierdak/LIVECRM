@@ -38,6 +38,7 @@ export {
   PROVIDERS_DE_MENSAGEM,
   PROVIDERS_SEM_MENSAGEM,
   canalConhecidoSemMensagem,
+  ehSessaoDeAtendimentoWeb,
   transportaMensagem,
 } from "./capabilities";
 export { CHANNEL_SESSION_REF_COLUMNS, resolveSessionRef } from "./session-ref";

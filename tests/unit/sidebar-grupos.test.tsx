@@ -10,9 +10,11 @@
  * `navegacao-registry.test.ts`; aqui é a superfície.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
+import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { InboxRailProvider } from "@/components/shell/InboxRail";
 import type { ActiveOrg, AuthUser } from "@/lib/auth/types";
 
 const authRef: { user: Pick<AuthUser, "is_platform_admin">; activeOrg: ActiveOrg | null } = {
@@ -57,7 +59,10 @@ function comoPapel(role: ActiveOrg["role"]) {
   authRef.activeOrg = { orgId: "org-1", name: "Org", role };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("Sidebar agrupado", () => {
   it("renderiza os títulos de grupo na ordem de uso", () => {
@@ -149,6 +154,25 @@ describe("Sidebar agrupado", () => {
     // Fora da <nav> que rola.
     const nav = screen.getByRole("navigation", { name: "Navegação principal" });
     expect(nav.contains(config)).toBe(false);
+  });
+
+  it.each([false, true])("mantém o controle do Inbox no topo quando collapsed=%s", (collapsed) => {
+    comoPapel("admin");
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const { container } = render(
+      <InboxRailProvider><Sidebar collapsed={collapsed} /></InboxRailProvider>,
+    );
+    const toggle = screen.getByRole("button", {
+      name: collapsed ? "Expandir sidebar" : "Recolher sidebar",
+    });
+    expect(container.querySelector("aside > div:first-child")?.contains(toggle)).toBe(true);
+    expect(container.querySelector("aside > div:last-child")?.contains(toggle)).toBe(false);
+    fireEvent.click(toggle);
+    expect(vi.mocked(toggleSidebar)).toHaveBeenCalledWith(collapsed);
   });
 
   it("não deixa cabeçalho órfão quando a permissão esvazia o grupo", () => {

@@ -13,7 +13,9 @@ import {
   origemDeLeituraWebchat,
 } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat } from "@/lib/webchat/types";
+import { enriquecerMensagensWebchat } from "@/lib/webchat/enriquecer-mensagens";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { processarEntradaWebchat } from "@/lib/webchat/entrada-agente";
 
 type ClienteRpc = {
   rpc: (
@@ -62,7 +64,14 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (error)
     return fail("internal_error", "Não foi possível carregar as mensagens.", 500, { requestId });
   if (!Array.isArray(data)) return fail("unauthenticated", "Sessão expirada.", 401, { requestId });
-  return ok(data as MensagemWebchat[], { requestId });
+  if (data.length === 0) return ok([], { requestId });
+  const { data: scope } = await createAdminClient().from("webchat_visitor_sessions")
+    .select("id,organization_id")
+    .eq("session_digest", sessionDigest)
+    .maybeSingle();
+  if (!scope) return fail("unauthenticated", "Sessão expirada.", 401, { requestId });
+  const messages = await enriquecerMensagensWebchat(createAdminClient(), scope.organization_id, scope.id, data as MensagemWebchat[]);
+  return ok(messages, { requestId });
 }
 export async function POST(request: NextRequest): Promise<Response> {
   const requestId = randomUUID();
@@ -96,6 +105,9 @@ export async function POST(request: NextRequest): Promise<Response> {
   const resultado = data as {
     ok?: boolean;
     reason?: "conversation_closed";
+    new_message?: boolean;
+    organization_id?: string;
+    conversation_id?: string;
     message?: MensagemWebchat;
   } | null;
   if (error)
@@ -104,5 +116,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     return fail("conflict", "Este atendimento foi encerrado.", 409, { requestId });
   if (!resultado?.ok || !resultado.message)
     return fail("unauthenticated", "Sessão expirada.", 401, { requestId });
+  if (resultado.new_message && resultado.organization_id && resultado.conversation_id) {
+    await processarEntradaWebchat(createAdminClient(), {
+      organizationId: resultado.organization_id,
+      conversationId: resultado.conversation_id,
+      messageId: resultado.message.id,
+      requestId,
+    });
+  }
   return ok(resultado.message, { requestId, status: 201 });
 }

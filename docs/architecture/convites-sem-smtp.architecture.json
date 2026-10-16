@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cadastro por convite sem SMTP",
+    "subtitle": "Link privado autoriza a conta; aceite da equipe continua separado",
+    "output": "convites-sem-smtp.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "pessoa", "label": "Convidado" },
+    { "id": "app", "label": "Aplicativo" },
+    { "id": "dados", "label": "Banco e autenticação" },
+    { "id": "host", "label": "Instalação própria" }
+  ],
+  "mainPath": ["link", "signup", "convite", "admin", "sessao", "aceite"],
+  "nodes": [
+    { "id": "link", "lane": "pessoa", "label": "Link do convite privado, assinado e com 24h" },
+    { "id": "signup", "lane": "app", "label": "signUp valida token, e-mail e modo só por convite" },
+    { "id": "convite", "lane": "dados", "label": "team_invites: revogação e aceite prévio" },
+    { "id": "admin", "lane": "dados", "label": "GoTrue admin cria usuário com e-mail confirmado só neste modo" },
+    { "id": "sessao", "lane": "app", "label": "Login com a senha escolhida; rollback da conta se falhar" },
+    { "id": "aceite", "lane": "app", "label": "Aceite revalida o token e cria vínculo com a organização" },
+    { "id": "fechamento", "lane": "host", "label": "SIGNUP_MODE=so_convite sincroniza DISABLE_SIGNUP=true no GoTrue" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "link", "to": "signup", "label": "Cadastro iniciado pelo link" },
+    { "id": "e2", "from": "fechamento", "to": "signup", "label": "Action recusa sem convite" },
+    { "id": "e3", "from": "fechamento", "to": "admin", "label": "Cadastro público fechado; admin API permitida" },
+    { "id": "e4", "from": "signup", "to": "convite", "label": "Valida assinatura, e-mail e revogação" },
+    { "id": "e5", "from": "convite", "to": "admin", "label": "Convite válido autoriza a conta" },
+    { "id": "e6", "from": "admin", "to": "sessao", "label": "Conta confirmada, sem envio de e-mail" },
+    { "id": "e7", "from": "sessao", "to": "aceite", "label": "Sessão ativa leva à tela de aceite" },
+    { "id": "e8", "from": "aceite", "to": "convite", "label": "Revalida estado e registra aceite" }
+  ]
+}

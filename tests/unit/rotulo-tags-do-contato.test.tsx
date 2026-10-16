@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
+vi.mock("@/components/inbox/ConversationNotesPanel", () => ({ ConversationNotesPanel: () => null }));
 
 /**
  * O botão que abre as tags DO CONTATO dizia só "Tag" (#852, item 4), enquanto o

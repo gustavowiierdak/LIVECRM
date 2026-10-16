@@ -60,7 +60,8 @@ describe("o canal volta sozinho", () => {
   });
 
   it("só força quando VEIO de uma queda — a primeira assinatura não busca à toa", () => {
-    expect(FONTE).toMatch(/if \(tentativas > 0\) \{/);
+    expect(FONTE).toMatch(/const precisaSincronizar = jaAssinou \|\| tentativas > 0;/);
+    expect(FONTE).toMatch(/if \(precisaSincronizar\) \{/);
   });
 
   it("descarta o canal velho que responde tarde", () => {

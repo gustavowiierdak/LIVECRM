@@ -29,6 +29,7 @@ export type ApagarDadosOperacionaisResult =
         | "confirmacao_nao_confere"
         | "db_error";
       details?: unknown;
+      partialCounts?: ContagensApagadas;
     };
 
 /**
@@ -117,7 +118,12 @@ export async function apagarDadosOperacionaisDaOrganizacao(input: {
   revalidatePath("/app/pipelines/[id]", "page");
 
   if (!resultado.ok) {
-    return { ok: false, error: "db_error", details: resultado.falha.mensagem };
+    return {
+      ok: false,
+      error: "db_error",
+      details: resultado.falha.mensagem,
+      partialCounts: resultado.counts,
+    };
   }
   return { ok: true, counts: resultado.counts };
 }

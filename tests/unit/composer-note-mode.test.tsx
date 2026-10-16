@@ -45,11 +45,11 @@ vi.mock("@/hooks/inbox/useDraftReply", () => ({
 
 import { Composer } from "@/components/inbox/Composer";
 
-function renderComposer() {
+function renderComposer(fixedMode?: "reply" | "note") {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <Composer conversationId="conv-1" />
+      <Composer conversationId="conv-1" fixedMode={fixedMode} />
     </QueryClientProvider>,
   );
 }
@@ -83,6 +83,25 @@ describe("Composer + modo nota interna", () => {
     expect(createNoteMock).not.toHaveBeenCalled();
   });
 
+  it("na ficha lateral, fixa o destino privado sem oferecer troca para resposta", () => {
+    renderComposer("note");
+    expect(screen.queryByRole("group", { name: "Modo de escrita" })).not.toBeInTheDocument();
+    expect(screen.getByText("Só a equipe vê estas observações.")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/nota interna/i), { target: { value: "Registrar aqui" } });
+    fireEvent.click(screen.getByRole("button", { name: /^enviar$/i }));
+    expect(createNoteMock).toHaveBeenCalledWith(expect.objectContaining({ body: "Registrar aqui" }), expect.anything());
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("no chat, fixa o destino de resposta sem mostrar a opção de nota", () => {
+    renderComposer("reply");
+    expect(screen.queryByRole("button", { name: "Nota interna" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/mensagem/i), { target: { value: "Resposta ao cliente" } });
+    fireEvent.click(screen.getByRole("button", { name: /^enviar$/i }));
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ body: "Resposta ao cliente" }), expect.anything());
+    expect(createNoteMock).not.toHaveBeenCalled();
+  });
+
   it("limpa o input na hora do envio, sem esperar onSuccess da API", () => {
     sendMock.mockImplementation(() => {
       /* simula request lento — onSuccess não é chamado */
@@ -99,6 +118,8 @@ describe("Composer + modo nota interna", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: /anexar/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sugerir resposta/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Modo de escrita" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Responder" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: /nota interna/i }));
 
@@ -109,6 +130,8 @@ describe("Composer + modo nota interna", () => {
     expect(screen.queryByRole("button", { name: /sugerir resposta/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /gravar áudio/i })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/nota interna/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nota interna/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Esta nota fica visível apenas para a equipe.");
   });
 
   it("modo nota interna: enviar chama useCreateNote e NÃO useSendMessage", () => {
@@ -129,6 +152,7 @@ describe("Composer + modo nota interna", () => {
     renderComposer();
     fireEvent.click(screen.getByRole("button", { name: /nota interna/i }));
     const dialog = await escolherArquivo("print.png", "image/png");
+    expect(dialog).toHaveAccessibleDescription("Este anexo ficará na nota interna, visível apenas para a equipe.");
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^enviar$/i }));
 
@@ -156,6 +180,7 @@ describe("Composer + modo nota interna", () => {
   it("ANEXO em modo REPLY: upload em media + useSendMessage — o comportamento de antes", async () => {
     renderComposer();
     const dialog = await escolherArquivo("foto.jpg", "image/jpeg");
+    expect(dialog).toHaveAccessibleDescription("Este anexo será enviado ao cliente.");
     fireEvent.change(within(dialog).getByLabelText(/legenda/i), { target: { value: "olha isso" } });
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^enviar$/i }));
@@ -195,6 +220,7 @@ describe("Composer + modo nota interna", () => {
     );
     expect(botaoResponder, "o toggle Responder existe, escondido pelo modal").toBeTruthy();
     fireEvent.click(botaoResponder!);
+    expect(dialog).toHaveAccessibleDescription("Este anexo ficará na nota interna, visível apenas para a equipe.");
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^enviar$/i }));
 

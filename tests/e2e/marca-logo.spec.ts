@@ -16,10 +16,9 @@
  *   1. **A camada da instalação pinta a fachada.** O logo do dono do servidor
  *      aparece na barra lateral E no `/login` de quem não entrou — a P0 de
  *      primeira impressão.
- *   2. **A camada da organização NÃO vaza para a fachada.** O logo do cliente
- *      final troca a barra lateral dele e o `/login` continua sendo o do
- *      revendedor. É a propriedade que separa "marca própria" de "qualquer um
- *      repinta a instalação".
+ *   2. **Uma organização única identifica a fachada.** O logo do cliente final
+ *      troca a barra lateral dele e também o `/login` da instalação dedicada.
+ *      Com mais de uma organização ativa, vale a marca da instalação.
  *   3. **O que não é imagem não entra.** Um SVG renomeado para `.png` é recusado
  *      pelos BYTES, com a razão dita em português, e nada muda na tela.
  *   4. **Logo grande é ajustado antes de subir, e o teto continua de pé.** Um
@@ -584,9 +583,8 @@ async function barraMostraLogoDe(
  * O logo da FACHADA (as telas de antes de entrar), visto por quem não entrou.
  *
  * O seletor é o `data-testid` do `<img>` de `app/(public)/layout.tsx`, e não "a
- * primeira imagem da página": a asserção de NEGAÇÃO do caso (3) — a fachada não
- * mostra o logo da empresa — passaria vacuosamente no dia em que qualquer ícone
- * entrasse antes do logo no DOM do `/login`.
+ * primeira imagem da página": a asserção do caso (3) poderia medir outro ícone
+ * no dia em que ele entrasse antes do logo no DOM do `/login`.
  */
 async function logoDoLogin(browser: Browser): Promise<LogoNaTela | null> {
   // Contexto NOVO e sem sessão: é o estado de quem acabou de receber o endereço.
@@ -942,18 +940,15 @@ test.describe("o logo subido pela tela chega à tela", () => {
     // NOTA DO TETO no caso (1).
   });
 
-  test("(3) o logo da EMPRESA troca a barra dela e NÃO vaza para a tela de acesso", async ({
+  test("(3) o logo da EMPRESA também identifica a tela de acesso dedicada", async ({
     page,
     browser,
   }) => {
     // ── AS DUAS PRECONDIÇÕES DESTE CASO, MONTADAS AQUI (issue #306) ───────────
     // (a) A EMPRESA com logo: é o que este caso mede na barra, e quem sobe é o
     //     `admin` do tenant, na tela dele.
-    // (b) A INSTALAÇÃO com logo, embaixo: a asserção "a fachada continua a do
-    //     revendedor" só prova separação de camadas se houver uma camada de baixo
-    //     para continuar sendo ela. Sem ela, a fachada mostraria o `APP_LOGO_URL`
-    //     do `.env` (ou nada) e a asserção ficaria verde pelo motivo errado — e
-    //     era o caso (1) que a pintava, o encadeamento que esta issue remove.
+    // (b) A INSTALAÇÃO com logo, embaixo: o logo da organização precisa vencer
+    //     uma camada real para o caso provar a precedência dedicada.
     // A camada de baixo entra na sessão DO DONO, num contexto próprio: dois papéis
     // são dois logins, e um contexto com dois `loginComTotp` em sequência passaria
     // por um `/login` já autenticado.
@@ -976,13 +971,11 @@ test.describe("o logo subido pela tela chega à tela", () => {
       );
       await page.screenshot({ path: evidencia("4-sidebar-da-empresa.png") });
 
-      // A camada de cima NÃO alcança a fachada: quem não entrou continua vendo o
-      // logo do revendedor. Sem esta asserção, o caso (1) e o (3) seriam
-      // indistinguíveis de "o último upload repinta tudo".
+      // O banco E2E tem uma única organização ativa, então ela também identifica
+      // a fachada. O teste unitário cobre o fallback com duas organizações.
       const noLogin = await logoDoLogin(browser);
       expect(noLogin, "a tela de acesso ficou sem logo depois do upload da empresa").not.toBeNull();
-      expect(noLogin!.src).toContain(`${PREFIXO_PUBLICO}platform/`);
-      expect(noLogin!.src).not.toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
+      expect(noLogin!.src).toContain(`${PREFIXO_PUBLICO}${creds.org_id}/`);
 
       // Sem `limparCamada` aqui: o teto de trocas por usuário do produto — ver a
       // NOTA DO TETO no caso (1).

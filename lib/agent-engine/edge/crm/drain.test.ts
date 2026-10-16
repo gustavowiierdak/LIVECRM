@@ -237,13 +237,13 @@ it('coalescência exclui job em hold (held_run_after) — sessão morta não seq
     if (sql.includes('media_derived_status')) return { rows: [{ type: 'text', media_derived_status: null }] };
     // A coalescência real (com o predicado corrigido) não encontra nada — o
     // único job pendente do contato está em hold e a query já o exclui.
-    if (sql.includes('select id from job_queue')) return { rows: [] };
+    if (sql.includes('select j.id from job_queue')) return { rows: [] };
     if (sql.includes('insert into job_queue')) return { rows: [{ id: 'job-novo' }] };
     return { rows: [] };
   });
   await drainTick({ query } as unknown as pg.Pool, debounceKnobs, log);
 
-  const coalescencia = calls.find((s) => s.includes('select id from job_queue'));
+  const coalescencia = calls.find((s) => s.includes('select j.id from job_queue'));
   expect(coalescencia, 'a query de coalescência deveria ter rodado').toBeTruthy();
   expect(coalescencia).toContain('held_run_after');
   // Sem o job em hold como falso-positivo, o turno segue e enfileira um job novo.

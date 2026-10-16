@@ -77,6 +77,24 @@ export function retentionCopy(
         "compliance",
         t("O contato pediu para não receber mensagens (opt-out). Nada será enviado a ele."),
       );
+    case "automatico_pausado_para_humano":
+      return {
+        kind: "quality",
+        title: t("Automático pausado para atendimento humano"),
+        description: t("O atendimento foi encaminhado à equipe. A IA não enviou esta resposta; um atendente pode continuar a conversa."),
+      };
+    case "contato_pessoal":
+      return {
+        kind: "quality",
+        title: t("Automático desativado para contato pessoal"),
+        description: t("Este contato está marcado como pessoal. A IA não enviou a resposta."),
+      };
+    case "parada_automatica_sem_motivo":
+      return {
+        kind: "quality",
+        title: t("Resposta automática não enviada"),
+        description: t("Um registro antigo não informa por que o automático foi pausado. Confira o estado atual do contato antes de retomar o envio."),
+      };
     case "lgpd_anonymized":
       return make(
         "compliance",

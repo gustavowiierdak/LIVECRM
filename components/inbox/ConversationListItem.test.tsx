@@ -7,11 +7,19 @@
  * uma. Props mínimas copiadas de `ConversationList.tsx`, via
  * `__fixtures__/conversa.ts`.
  */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { ConversationListItem } from "./ConversationListItem";
 import { conversaDeExemplo } from "./__fixtures__/conversa";
+import { ProvedorDeCoresDasEtiquetas } from "@/components/tags/CoresDasEtiquetas";
+
+const get = vi.fn();
+vi.mock("@/lib/api/client", () => ({ apiClient: { get: (...args: unknown[]) => get(...args) } }));
+vi.mock("@/hooks/auth/AuthProvider", () => ({
+  useAuth: () => ({ activeOrg: { orgId: "org-1" } }),
+}));
 
 describe("ConversationListItem — etiqueta de grupo", () => {
   it("conversa de grupo tem a etiqueta Grupo", () => {
@@ -84,5 +92,64 @@ describe("ConversationListItem — bolinha de quem atende", () => {
     );
     expect(screen.getByRole("img", { name: "Encerrada" })).toHaveAttribute("title", "Encerrada");
     expect(screen.queryByRole("img", { name: "Em atendimento" })).toBeNull();
+  });
+});
+
+describe("ConversationListItem — etiquetas acima da prévia", () => {
+  it("exibe primeiro as etiquetas marcadas na conversa, sem perder as do contato", () => {
+    render(
+      <ConversationListItem
+        conversation={{
+          ...conversaDeExemplo.conversation,
+          tags: ["suporte", "urgente"],
+          contacts: { ...conversaDeExemplo.conversation.contacts!, tags: ["SUPORTE", "vip"] },
+        }}
+        {...conversaDeExemplo.props}
+      />,
+    );
+
+    const content = screen.getByText("Maria").closest(".crm-list-content");
+    expect(content).toBeInTheDocument();
+    expect(content).toHaveTextContent("suporte");
+    expect(content).toHaveTextContent("urgente");
+    expect(content).toHaveTextContent("vip");
+    expect(screen.queryByText("SUPORTE")).toBeNull();
+    expect(screen.getByText("suporte").parentElement).toHaveClass("order-2");
+    expect(screen.getByText("bom dia").parentElement).toHaveClass("order-3");
+  });
+
+  it("limita a quatro etiquetas para manter a lista compacta", () => {
+    render(
+      <ConversationListItem
+        conversation={{
+          ...conversaDeExemplo.conversation,
+          tags: ["suporte", "urgente", "vip", "retorno", "financeiro"],
+        }}
+        {...conversaDeExemplo.props}
+      />,
+    );
+
+    expect(screen.getByText("+1")).toBeInTheDocument();
+    expect(screen.queryByText("financeiro")).toBeNull();
+  });
+
+  it("usa a cor configurada para a etiqueta da conversa", async () => {
+    get.mockResolvedValue({ data: [{ tag: "suporte", cor: "#3e63dd" }] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ProvedorDeCoresDasEtiquetas>
+          <ConversationListItem
+            conversation={{ ...conversaDeExemplo.conversation, tags: ["suporte"] }}
+            {...conversaDeExemplo.props}
+          />
+        </ProvedorDeCoresDasEtiquetas>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/tags/cores"));
+    await waitFor(() =>
+      expect(screen.getByText("suporte")).toHaveStyle({ backgroundColor: "#3e63dd" }),
+    );
   });
 });

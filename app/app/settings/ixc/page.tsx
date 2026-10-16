@@ -5,6 +5,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import type { IxcResources } from "@/app/actions/settings/updateIxcConnection";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recursosIxcSchema } from "@/lib/ixc/configuracao";
 
 import { IxcConnectionForm, type IxcConnectionView } from "./_form";
 
@@ -19,6 +20,8 @@ const RECURSOS_PADRAO: IxcResources = {
 };
 
 function recursosSeguros(value: unknown): IxcResources {
+  const parsed = recursosIxcSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   if (!value || typeof value !== "object" || Array.isArray(value)) return RECURSOS_PADRAO;
   const v = value as Record<string, unknown>;
   return {
@@ -62,20 +65,27 @@ export default async function IxcSettingsPage() {
       <header className="max-w-3xl">
         <h1 className="text-2xl font-semibold tracking-tight">{t("IXC Provedor")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {t("Conecte o IXC para consultas de clientes e contratos no atendimento e nos agentes de IA. Faturas, PIX e boletos continuam na Bemobi.")}
+          {t(
+            "Conecte o IXC para consultas de clientes e contratos no atendimento e nos agentes de IA. Faturas, PIX e boletos continuam na Bemobi.",
+          )}
         </p>
       </header>
 
       <div className="max-w-3xl rounded-md border border-sky-500/40 bg-sky-500/10 p-4 text-sm">
-        {t("No IXC, crie um usuário exclusivo em")} <strong>{t("Configurações do sistema → Usuários")}</strong>,
-        {" "}{t("marque")} <strong>{t("Permite acesso ao webservice")}</strong>{" "}
-        {t("e dê somente as permissões necessárias. O token fica criptografado e nunca volta para o navegador.")}
+        {t("No IXC, crie um usuário exclusivo em")}{" "}
+        <strong>{t("Configurações do sistema → Usuários")}</strong>, {t("marque")}{" "}
+        <strong>{t("Permite acesso ao webservice")}</strong>{" "}
+        {t(
+          "e dê somente as permissões necessárias. O token fica criptografado e nunca volta para o navegador.",
+        )}
       </div>
 
       <IxcConnectionForm initial={conexao} />
 
       <p className="max-w-3xl text-xs text-muted-foreground">
-        {t("Nenhum cadastro é importado. As consultas de cliente e contrato são feitas somente no momento do atendimento, com CPF confirmado. Ordens de serviço e recebíveis do IXC ainda não estão disponíveis para a IA.")}
+        {t(
+          "Os dados completos permanecem no IXC. Quando um CPF é confirmado no atendimento, o CRM guarda somente o ID, o nome do cadastro e o CPF cifrado para reconhecer esse vínculo nas próximas conversas.",
+        )}
       </p>
     </div>
   );

@@ -125,6 +125,8 @@ export interface ChannelAdapter {
    * Um canal sem presença ainda recebe o conserto inteiro menos o indicador.
    */
   signalTyping?(input: { tenantId: string; conversationId: string }): Promise<void>;
+  /** Apaga "digitando" quando o turno é interrompido ou termina. */
+  signalPaused?(input: { tenantId: string; conversationId: string }): Promise<void>;
   /** o que o canal suporta agora (estático por canal na v1). */
   capabilities(): ChannelCapabilities;
   /** custo por mensagem do canal. */

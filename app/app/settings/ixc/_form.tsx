@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useT } from "@/hooks/i18n/useT";
 import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
+import type { IxcResource } from "@/lib/ixc/configuracao";
 
 export interface IxcConnectionView {
   baseUrl: string;
@@ -45,11 +46,27 @@ const ERROS: Record<string, string> = {
   erro_ao_gravar: "Não foi possível gravar a conexão agora.",
 };
 
-const OPCOES: Array<{ key: keyof IxcResources; label: string; detail: string }> = [
+const OPCOES: Array<{ key: IxcResource; label: string; detail: string }> = [
   { key: "customers", label: "Clientes", detail: "Cadastro e situação do assinante" },
   { key: "contracts", label: "Contratos", detail: "Planos e situação dos contratos" },
   { key: "receivables", label: "Financeiro", detail: "Títulos e situação de pagamento" },
   { key: "service_orders", label: "Ordens de serviço", detail: "Chamados e atendimentos técnicos" },
+  {
+    key: "diagnostics",
+    label: "Diagnóstico técnico",
+    detail: "Consulta de conexão e medições de sinal registradas no IXC",
+  },
+  {
+    key: "create_service_orders",
+    label: "Criar ordens de serviço",
+    detail: "Autoriza abrir O.S. nos assuntos e setor definidos abaixo",
+  },
+  {
+    key: "monitor_service_orders",
+    label: "Acompanhar e avisar sobre O.S.",
+    detail:
+      "Consulta a cada 5 minutos: avisa agendamento, mudança de horário e finalização; só encerra após o cliente confirmar a solução. Falhas ficam na central da equipe.",
+  },
 ];
 
 export function IxcConnectionForm({ initial }: { initial: IxcConnectionView | null }) {
@@ -214,16 +231,60 @@ export function IxcConnectionForm({ initial }: { initial: IxcConnectionView | nu
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           {OPCOES.map((opcao) => (
-            <div key={opcao.key} className="flex items-center justify-between gap-3 rounded-md border p-3">
+            <div
+              key={opcao.key}
+              className="flex items-center justify-between gap-3 rounded-md border p-3"
+            >
               <div>
                 <Label htmlFor={`ixc_${opcao.key}`}>{t(opcao.label)}</Label>
                 <p className="text-xs text-muted-foreground">{t(opcao.detail)}</p>
               </div>
               <Switch
                 id={`ixc_${opcao.key}`}
-                checked={resources[opcao.key]}
+                checked={resources[opcao.key] === true}
                 onCheckedChange={(checked) =>
                   setResources((atual) => ({ ...atual, [opcao.key]: checked }))
+                }
+              />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("Destino das ordens de serviço")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "Informe os nomes exatos cadastrados no IXC. O sistema confere os identificadores antes de abrir a O.S. O agendamento fica com a equipe. Salve na opção Salvar conexão.",
+            )}
+          </p>
+          {(
+            [
+              ["sem_conexao", t("Assunto para falta de conexão")],
+              ["lentidao", t("Assunto para lentidão")],
+              ["setor", t("Setor responsável")],
+            ] as const
+          ).map(([campo, rotulo]) => (
+            <div key={campo} className="space-y-2">
+              <Label htmlFor={`ixc-os-${campo}`}>{rotulo}</Label>
+              <Input
+                id={`ixc-os-${campo}`}
+                disabled={isPending}
+                value={resources.service_order_routing?.[campo] ?? ""}
+                onChange={(event) =>
+                  setResources((atual) => ({
+                    ...atual,
+                    service_order_routing: {
+                      sem_conexao: "",
+                      lentidao: "",
+                      setor: "",
+                      ...atual.service_order_routing,
+                      [campo]: event.target.value,
+                    },
+                  }))
                 }
               />
             </div>
@@ -238,7 +299,8 @@ export function IxcConnectionForm({ initial }: { initial: IxcConnectionView | nu
               <p className="text-muted-foreground">{t("A conexão ainda não foi testada.")}</p>
             ) : initial.lastTestOk ? (
               <p className="text-emerald-700 dark:text-emerald-300">
-                {t("Último teste concluído com sucesso em")} {new Date(initial.lastTestedAt).toLocaleString(tagDoIdioma)}.
+                {t("Último teste concluído com sucesso em")}{" "}
+                {new Date(initial.lastTestedAt).toLocaleString(tagDoIdioma)}.
               </p>
             ) : (
               <p role="alert" className="text-destructive">

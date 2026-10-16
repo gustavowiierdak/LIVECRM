@@ -27,19 +27,31 @@ describe("fiação — casePromiseGate recebe o nome do gerente do tenant", () =
   });
 });
 
-describe("fiação — caso humano aberto move o lead pra etapa de handoff", () => {
-  it("o fail-safe do case_promise (auto-abre-caso) chama moverParaHandoffBestEffort", () => {
-    const i = FONTE_INBOUND.indexOf("chain.status === 'vetoed' && chain.code === 'case_promise_without_case'");
+describe("fiação — limite da IA transfere a conversa em vez de esperar instrução", () => {
+  it("o fail-safe do case_promise encaminha diretamente à fila humana", () => {
+    const i = FONTE_INBOUND.indexOf('chain.status === "vetoed" && chain.code === "case_promise_without_case"');
     expect(i).toBeGreaterThan(-1);
     const janela = FONTE_INBOUND.slice(i, i + 1800);
-    expect(janela).toMatch(/openedCaseThisTurn = true;\s*\n\s*moverParaHandoffBestEffort\(/);
+    expect(janela).toContain("await encaminharLimiteDaAutomacao({");
+    expect(janela).not.toContain("await openCase(");
   });
 
-  it("a tool open_human_case (caso deliberado do modelo) também chama moverParaHandoffBestEffort", () => {
+  it("a tool open_human_case também transfere, sem deixar caso aguardando", () => {
     const i = FONTE_INBOUND.indexOf("rawTools.open_human_case = tool({");
     expect(i).toBeGreaterThan(-1);
     const janela = FONTE_INBOUND.slice(i, i + 1500);
-    expect(janela).toMatch(/openedCaseThisTurn = true;\s*\n\s*moverParaHandoffBestEffort\(/);
+    expect(janela).toContain("await encaminharLimiteDaAutomacao(parsed.data)");
+    expect(janela).not.toContain("await openCase(");
+  });
+
+  it("o encaminhamento avisa, transfere com contexto e move o lead", () => {
+    const i = FONTE_INBOUND.indexOf("const encaminharLimiteDaAutomacao = async");
+    const janela = FONTE_INBOUND.slice(i, i + 1900);
+    expect(janela).toContain("destinoDoLimiteDaAutomacao(");
+    expect(janela).toContain("avisarLeadDaEscalacao(");
+    expect(janela).toContain("performHumanHandoff(");
+    expect(janela).toContain("passouParaAEquipe = true");
+    expect(janela).toContain('moverParaHandoffBestEffort("automation_limit")');
   });
 
   it("moverParaHandoffBestEffort é best-effort — nunca derruba o turno (.catch, não throw)", () => {
@@ -61,8 +73,8 @@ describe("fiação — lead urgente represado pelo cap de warm-up gera alerta cr
     // mensagem do job, não existiria. O que esta guarda protege é o mesmo — o
     // bloco do cap CHECA urgência antes de adiar — e agora protege mais.
     expect(janela).toContain("inboundsPendentes.some((texto) => detectUrgencySignal(texto))");
-    expect(janela).toMatch(/kind:\s*'handoff'/);
-    expect(janela).toMatch(/severity:\s*'critical'/);
+    expect(janela).toMatch(/kind:\s*["']handoff["']/);
+    expect(janela).toMatch(/severity:\s*["']critical["']/);
   });
 });
 

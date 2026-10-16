@@ -33,9 +33,9 @@ interface Props {
  * O painel lateral é coluna de CONSULTA: a pessoa olha para lá depois, e ele
  * some em largura apertada.
  *
- * O fio é o eixo de leitura que termina no composer. Ele já intercala mensagens
- * e notas por timestamp, já tem `NoteCard` como cartão não-mensagem, e o
- * auto-scroll traz o fim para a viewport. Como a passagem CALA a IA, ela é quase
+ * O fio é o eixo de leitura que termina no composer. Ele intercala mensagens
+ * e passagens por timestamp, e o auto-scroll traz o fim para a viewport.
+ * As observações internas ficam na ficha lateral. Como a passagem CALA a IA, ela é quase
  * sempre o último evento quando a pessoa chega — o cartão aparece exatamente
  * onde o olho está antes de o dedo digitar.
  *

@@ -3,8 +3,8 @@ import type {JobClaim} from "../queue/claim";
  * O ENVIO do aviso de que a IA está saindo de campo — lado do MOTOR (`pg`).
  *
  * A frase mora em `lib/escalacao/aviso-ao-lead.ts` (uma só, para os dois mundos).
- * Aqui só o encanamento: resolver a disponibilidade real da equipe, montar o
- * corpo e mandá-lo pela MESMA cadeia de guardrails por onde passa tudo que sai
+ * Aqui só o encanamento: montar o corpo sem consultar disponibilidade e mandá-lo
+ * pela MESMA cadeia de guardrails por onde passa tudo que sai
  * daqui — `runBeforeSend`. Nada sai por baixo dela (CLAUDE.md, princípio 2).
  *
  * ## É o irmão de `runDeterministicReentry`
@@ -38,7 +38,6 @@ import type {JobClaim} from "../queue/claim";
  */
 import type pg from 'pg';
 
-import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import { deriveLgpdFromContact } from '../guardrails/lgpd/legal-basis';
 import { textoDoAviso, type MotivoDoAviso } from '@/lib/escalacao/aviso-ao-lead';
 // Dois `MotivoDoAviso` no repositório, e eles respondem perguntas DIFERENTES: o
@@ -95,6 +94,8 @@ export interface AvisoDeEscalacaoIds {
 }
 
 export interface AvisoDeEscalacaoOpts {
+  /** Nome do destino já validado no banco, nunca um destino inventado pelo modelo. */
+  setorNome?: string;
   motivo: MotivoDoAviso;
   channel: ChannelAdapter;
   /** `contacts.is_blocked` lido no contexto deste turno (fonte confiável). */
@@ -144,16 +145,12 @@ export async function avisarLeadDaEscalacao(
   } catch {
     idioma = null;
   }
-  try {
-    const { quem } = await expectativaDeAtendimento(pool, ids.tenantId, opts.now);
-    body = textoDoAviso(opts.motivo, quem, ids.leadId, idioma);
-  } catch (err) {
-    // `expectativaDeAtendimento` já tem rede própria; se ainda assim quebrar,
-    // a frase conservadora (sem prazo) é a certa — nunca a ausência de frase.
-    opts.log.warn('aviso de escalação: disponibilidade não lida, usando a frase conservadora', {
-      error: err instanceof Error ? err.message.slice(0, 120) : 'erro desconhecido',
-    });
-    body = textoDoAviso(opts.motivo, null, ids.leadId, idioma);
+  // Transferir para a fila não depende de escala, expediente ou agente livre.
+  // A frase conservadora não promete prazo nem expõe disponibilidade ao cliente.
+  body = textoDoAviso(opts.motivo, null, ids.leadId, idioma);
+
+  if (opts.setorNome) {
+    body = `Vou encaminhar seu atendimento para a fila de ${opts.setorNome}, com o que você já informou, para a equipe continuar a análise. Aguarde por aqui; não precisa repetir os testes.`;
   }
 
   try {

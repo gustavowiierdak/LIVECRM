@@ -164,6 +164,7 @@ export const customFieldSchema = z.object({
     "text",
     "textarea",
     "number",
+    "currency",
     "date",
     "select",
     "multiselect",
@@ -255,6 +256,15 @@ export const pipelineConfigPatchSchema = z.object({
   /** Obrigatóriedade do motivo de ganho, opt-in por funil (padrão: não exigir). */
   won_reason_required: z.boolean().optional(),
   /**
+   * A comanda do ganho, opt-in por funil (CR do PR #2220, #1477). Ausente ou
+   * `false` é DESLIGADO — o padrão que a doutrina de extensões exige ("se
+   * nenhuma organização ativar isto, a operação comum continua inteira?"): em
+   * loja com checkout, infoproduto ou imobiliária o valor do negócio não é
+   * conta a receber. Quem lê é o consumidor de `lead.won`
+   * (`lib/financeiro/comanda-do-ganho.handler.ts`), não esta tela.
+   */
+  comanda_no_ganho: z.boolean().optional(),
+  /**
    * O que acontece quando um negócio ENCERRADO volta (issue #1538). Ausente é
    * `mesmo_registro`, o comportamento de antes: reabre o mesmo negócio. Com
    * `novo_negocio`, mover o encerrado para etapa aberta é recusado e a saída é
@@ -287,6 +297,21 @@ export const platformBrandingSchema = z.object({
     .trim()
     .refine(ehHexValido, { message: "Use uma cor no formato #rrggbb" })
     .nullable(),
+  /**
+   * A cor da marca NO TEMA ESCURO (#2482) — o par de `accent_hex`, do mesmo
+   * jeito que a tela já tem o par de logo.
+   *
+   * `.nullable()` como os irmãos: `null` é "apague", e os dois temas voltam a
+   * derivar da cor principal. A retrocompatibilidade que a issue pede não mora
+   * aqui — ela mora no BANCO (`accent_dark_hex` pode ser `null` em toda linha
+   * gravada antes da coluna) e no envelope (`corEscura` some do objeto
+   * resolvido), que são os dois lados que código antigo lê.
+   */
+  accent_dark_hex: z
+    .string()
+    .trim()
+    .refine(ehHexValido, { message: "Use uma cor no formato #rrggbb" })
+    .nullable(),
   show_powered_by: z.boolean(),
 });
 export type PlatformBrandingInput = z.infer<typeof platformBrandingSchema>;
@@ -313,6 +338,12 @@ export type PlatformBrandingInput = z.infer<typeof platformBrandingSchema>;
 export const marcaDaOrganizacaoSchema = z.object({
   app_name: z.string().trim().min(1).max(120).nullable(),
   accent_hex: z
+    .string()
+    .trim()
+    .refine(ehHexValido, { message: "Use uma cor no formato #rrggbb" })
+    .nullable(),
+  /** A cor do TEMA ESCURO (#2482) — o par de `accent_hex`, mesma validação. */
+  accent_dark_hex: z
     .string()
     .trim()
     .refine(ehHexValido, { message: "Use uma cor no formato #rrggbb" })

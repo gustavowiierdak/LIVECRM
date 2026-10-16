@@ -1,4 +1,5 @@
 import { InterfaceRefresh } from "@/hooks/auth/InterfaceRefresh";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { isMfaEnrolled, loadAuthUser, requiresMfa, resolveActiveOrg } from "@/lib/auth/server";
@@ -13,7 +14,9 @@ import { MfaEnrollGate } from "@/components/auth/MfaEnrollGate";
 import { cssDaMarca, ESCOPO_DA_ORGANIZACAO } from "@/lib/branding/css";
 import { cssDaExtensaoDeTema, linhaBrutaDeTema, temaAplicavel } from "@/lib/extensions/tema";
 import { marcaDaInstalacao } from "@/lib/branding/instalacao";
+import { corDoIconeDaOrganizacao, urlDoIconeDaOrganizacao } from "@/lib/branding/icone";
 import { resolverMarcaDaOrganizacao } from "@/lib/branding/organizacao";
+import { marcaResolvidaDaSaida } from "@/lib/branding/saida";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { modulosLigados } from "@/lib/instalacao/modulos";
@@ -23,11 +26,29 @@ import {
   ImpersonateBanner,
 } from "@/components/app/ImpersonateBanner";
 import { ConexaoCaidaBanner } from "@/components/app/ConexaoCaidaBanner";
+import { FaixaDaCobranca } from "@/components/cobranca/FaixaDaCobranca";
+import { faixaDaCobranca, type FaixaDaCobranca as Faixa } from "@/lib/cobranca/faixa";
+import { logger } from "@/lib/logger";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
 import { listarConexoesCaidas, type ConexaoCaida } from "@/lib/channels/health";
 import { VoiceCallProvider } from "@/components/voice/VoiceCallContext";
 import { ProvedorDaOcupacaoDoRodape } from "@/lib/ui/rodape-ocupado";
 import { acessoFoiRevogado } from "@/lib/auth/vinculo-revogado";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const user = await loadAuthUser();
+  if (!user) return {};
+  const activeOrg = await resolveActiveOrg(user);
+  if (!activeOrg) return {};
+
+  const marca = await marcaResolvidaDaSaida(activeOrg.orgId);
+  const cor = corDoIconeDaOrganizacao(marca);
+  return {
+    icons: {
+      icon: { url: urlDoIconeDaOrganizacao(cor), type: "image/png", sizes: "64x64" },
+    },
+  };
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();
@@ -66,6 +87,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // EPIC-02: gate /app/* on completed onboarding.
   // EPIC-11: gate /app/* on org not being suspended (S-11.08).
   let conexoesCaidas: ConexaoCaida[] = [];
+  let faixa: Faixa = null;
+  let orgFuso: string | null = null;
   let enrolled = false;
   let needsMfaGate = false;
 
@@ -98,7 +121,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const [orgRes, conexoes, isEnrolled, mfaRequired, modulos] = await Promise.all([
       admin
         .from("organizations")
-        .select("onboarded_at, status, settings")
+        .select("onboarded_at, status, settings, timezone")
         .eq("id", activeOrg.orgId)
         .maybeSingle(),
       listarConexoesCaidas(admin, activeOrg.orgId),
@@ -140,6 +163,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       // Mesma linha de `settings` já lida acima — nenhuma consulta a mais.
       capacidades_ligadas: capacidadesLigadas(orgRow?.settings, modulos),
     };
+
+    // A faixa do teste grátis (spec da cobrança §9): uma consulta a mais SÓ com
+    // a cobrança ligada (quem não administra só vê o atraso). Falha aberta na INFORMAÇÃO: sem a
+    // leitura, nenhuma faixa — o que ela diz não trava nada.
+    if (modulos.includes("cobranca")) {
+      const { data, error } = await admin
+        .from("cobranca_assinaturas")
+        .select("estado, trial_ate, vencida_desde, cancela_no_fim, proximo_vencimento, link_de_pagamento, provedor")
+        .eq("organization_id", activeOrg.orgId)
+        .maybeSingle();
+      if (error) {
+        logger.warn("app: assinatura ilegível — sem faixa da cobrança", {
+          organization_id: activeOrg.orgId,
+          codigo: error.code,
+        });
+      } else {
+        orgFuso = orgRow?.timezone ?? null;
+        faixa = faixaDaCobranca(data, new Date(), roleAtLeast(activeOrg.role, "admin"));
+      }
+    }
 
     // `marcaDaInstalacao()` é memoizada por TTL no PROCESSO (`lib/branding/
     // instalacao.ts`), e a derivação da cor é cacheada por régua+semente em
@@ -231,9 +274,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     needsMfaGate = mfaRequired;
   }
 
-  // Read sidebar collapsed state SSR to avoid flash.
+  // Compact operator rail by default; preserve each person's explicit preference.
+  // Read it server-side to avoid a layout flash during hydration.
   const store = await cookies();
-  const collapsed = store.get("sidebar_collapsed")?.value === "1";
+  const collapsed = store.get("sidebar_collapsed")?.value !== "0";
 
   const impersonating = user.support ? {
     tenantId: user.support.organization_id, tenantName: user.support.name,
@@ -298,6 +342,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <EstiloDoTemaDaExtensao css={cssDoTemaDaExtensao} />
         <ImpersonateBanner impersonating={impersonating} />
         <ConexaoCaidaBanner caidas={conexoesCaidas} />
+        {faixa !== null && <FaixaDaCobranca faixa={faixa} fuso={orgFuso} />}
         {needsMfaGate ? (
           // Gate always mounted for MFA-required roles; it latches the blocking
           // decision client-side so the enroll Server Action's revalidation

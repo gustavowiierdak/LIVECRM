@@ -19,10 +19,10 @@
  *    que fecha o caminho direto para TODO MUNDO, inclusive para quem tem a anon
  *    key;
  * 2. este módulo cria a conta do CONVIDADO pela admin API
- *    (`auth.admin.createUser`), que não depende do cadastro público, e volta o
- *    e-mail de confirmação pelo mesmo canal de sempre — o fluxo depois disso
- *    (`/auth/confirm` → `decidirConviteDoSignup` → `aplicarConvite`) não muda
- *    uma linha.
+ *    (`auth.admin.createUser`), que não depende do cadastro público. Com SMTP,
+ *    confirma pelo e-mail de sempre. Na VPS própria fechada e sem SMTP, o
+ *    convite assinado autoriza a criação, a pessoa entra com a senha que definiu
+ *    e vai diretamente à mesma tela de aceite.
  *
  * ─── Por que o caminho antigo continua sendo o padrão ───────────────────────
  *
@@ -43,6 +43,7 @@
  * faz (`auth.admin.createUser`), e o que a própria issue sugere.
  */
 import { env } from "@/lib/env";
+import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -85,20 +86,20 @@ export async function lerConfigPublicaDoGoTrue(): Promise<ConfigPublicaDoGoTrue 
 }
 
 export type ResultadoDaContaDeConvite =
-  | { ok: true; sessao_ativa: false }
+  | { ok: true; sessao_ativa: boolean }
   | {
       ok: false;
       /**
        * `conta_ja_existe`: já havia conta para este e-mail (só acontece com
        * convite na mão, então não fura a anti-enumeração — o comentário disso
-       * está em `signUp.ts`). Os outros três são falha de infraestrutura.
+       * está em `signUp.ts`). Os demais são convite revogado ou falha de infraestrutura.
        */
-      motivo: "conta_ja_existe" | "rate_limited" | "criacao_recusada" | "email_de_confirmacao_falhou";
+      motivo: "conta_ja_existe" | "rate_limited" | "criacao_recusada" | "email_de_confirmacao_falhou" | "convite_revogado" | "autenticacao_falhou";
       detalhe?: string;
     };
 
 /**
- * Cria a conta do convidado pela admin API e manda o e-mail de confirmação.
+ * Cria a conta do convidado pela admin API. O caminho padrão manda e-mail.
  *
  * Por que admin API: `auth.signUp()` é o endpoint que o `disable_signup`
  * bloqueia; `auth.admin.createUser` não é. Por que o `email_confirm: false` +
@@ -112,7 +113,11 @@ export type ResultadoDaContaDeConvite =
  * reenvio é explícito — pelo `POST /auth/v1/resend`, que é público, não tem
  * trava de cadastro e usa a mesma chave de sempre.
  *
- * Se o reenvio falhar, a conta recém-criada é APAGADA e o erro é devolvido:
+ * No modo sem e-mail, o token também é conferido contra a revogação persistida,
+ * e só então a conta é confirmada e autenticada. Posse desse link dá acesso ao
+ * e-mail do convite; por isso o cadastro público deve estar fechado.
+ *
+ * Se o reenvio ou o login falhar, a conta recém-criada é APAGADA e o erro é devolvido:
  * sem isso a pessoa ficaria com conta sem e-mail e toda nova tentativa cairia
  * em "conta já existe" — a conta órfã que a issue inteira existe para não
  * acumular.
@@ -123,12 +128,30 @@ export async function criarContaDeConvite(params: {
   inviteToken: string;
   fullName: string;
   emailRedirectTo: string;
+  /** Somente na instalação própria, com cadastro fechado e sem SMTP. */
+  semEmail?: boolean;
 }): Promise<ResultadoDaContaDeConvite> {
   const admin = createAdminClient();
+  if (params.semEmail) {
+    const payload = verifyInviteToken(params.inviteToken);
+    if (!payload || payload.email.trim().toLowerCase() !== params.email.trim().toLowerCase()) {
+      return { ok: false, motivo: "convite_revogado" };
+    }
+    const { data: convite, error: erroConvite } = await admin
+      .from("team_invites")
+      .select("revoked_at,accepted_at")
+      .eq("id", payload.invite_id)
+      .eq("organization_id", payload.organization_id)
+      .maybeSingle();
+    if (erroConvite) return { ok: false, motivo: "criacao_recusada", detalhe: erroConvite.message };
+    if (convite?.revoked_at || convite?.accepted_at) return { ok: false, motivo: "convite_revogado" };
+  }
   const { data, error } = await admin.auth.admin.createUser({
     email: params.email,
     password: params.password,
-    email_confirm: false,
+    // O link assinado e ainda não revogado é a autorização neste modo. Não
+    // muda a confirmação de e-mail dos cadastros públicos nem de outras VPS.
+    email_confirm: params.semEmail === true,
     user_metadata: { invite_token: params.inviteToken, full_name: params.fullName },
   });
 
@@ -142,6 +165,31 @@ export async function criarContaDeConvite(params: {
       error?.code === "email_exists" || /already (been )?registered|already exists/i.test(detalhe);
     if (jaExiste) return { ok: false, motivo: "conta_ja_existe" };
     return { ok: false, motivo: "criacao_recusada", detalhe };
+  }
+
+  if (params.semEmail) {
+    let erroLogin: { message: string } | null = null;
+    try {
+      const supabase = await createClient();
+      const resposta = await supabase.auth.signInWithPassword({
+        email: params.email,
+        password: params.password,
+      });
+      erroLogin = resposta.error;
+    } catch (erro) {
+      erroLogin = { message: erro instanceof Error ? erro.message : String(erro) };
+    }
+    if (erroLogin) {
+      const { error: erroDelete } = await admin.auth.admin.deleteUser(data.user.id);
+      if (erroDelete) {
+        logger.error("convite: não deu para desfazer a conta após falha no login", {
+          user_id: data.user.id,
+          detalhe: erroDelete.message,
+        });
+      }
+      return { ok: false, motivo: "autenticacao_falhou", detalhe: erroLogin.message };
+    }
+    return { ok: true, sessao_ativa: true };
   }
 
   // Mesmo cliente anônimo de sempre: quem manda no `/resend` é a chave pública,

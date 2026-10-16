@@ -201,3 +201,38 @@ it("provedor fora do ar segura a desconexão — nada é arquivado pela metade",
   expect(updates).toHaveLength(0);
   expect(h.health).not.toHaveBeenCalled();
 });
+
+it("canal órfão (conta fora do perfil) sem id: o Excluir da tela também apaga a assinatura pela URL", async () => {
+  // PR #2417: a linha de "Canais sem conta no perfil" sai pela ação disconnect.
+  // A conta dela já não é listada pelo provedor — e mesmo assim a assinatura,
+  // que é por chave e não por conta, tem de sair antes do arquivamento.
+  provedor([{ _id: "wh-orfao", url: `https://instalacao.example.com/api/v1/webhooks/channel/${token}` }]);
+  const fora = "d".repeat(24);
+  const { db, updates } = fakeDb([{ ...canalOrfao, zernio_account_id: fora }]);
+
+  expect(await disconnectSocialAccount(db, org, fora, false)).toEqual({
+    channel_id: "ch-orfao",
+    account_removed: false,
+    avisos_fechados: "resolvido",
+  });
+  expect(deletes()).toEqual(["webhooks/settings?webhookId=wh-orfao"]);
+  expect(ordem.indexOf("DELETE webhooks/settings?webhookId=wh-orfao")).toBeLessThan(
+    ordem.indexOf("db:channel_sessions.update"),
+  );
+  expect(updates).toHaveLength(1);
+  expect(updates[0]?.patch).toMatchObject({ status: "STOPPED", archived_at: expect.any(String) });
+});
+
+it("`social_webhook_id` vazio não vira DELETE por id: reconcilia pela URL, como o DELETE da Central", async () => {
+  // PR #2424: o desconectar e o `apagarAssinaturaSocial` tinham cópias da regra
+  // "id ou URL", e esta aceitava `""` — o DELETE saía com `webhookId=` vazio e a
+  // assinatura de verdade ficava viva. Agora as duas passam pela mesma regra.
+  provedor([{ _id: "wh-orfao", url: `https://instalacao.example.com/api/v1/webhooks/channel/${token}` }]);
+  const { db, updates } = fakeDb([{ ...canalOrfao, metadata: { social_webhook_id: "" } }]);
+
+  await disconnectSocialAccount(db, org, account, false);
+
+  expect(listagensDeAssinatura()).toHaveLength(1);
+  expect(deletes()).toEqual(["webhooks/settings?webhookId=wh-orfao"]);
+  expect(updates).toHaveLength(1);
+});

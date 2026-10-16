@@ -397,8 +397,14 @@ describe('resolveConversationTurn — contexto curto do classificador', () => {
 
     expect(out.outcome).toBe('sticky');
     const [sql, values] = db.query.mock.calls.find(([q]) => q.includes('id<>$3'))!;
-    expect(sql).toContain('organization_id=$1 and conversation_id=$2');
+    expect(sql).toContain('m.organization_id=$1 and m.conversation_id=$2');
+    expect(sql).toContain('m.service_revision=c.service_revision');
+    expect(sql).toContain('m.demanda_id is not distinct from c.current_demanda_id');
+    expect(sql).toContain('m.sent_at>=c.service_started_at');
     expect(values).toEqual(['org-1', 'conv-1', 'msg-atual', 16]);
+    const [signalSql] = db.query.mock.calls.find(([q]) => q.includes('limit 1') && q.includes('from messages'))!;
+    expect(signalSql).toContain('m.service_revision=c.service_revision');
+    expect(signalSql).toContain('m.demanda_id is not distinct from c.current_demanda_id');
     expect(classifyIntent.mock.calls[0]![2]).toMatchObject({
       signal: 'Primeira',
       recentMessages: [

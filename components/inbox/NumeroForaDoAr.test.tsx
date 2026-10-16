@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 const mutate = vi.fn();
 const lista: { sessoes: unknown[] } = { sessoes: [] };
 
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/channels/useChannelSessions", () => ({
   useChannelSessions: () => ({ data: lista.sessoes, isLoading: false, isError: false }),
   channelLabel: (c: { display_name: string | null; phone_number: string | null }) =>

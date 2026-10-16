@@ -1,25 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/auth/AuthProvider";
 
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
-import { NoteCard } from "@/components/inbox/NoteCard";
+import { MessageFrame } from "@/components/inbox/MessageFrame";
+import { CitacaoWebchat } from "@/components/atendimento/CitacaoWebchat";
+import { DocumentCard } from "@/components/inbox/media/DocumentCard";
+import { ImageMedia } from "@/components/inbox/media/ImageMedia";
+import { AudioPlayer } from "@/components/inbox/media/AudioPlayer";
+import { pdfDaMensagem } from "@/lib/webchat/anexo";
+import { tipoDeAnexoWebchat } from "@/lib/webchat/media";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
-import { useConversationNotes } from "@/hooks/inbox/useConversationNotes";
-import { useCreateNote } from "@/hooks/inbox/useCreateNote";
+import { useTagDeIdioma } from "@/hooks/i18n/useLocaleDeData";
 import { randomId } from "@/lib/random-id";
-import type { Note } from "@/lib/types/messaging";
-import { ArrowsClockwise, CircleNotch, Globe, PaperPlaneTilt } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, ArrowsClockwise, CaretDown, CircleNotch, Globe, PaperPlaneTilt, X } from "@/lib/ui/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { MensagemWebchat, SessaoOperadorWebchat } from "@/lib/webchat/types";
+import type { AtendimentoOperadorWebchat, MensagemWebchat } from "@/lib/webchat/types";
 
 type ApiOk<T> = { data: T };
 type Setor = "suporte" | "financeiro" | "cancelamento";
-type Modo = "reply" | "note";
-type ItemDoFio =
-  | { kind: "message"; createdAt: string; data: MensagemWebchat }
-  | { kind: "note"; createdAt: string; data: Note };
+const SEM_MENSAGENS: MensagemWebchat[] = [];
 
 const SETORES: ReadonlyArray<{ value: Setor; label: string }> = [
   { value: "suporte", label: "Suporte" },
@@ -38,131 +42,69 @@ async function resposta<T>(response: Response): Promise<T> {
   return json.data;
 }
 
-function horaDaMensagem(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function horaDaMensagem(value: string, locale: string): string {
+  return new Date(value).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 /**
  * Porta explícita do canal web na inbox. O visual acompanha o fio comum, mas o
- * transporte continua próprio: anexos, áudio, citação e sugestão do agente só
- * entram quando o contrato do webchat souber carregá-los sem cair no WhatsApp.
+ * transporte continua próprio: imagem e áudio do visitante são carregados pelo
+ * contrato do webchat sem misturar as mensagens do WhatsApp.
  */
 export function WebchatOperatorPanel({
   conversationId,
   supportReadonly = false,
   primary = false,
+  contactName,
 }: {
   conversationId: string;
   supportReadonly?: boolean;
   primary?: boolean;
+  contactName?: string | null;
 }) {
   const t = useT();
-  const [sessions, setSessions] = useState<SessaoOperadorWebchat[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
-  const [messages, setMessages] = useState<MensagemWebchat[]>([]);
+  const locale = useTagDeIdioma();
+  const { user, activeOrg } = useAuth();
+  const qc = useQueryClient();
+  const [requestedSessionId, setSelectedSessionId] = useState("");
+  // Cache só em memória, isolado por usuário/org/conversa/sessão. Ao voltar,
+  // mostra o fio já lido e revalida: não descarta tudo a cada clique na lista.
+  const queryKey = ["webchat-attendance", user.id, activeOrg?.orgId, conversationId, requestedSessionId] as const;
+  const attendance = useQuery({
+    queryKey,
+    enabled: !!activeOrg?.orgId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 7_000,
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const params = requestedSessionId ? `?${new URLSearchParams({ visitor_session_id: requestedSessionId })}` : "";
+      return resposta<AtendimentoOperadorWebchat>(await fetch(
+        `/api/v1/conversations/${conversationId}/webchat/attendance${params}`,
+        { credentials: "same-origin", signal },
+      ));
+    },
+  });
+  const sessions = attendance.data?.sessions ?? [];
+  const selectedSessionId = attendance.data?.selected_session_id ?? "";
+  const messages = attendance.data?.messages ?? SEM_MENSAGENS;
   const [sector, setSector] = useState<Setor>("suporte");
   const [draft, setDraft] = useState("");
-  const [mode, setMode] = useState<Modo>("reply");
+  const [quoted, setQuoted] = useState<{ sessionId: string; message: MensagemWebchat } | null>(null);
+  const replyTo = quoted?.sessionId === selectedSessionId ? quoted.message : null;
   const [handoffToken, setHandoffToken] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = attendance.isPending;
   const [sending, setSending] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const focusReplyRef = useRef(false);
+  const sendAttemptRef = useRef<{ signature: string; key: string } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const notes = useConversationNotes(primary ? conversationId : null);
-  const createNote = useCreateNote();
-
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
-  const items = useMemo<ItemDoFio[]>(() => {
-    const next: ItemDoFio[] = [
-      ...messages.map((data) => ({ kind: "message" as const, createdAt: data.created_at, data })),
-      ...(primary
-        ? notes.map((data) => ({ kind: "note" as const, createdAt: data.created_at, data }))
-        : []),
-    ];
-    return next.sort(
-      (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
-    );
-  }, [messages, notes, primary]);
-
-  const loadSessions = useCallback(
-    async (quiet = false) => {
-      if (!quiet) setLoading(true);
-      try {
-        const next = await resposta<SessaoOperadorWebchat[]>(
-          await fetch(`/api/v1/conversations/${conversationId}/webchat-sessions`, {
-            credentials: "same-origin",
-          }),
-        );
-        setSessions(next);
-        setSelectedSessionId((current) =>
-          next.some((session) => session.id === current)
-            ? current
-            : (next.find((session) => session.active)?.id ?? next[0]?.id ?? ""),
-        );
-        setStatus(null);
-      } catch (error) {
-        setStatus(
-          error instanceof Error
-            ? error.message
-            : t("Não foi possível carregar o atendimento web."),
-        );
-      } finally {
-        if (!quiet) setLoading(false);
-      }
-    },
-    [conversationId, t],
-  );
-
-  const loadMessages = useCallback(async () => {
-    if (!selectedSessionId) {
-      setMessages([]);
-      return;
-    }
-    try {
-      const params = new URLSearchParams({ visitor_session_id: selectedSessionId });
-      const next = await resposta<MensagemWebchat[]>(
-        await fetch(`/api/v1/conversations/${conversationId}/webchat/messages?${params}`, {
-          credentials: "same-origin",
-        }),
-      );
-      setMessages(next);
-      setStatus(null);
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : t("Não foi possível carregar as mensagens."),
-      );
-    }
-  }, [conversationId, selectedSessionId, t]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadSessions(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadSessions]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadSessions(true);
-    }, 7_000);
-    return () => window.clearInterval(interval);
-  }, [loadSessions]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadMessages(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadMessages]);
-
-  useEffect(() => {
-    if (!selectedSessionId) return;
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadMessages();
-    }, 7_000);
-    return () => window.clearInterval(interval);
-  }, [loadMessages, selectedSessionId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [items.length, selectedSessionId]);
+  }, [messages.length, selectedSessionId]);
 
   const emitirHandoff = async () => {
     setSending(true);
@@ -186,37 +128,40 @@ export function WebchatOperatorPanel({
 
   const enviar = async () => {
     const body = draft.trim();
-    if (!body) return;
+    if (!body || !selectedSessionId) return;
     setSending(true);
     try {
-      if (mode === "note") {
-        await createNote.mutateAsync({ conversation_id: conversationId, body });
-      } else {
-        if (!selectedSessionId) return;
-        const message = await resposta<MensagemWebchat>(
-          await fetch(`/api/v1/conversations/${conversationId}/webchat/messages`, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              visitor_session_id: selectedSessionId,
-              body,
-              idempotency_key: randomId(),
-            }),
-          }),
-        );
-        setMessages((current) => [...current, message]);
+      const signature = JSON.stringify([selectedSessionId, body, replyTo?.id ?? null]);
+      if (sendAttemptRef.current?.signature !== signature) {
+        sendAttemptRef.current = { signature, key: randomId() };
       }
+      const message = await resposta<MensagemWebchat>(
+        await fetch(`/api/v1/conversations/${conversationId}/webchat/messages`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            visitor_session_id: selectedSessionId,
+            body,
+            idempotency_key: sendAttemptRef.current.key,
+            ...(replyTo ? { reply_to_message_id: replyTo.id } : {}),
+          }),
+        }),
+      );
+      // Não deixar uma leitura anterior ao envio apagar a resposta confirmada.
+      await qc.cancelQueries({ queryKey });
+      qc.setQueryData<AtendimentoOperadorWebchat>(queryKey, (current) => current
+        ? { ...current, messages: [...current.messages.filter((item) => item.id !== message.id), message] }
+        : current);
+      void qc.invalidateQueries({ queryKey: ["webchat-attendance", user.id, activeOrg?.orgId, conversationId] });
+      sendAttemptRef.current = null;
       setDraft("");
+      setQuoted(null);
       setStatus(null);
       if (editorRef.current) editorRef.current.style.height = "auto";
     } catch (error) {
       setStatus(
-        error instanceof Error
-          ? error.message
-          : mode === "note"
-            ? t("Não foi possível salvar a nota interna.")
-            : t("Não foi possível enviar a resposta."),
+        error instanceof Error ? error.message : t("Não foi possível enviar a resposta."),
       );
     } finally {
       setSending(false);
@@ -252,22 +197,19 @@ export function WebchatOperatorPanel({
     });
   }
 
-  const replyDisabled =
-    supportReadonly || sending || createNote.isPending || !selectedSession?.active;
-  const noteDisabled = supportReadonly || sending || createNote.isPending;
-  const editorDisabled = mode === "note" ? noteDisabled : replyDisabled;
+  const editorDisabled = supportReadonly || sending || !selectedSession?.active;
 
   return (
     <section
       className={cn(
-        "border-t border-border bg-background",
+        "crm-webchat-operator border-t border-border bg-background",
         primary ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "px-3 py-3",
       )}
       aria-label={t("Atendimento web")}
     >
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-2",
+          "crm-webchat-channel flex flex-wrap items-center justify-between gap-2",
           primary && "border-b border-border px-4 py-2.5",
         )}
       >
@@ -277,7 +219,7 @@ export function WebchatOperatorPanel({
           </span>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">{t("Atendimento web")}</h2>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="crm-channel-description truncate text-xs text-muted-foreground">
               {t("Canal separado: apenas mensagens trocadas neste atendimento aparecem aqui.")}
             </p>
           </div>
@@ -288,8 +230,7 @@ export function WebchatOperatorPanel({
           size={primary ? "icon" : "sm"}
           className={primary ? "size-9" : undefined}
           onClick={() => {
-            void loadSessions();
-            void loadMessages();
+            void attendance.refetch();
           }}
           disabled={loading}
           aria-label={t("Atualizar")}
@@ -305,7 +246,7 @@ export function WebchatOperatorPanel({
         </Button>
       </div>
 
-      {status && (
+      {(status || attendance.error) && (
         <p
           className={cn(
             "text-sm text-muted-foreground",
@@ -313,7 +254,7 @@ export function WebchatOperatorPanel({
           )}
           role="status"
         >
-          {status}
+          {status ?? attendance.error?.message}
         </p>
       )}
 
@@ -365,9 +306,9 @@ export function WebchatOperatorPanel({
         </div>
       ) : (
         <div className={cn("min-h-0", primary ? "flex flex-1 flex-col" : "mt-3 grid gap-2")}>
-          <label
+          {(!primary || sessions.length > 1 || !sessions[0]?.active) && <label
             className={cn(
-              "text-xs font-medium",
+              "crm-webchat-session text-xs font-medium",
               primary
                 ? "flex items-center gap-2 border-b border-border bg-muted/20 px-4 py-2"
                 : "grid gap-1",
@@ -384,7 +325,7 @@ export function WebchatOperatorPanel({
                 primary && "min-w-0 flex-1",
               )}
               value={selectedSessionId}
-              onChange={(event) => setSelectedSessionId(event.target.value)}
+              onChange={(event) => { setSelectedSessionId(event.target.value); setQuoted(null); }}
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
@@ -395,7 +336,7 @@ export function WebchatOperatorPanel({
                 </option>
               ))}
             </select>
-          </label>
+          </label>}
 
           <div
             className={cn(
@@ -406,57 +347,89 @@ export function WebchatOperatorPanel({
             aria-label={t("Mensagens do atendimento")}
             aria-live="polite"
           >
-            {items.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="flex min-h-44 items-center justify-center px-6 text-center text-sm text-muted-foreground">
                 {t("Ainda não há mensagens nesta sessão.")}
               </div>
             ) : (
-              items.map((item) =>
-                item.kind === "note" ? (
-                  <NoteCard key={`note:${item.data.id}`} note={item.data} />
-                ) : item.data.direction === "system" ? (
+              messages.map((message) =>
+                message.direction === "system" ? (
                   <div
-                    key={item.data.id}
+                    key={message.id}
                     className="flex w-full justify-center px-4 py-2"
                     role="status"
                   >
                     <span className="rounded-full border border-border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                      {t(item.data.body)}
+                      {t(message.body)}
                     </span>
                   </div>
                 ) : (
-                  <div
-                    key={item.data.id}
-                    className={cn(
-                      "flex w-full min-w-0 px-4 py-1",
-                      item.data.direction === "operator" ? "justify-end" : "justify-start",
-                    )}
+                  <MessageFrame
+                    key={message.id}
+                    outbound={message.direction === "operator"}
+                    ai={message.sender_kind === "ai"}
+                    sender={message.direction === "operator"
+                      ? message.sender_kind === "ai" ? t("IA") : message.sender_name?.trim() || t("Atendente")
+                      : contactName?.trim() || t("Cliente")}
                   >
                     <div
                       data-testid="webchat-message-bubble"
                       className={cn(
-                        "max-w-[75%] min-w-0 rounded-2xl px-3 py-2 text-sm shadow-sm",
-                        item.data.direction === "operator"
-                          ? "rounded-br-sm bg-primary text-primary-foreground"
-                          : "rounded-bl-sm bg-muted text-foreground",
+                        "crm-chat-bubble max-w-full min-w-0 rounded-lg px-3 py-2 text-sm shadow-sm",
+                        message.direction === "operator"
+                          ? "crm-chat-outgoing rounded-br-sm bg-primary text-primary-foreground"
+                          : "crm-chat-incoming rounded-bl-sm bg-card text-foreground",
                       )}
                     >
+                      {!editorDisabled && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon" className="float-right -mr-1 -mt-1 size-11 lg:size-7" aria-label={t("Opções da mensagem")}>
+                              <CaretDown size={14} aria-hidden />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onCloseAutoFocus={(event) => {
+                            if (!focusReplyRef.current) return;
+                            event.preventDefault();
+                            focusReplyRef.current = false;
+                            editorRef.current?.focus();
+                          }}>
+                            <DropdownMenuItem onSelect={() => {
+                              focusReplyRef.current = true;
+                              setQuoted({ sessionId: selectedSessionId, message });
+                            }}>
+                              <ArrowBendUpLeft size={16} aria-hidden />{t("Responder citando")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {message.reply_to && <CitacaoWebchat citacao={message.reply_to} visitorName={contactName} />}
                       <p className="leading-snug wrap-anywhere whitespace-pre-wrap">
-                        {item.data.body}
+                        {message.body}
                       </p>
+                      {tipoDeAnexoWebchat(message) === "image" && (
+                        <ImageMedia messageId={message.id} alt={t("Imagem recebida")} />
+                      )}
+                      {tipoDeAnexoWebchat(message) === "audio" && (
+                        <AudioPlayer messageId={message.id} isOutbound={message.direction === "operator"} />
+                      )}
+                      {pdfDaMensagem(message) && (
+                        <DocumentCard messageId={message.id} mime={message.media_mime ?? null}
+                          sizeBytes={null} storagePath={null} src={pdfDaMensagem(message) ?? undefined}
+                          isOutbound={message.direction === "operator"} />
+                      )}
                       <div
                         className={cn(
-                          "mt-1 text-right text-[10px]",
-                          item.data.direction === "operator"
+                          "crm-message-meta mt-1 text-right text-[10px] tabular-nums",
+                          message.direction === "operator"
                             ? "text-primary-foreground"
                             : "text-muted-foreground",
                         )}
                       >
-                        {item.data.direction === "operator" ? t("Você") : t("Cliente")} ·{" "}
-                        {horaDaMensagem(item.data.created_at)}
+                        <time dateTime={message.created_at}>{horaDaMensagem(message.created_at, locale)}</time>
                       </div>
                     </div>
-                  </div>
+                  </MessageFrame>
                 ),
               )
             )}
@@ -464,41 +437,19 @@ export function WebchatOperatorPanel({
           </div>
 
           <div
-            className={cn(
-              "border-t border-border px-3 py-2",
-              mode === "note" ? "border-warning/40 bg-warning-bg" : "bg-background",
-            )}
+            data-mode="reply"
+            className="crm-composer border-t border-border bg-background px-3 py-2"
           >
-            {primary && (
-              <div className="mb-1.5 flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setMode("reply")}
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                    mode === "reply"
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {t("Responder")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("note")}
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                    mode === "note"
-                      ? "bg-warning text-warning-fg"
-                      : "text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {t("Nota interna")}
-                </button>
+            {replyTo && (
+              <div role="region" aria-label={t("Respondendo à mensagem")} className="relative mt-2 pr-12 lg:pr-9">
+                <CitacaoWebchat citacao={{ ...replyTo, direction: replyTo.direction === "operator" ? "operator" : "visitor", body: replyTo.body.slice(0, 1000) }} visitorName={contactName} />
+                <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 size-11 lg:size-8" disabled={sending} aria-label={t("Cancelar citação")} onClick={() => { setQuoted(null); editorRef.current?.focus(); }}>
+                  <X size={16} aria-hidden />
+                </Button>
               </div>
             )}
-            <div className="flex items-end gap-2">
-              <EmojiButton disabled={editorDisabled} onPick={insertEmoji} />
+            <div className="crm-composer-editor">
+              <div className="crm-composer-tools"><EmojiButton disabled={editorDisabled} onPick={insertEmoji} /></div>
               <label className="sr-only" htmlFor={`webchat-reply-${conversationId}`}>
                 {t("Responder pelo atendimento web")}
               </label>
@@ -515,28 +466,18 @@ export function WebchatOperatorPanel({
                 rows={1}
                 maxLength={4000}
                 disabled={editorDisabled}
-                placeholder={
-                  mode === "note"
-                    ? t("Escreva uma nota interna… (só o time vê)")
-                    : selectedSession?.active
-                      ? t("Escreva uma mensagem…")
-                      : t("Sessão encerrada")
-                }
-                title={
-                  mode === "note"
-                    ? t("Enter salva a nota · Shift+Enter quebra linha")
-                    : t("Enter envia · Shift+Enter quebra linha")
-                }
+                placeholder={selectedSession?.active ? t("Escreva uma mensagem…") : t("Sessão encerrada")}
+                title={t("Enter envia · Shift+Enter quebra linha")}
               />
               <Button
                 type="button"
                 size="icon"
-                className="size-9 shrink-0"
+                className="crm-composer-send size-9 shrink-0"
                 onClick={() => void enviar()}
                 disabled={editorDisabled || !draft.trim()}
-                aria-label={mode === "note" ? t("Salvar nota") : t("Enviar")}
+                aria-label={t("Enviar")}
               >
-                {sending || createNote.isPending ? (
+                {sending ? (
                   <CircleNotch size={16} className="animate-spin" aria-hidden />
                 ) : (
                   <PaperPlaneTilt size={16} weight="fill" aria-hidden />

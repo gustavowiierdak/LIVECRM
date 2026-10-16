@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InboxFiltersValue } from "@/components/inbox/InboxFilters";
 
 /**
  * O DEEP-LINK NÃO ESPERA A LISTA DE CONVERSAS.
@@ -124,7 +125,12 @@ vi.mock("@/components/inbox/ConversationList", () => ({
     </>
   ),
 }));
-vi.mock("@/components/inbox/InboxFilters", () => ({ InboxFilters: () => null }));
+vi.mock("@/components/inbox/InboxFilters", () => ({
+  InboxFilters: ({ value, onChange }: {
+    value: InboxFiltersValue;
+    onChange: (value: InboxFiltersValue) => void;
+  }) => <button onClick={() => onChange({ ...value, tab: "closed" })}>Ver encerrados</button>,
+}));
 vi.mock("@/components/inbox/ChatThread", () => ({ ChatThread: () => null }));
 vi.mock("@/components/inbox/Composer", () => ({ Composer: () => null }));
 vi.mock("@/components/inbox/ConversationHeader", () => ({ ConversationHeader: () => null }));
@@ -169,6 +175,19 @@ describe("deep-link para conversa fora do filtro", () => {
     await waitFor(() => expect(screen.getByTestId("painel")).toHaveTextContent(CONVERSA));
   });
 
+  it("troca o filtro pela URL sem aguardar navegação no servidor e mantém a conversa", async () => {
+    window.history.replaceState(null, "", `/app/inbox?filter=all&id=${CONVERSA}`);
+    montar();
+    await waitFor(() => expect(screen.getByTestId("painel")).toHaveTextContent(CONVERSA));
+    fireEvent.click(screen.getByRole("button", { name: "Ver encerrados" }));
+    expect(new URLSearchParams(window.location.search).get("filter")).toBe("closed");
+    expect(new URLSearchParams(window.location.search).get("id")).toBe(CONVERSA);
+    await waitFor(() => expect(get.mock.calls.some(([url]) =>
+      url?.startsWith("/api/v1/conversations?") && new URL(url, "http://localhost").searchParams.get("status") === "closed,archived",
+    )).toBe(true));
+    expect(screen.getByTestId("painel")).toHaveTextContent(CONVERSA);
+  });
+
   it("gera link por conversa e acompanha a volta do navegador", async () => {
     window.history.replaceState(null, "", "/app/inbox?filter=all");
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -205,6 +224,7 @@ describe("deep-link para conversa fora do filtro", () => {
         <InboxLayout />
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(screen.getByTestId("painel")).toHaveTextContent("sem-conversa"));
+    await waitFor(() => expect(screen.queryByTestId("painel")).not.toBeInTheDocument());
+    expect(screen.getByRole("region", { name: "Início do operador" })).toBeInTheDocument();
   });
 });

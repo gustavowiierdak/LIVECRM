@@ -17,6 +17,8 @@ import { arquivosDeCodigo, caminhoRelativo } from "./helpers/varrer-codigo";
 const TRATA = "trata";
 
 const CHAMADORES: Record<string, string> = {
+  "lib/atendimento/aviso-do-atendimento.handler.ts": TRATA, // aviso-do-atendimento.handler.test.ts: suspensao nao deixa rajada na reativacao
+  "lib/ixc/acompanhamento-os.ts": "nega a organização antes da consulta; se parar durante o envio, não repete o aviso incerto e deixa conferência na central; não fecha o atendimento",
   "app/api/v1/cron/agenda-reminder/route.ts": TRATA, // tests/unit/lembrete-pula-org-parada.test.ts
   "lib/campanhas/rodada.ts": TRATA, // registrarExcecaoDoEnvio, tests/unit/suspensao-nao-dispara-campanha.test.ts
   "lib/prospecting/worker.ts": TRATA, // tests/unit/prospecting-worker.test.ts

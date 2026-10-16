@@ -34,6 +34,11 @@ export interface ContactSummary {
    * atendimento aparece. Opcional: conversas em cache de antes do campo existir.
    */
   force_human?: boolean | null;
+  /** Cadastro operacional associado ao contato; o CPF nunca sai nesta leitura. */
+  ixc_customer_id?: string | null;
+  ixc_customer_name?: string | null;
+  ixc_linked_at?: string | null;
+  ixc_linked_by?: "automatico" | "atendente" | null;
 }
 
 /**
@@ -100,6 +105,7 @@ export interface ConversationsFilters {
    */
   unread?: boolean;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
   /**
    * A etiqueta, ou VÁRIAS (#1274).
    *
@@ -165,6 +171,7 @@ export function useConversationsRealtime(
       if (filters.search) qs.set("search", filters.search);
       if (filters.unread) qs.set("unread", "true");
       if (filters.channel_session_id) qs.set("channel_session_id", filters.channel_session_id);
+      if (filters.atendimento_setor_id) qs.set("atendimento_setor_id", filters.atendimento_setor_id);
       // `append`, e não `set` (#1274): o filtro aceita várias etiquetas e cada
       // uma viaja como um `tag` repetido — que é o que a rota lê com `getAll`.
       for (const marcador of marcadoresEscolhidos(

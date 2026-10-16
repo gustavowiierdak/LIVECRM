@@ -1,8 +1,22 @@
+export type CitacaoWebchat = Readonly<{
+  id: string;
+  direction: "visitor" | "operator";
+  sender_name?: string | null;
+  body: string;
+  created_at: string;
+}>;
+
 export type MensagemWebchat = Readonly<{
   id: string;
   direction: "visitor" | "operator" | "system";
+  sender_kind?: "ai" | "human" | null;
+  sender_name?: string | null;
+  type?: "text" | "document" | "image" | "audio";
   body: string;
+  media_url?: string | null;
+  media_mime?: string | null;
   created_at: string;
+  reply_to?: CitacaoWebchat | null;
 }>;
 
 export type SessaoVisitanteWebchat = Readonly<{
@@ -20,6 +34,12 @@ export type SessaoOperadorWebchat = Readonly<{
   expires_at: string;
   active: boolean;
 }>;
+
+export type AtendimentoOperadorWebchat = {
+  sessions: SessaoOperadorWebchat[];
+  selected_session_id: string;
+  messages: MensagemWebchat[];
+};
 
 export type ConfiguracaoWebchat = Readonly<{
   public_id?: string | null;

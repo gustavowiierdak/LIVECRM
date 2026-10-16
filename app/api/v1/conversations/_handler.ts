@@ -85,14 +85,14 @@ function idsQueCabemNaURL(ids: string[]): string[] {
 }
 
 const SELECT_COLS = `
-  id, organization_id, contact_id, channel_session_id, channel, status,
-  status_changed_at, service_revision, service_closed_at, service_started_at, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
+  id, organization_id, contact_id, channel_session_id, channel, status, atendimento_setor_id,
+  status_changed_at, service_revision, service_closed_at, service_started_at, service_protocol, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at, awaiting_since,
   last_outbound_at, last_message_at, last_message_preview,
   unread_count_for_assignee, is_group, group_chat_id, tags, metadata,
   snooze_until, created_at, updated_at,
   bot_silenced_until, last_handoff_at, last_handoff_reason,
   comando_da_conversa,
-  contacts:contact_id (id, display_name, name, phone_number, is_anonymized, tags, is_blocked, is_personal, avatar_storage_path, force_human),
+  contacts:contact_id (id, display_name, name, phone_number, is_anonymized, tags, is_blocked, is_personal, avatar_storage_path, force_human, ixc_customer_id:source_metadata->>ixc_customer_id, ixc_customer_name:source_metadata->>ixc_customer_name, ixc_linked_at:source_metadata->>ixc_linked_at, ixc_linked_by:source_metadata->>ixc_linked_by),
   channel_sessions:channel_session_id (phone_number, display_name, provider, social_platform:metadata->>social_platform)
 `;
 
@@ -210,7 +210,12 @@ export async function listConversationsHandler(
   // Contato pessoal some da lista (spec 21, etapa 7 — critério 1): conversa cujo
   // contato é pessoal não aparece em nenhuma visão. ANTES de todo filtro
   // opcional, para que cursor e `has_more` descrevam o conjunto já escondido.
-  const pessoais = await idsDeContatosPessoais(supabase, ctx.organization_id);
+  // São leituras independentes. Prepará-las juntas elimina uma volta de rede
+  // da lista sem mudar os filtros aplicados antes da paginação.
+  const [pessoais, idsDesativados] = await Promise.all([
+    idsDeContatosPessoais(supabase, ctx.organization_id),
+    idsDosCanaisDesativados(supabase, ctx.organization_id),
+  ]);
   if (pessoais.length > 0) {
     query = query.not("contact_id", "in", `(${pessoais.join(",")})`);
   }
@@ -233,10 +238,10 @@ export async function listConversationsHandler(
     query = query.not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`);
   }
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
+  if (q.atendimento_setor_id) query = query.eq("atendimento_setor_id", q.atendimento_setor_id);
   // Canal desativado nunca entra na inbox (quarentena): exclui as conversas
   // dele aqui e nos badges, mantendo o acesso direto por id para auditoria e
   // suporte. Reativou, reaparecem sem reimportar nada.
-  const idsDesativados = await idsDosCanaisDesativados(supabase, ctx.organization_id);
   if (idsDesativados.length > 0) {
     query = query.not("channel_session_id", "in", `(${idsDesativados.join(",")})`);
   }

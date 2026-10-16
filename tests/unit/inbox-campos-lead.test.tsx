@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
+vi.mock("@/components/inbox/ConversationNotesPanel", () => ({ ConversationNotesPanel: () => null }));
 
 function renderPainel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

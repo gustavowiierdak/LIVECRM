@@ -19,6 +19,8 @@ export interface CapturasDoDubleDoHandler {
 }
 
 export interface OpcoesDoDubleDoHandler {
+  /** Texto fixo protegido do aviso de ciclo de vida, quando este é o emissor. */
+  avisoAtendimento?: LinhaDoDuble | null;
   conversation: LinhaDoDuble;
   channelMetadata?: LinhaDoDuble;
   templateRow?: LinhaDoDuble | null;
@@ -50,6 +52,12 @@ export interface OpcoesDoDubleDoHandler {
   organizacao?: LinhaDoDuble;
   /** Linhas de `calendar_appointments` lidas pela guarda de agenda. Padrão: `[]`. */
   agenda?: LinhaDoDuble[];
+  /**
+   * A linha de `ai_agents` que a conferência da operação do agente lê pela REST
+   * (`assertAgentOperationSupabase`). Função = estado vivo: o teste pausa o
+   * agente entre uma bolha e outra.
+   */
+  agente?: LinhaDoDuble | null | (() => LinhaDoDuble | null);
 }
 
 export interface RetornoDoDubleDoHandler {
@@ -153,6 +161,7 @@ export function criarDubleDoHandler(
       meta_templates: [],
       channel_sessions: [],
       organizations: [],
+      ai_agents: [],
     },
     rpcs: [],
   };
@@ -165,6 +174,10 @@ export function criarDubleDoHandler(
 
   const client = {
     from(tabela: string) {
+      if (tabela === "attendance_notices") {
+        const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: opcoes.avisoAtendimento ?? null, error: null }) };
+        return chain;
+      }
       if (tabela === "conversations") {
         return {
           select: (colunas = "") => {
@@ -306,6 +319,23 @@ export function criarDubleDoHandler(
         return cadeia;
       }
 
+      if (tabela === "ai_agents") {
+        const cadeia = {
+          select: (colunas = "") => {
+            capturas.selects.ai_agents!.push(colunas);
+            return cadeia;
+          },
+          eq: () => {
+            return cadeia;
+          },
+          maybeSingle: async () => ({
+            data: typeof opcoes.agente === "function" ? opcoes.agente() : (opcoes.agente ?? null),
+            error: null,
+          }),
+        };
+        return cadeia;
+      }
+
       if (tabela === "contacts") {
         // O envio carimba `contacts.last_activity_at` (migration 0162), com
         // filtro por id E por organização (este handler também roda com o client
@@ -411,6 +441,21 @@ export function criarDubleDoHandler(
               in: (coluna: string, valores: unknown[]) => {
                 filtros.push((r) => valores.includes(r[coluna]));
                 capturas.filtros.messages!.push({ coluna, valor: valores });
+                return cadeia;
+              },
+              // LIKE do Postgres, APLICADO: `%` é qualquer sequência, `_` um
+              // caractere, `\_` o sublinhado literal. A remoção do eco por sufixo
+              // (`_<id bare>`, @lid × @c.us) é exatamente o que este elo mede.
+              like: (coluna: string, padrao: string) => {
+                const re = new RegExp(
+                  "^" +
+                    padrao.replace(/\\_|%|_|[.*+?^${}()|[\]\\]/g, (t) =>
+                      t === "\\_" ? "_" : t === "%" ? ".*" : t === "_" ? "." : `\\${t}`,
+                    ) +
+                    "$",
+                );
+                filtros.push((r) => typeof r[coluna] === "string" && re.test(r[coluna] as string));
+                capturas.filtros.messages!.push({ coluna, valor: `like:${padrao}` });
                 return cadeia;
               },
               then: (

@@ -183,15 +183,17 @@ describe("fiação do gate — a escolha da organização chega ao send_message"
     );
   });
 
-  it("o fail-safe abre caso e NUNCA libera a frase desarmando o gate", () => {
+  it("o fail-safe transfere a conversa e NUNCA libera a frase desarmando o gate", () => {
     // Ao contrário do vocabulário interno, não existe "diagnóstico, mas melhor que
     // silêncio": a insistência chama a equipe, não solta a mensagem.
     const corpo = corpoDoExecute("send_message: tool({", "update_lead_state: tool({");
-    expect(corpo).toMatch(/chain\.code === 'clinical_claim'/);
+    expect(corpo).toMatch(/chain\.code === ["']clinical_claim["']/);
     expect(corpo).toMatch(/clinicalClaimVetoCount \+= 1/);
     expect(corpo).toMatch(/clinicalClaimVetoCount >= MAX_VETOS_DE_AFIRMACAO_CLINICA/);
-    const bloco = corpo.slice(corpo.indexOf("chain.code === 'clinical_claim'"));
-    expect(bloco.slice(0, bloco.indexOf("internal_vocabulary_leak"))).toMatch(/openCase\(/);
+    const bloco = corpo.slice(corpo.indexOf('chain.code === "clinical_claim"'));
+    expect(bloco.slice(0, bloco.indexOf("internal_vocabulary_leak")))
+      .toMatch(/encaminharLimiteDaAutomacao\(/);
+    expect(bloco.slice(0, bloco.indexOf("internal_vocabulary_leak"))).not.toMatch(/openCase\(/);
     expect(FONTE_INBOUND).not.toMatch(/enforceClinicalClaim:\s*false/);
   });
 

@@ -28,6 +28,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -158,8 +159,11 @@ async function garantirCanal(orgId: string, lado: Lado): Promise<string> {
  * Recria o dado operacional do zero. A ordem do apagamento é a MESMA da action
  * (filhos antes dos pais), porque as FKs para `contacts` são RESTRICT.
  */
-async function semearDadoOperacional(orgId: string, lado: Lado, canalId: string) {
+async function semearDadoOperacional(orgId: string, lado: Lado, canalId: string, userId: string) {
   for (const tabela of [
+    "webchat_messages",
+    "webchat_visitor_sessions",
+    "webchat_handoffs",
     "messages",
     "conversations",
     "calendar_appointments",
@@ -196,6 +200,48 @@ async function semearDadoOperacional(orgId: string, lado: Lado, canalId: string)
     .single();
   if (convErr || !conversa) throw new Error(`criar conversa de ${lado.slug}: ${convErr?.message}`);
   const conversationId = (conversa as { id: string }).id;
+
+  const digest = (suffix: string) =>
+    createHash("sha256").update(`${lado.slug}:${suffix}`).digest("hex");
+  const { data: handoff, error: hErr } = await admin
+    .from("webchat_handoffs")
+    .insert({
+      organization_id: orgId,
+      source_conversation_id: conversationId,
+      source_channel_session_id: canalId,
+      contact_id: contactId,
+      sector: "suporte",
+      token_digest: digest("token"),
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      issued_by: userId,
+    } as never)
+    .select("id")
+    .single();
+  if (hErr || !handoff) throw new Error(`criar handoff web de ${lado.slug}: ${hErr?.message}`);
+  const { data: sessaoWeb, error: sErr } = await admin
+    .from("webchat_visitor_sessions")
+    .insert({
+      handoff_id: (handoff as { id: string }).id,
+      organization_id: orgId,
+      contact_id: contactId,
+      source_conversation_id: conversationId,
+      sector: "suporte",
+      session_digest: digest("session"),
+      csrf_digest: digest("csrf"),
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    } as never)
+    .select("id")
+    .single();
+  if (sErr || !sessaoWeb) throw new Error(`criar sessão web de ${lado.slug}: ${sErr?.message}`);
+  const { error: wmErr } = await admin.from("webchat_messages").insert({
+    organization_id: orgId,
+    visitor_session_id: (sessaoWeb as { id: string }).id,
+    source_conversation_id: conversationId,
+    direction: "visitor",
+    body: `mensagem web de ${lado.slug}`,
+    idempotency_key: randomUUID(),
+  } as never);
+  if (wmErr) throw new Error(`criar mensagem web de ${lado.slug}: ${wmErr.message}`);
 
   const { error: mErr } = await admin.from("messages").insert([
     {
@@ -293,8 +339,8 @@ async function main() {
 
   const canalA = await garantirCanal(orgA, A);
   const canalB = await garantirCanal(orgB, B);
-  const dadoA = await semearDadoOperacional(orgA, A, canalA);
-  await semearDadoOperacional(orgB, B, canalB);
+  const dadoA = await semearDadoOperacional(orgA, A, canalA, usuario.id);
+  await semearDadoOperacional(orgB, B, canalB, usuario.id);
 
   creds.zona_de_perigo = {
     org_a_id: orgA,

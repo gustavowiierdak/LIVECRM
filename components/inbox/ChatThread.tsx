@@ -9,20 +9,17 @@ import { format, isToday, isYesterday } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./MessageBubble";
-import { NoteCard } from "./NoteCard";
 import { PassagemCard } from "./PassagemCard";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
-import { useConversationNotes } from "@/hooks/inbox/useConversationNotes";
 import { usePassagensDaConversa } from "@/hooks/inbox/usePassagensDaConversa";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
-import { useDeleteNote } from "@/hooks/inbox/useDeleteNote";
 import { useAlterarMensagem } from "@/hooks/inbox/useAlterarMensagem";
 import { useDebugToggle } from "@/hooks/ai/useDebugToggle";
 import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { capabilitiesOf, transportaMensagem, type ChannelProvider } from "@/lib/channels/capabilities";
 import { montarCartoesDaPassagem, type CartaoDaPassagem } from "@/lib/escalacao/cartao-da-passagem";
-import type { Message, Note } from "@/lib/types/messaging";
+import type { Message } from "@/lib/types/messaging";
 
 interface Props {
   conversationId: string | null;
@@ -43,34 +40,27 @@ interface Props {
    */
   dono?: { userId: string | null; nome: string | null } | null;
   contatoId?: string | null;
+  contactName?: string | null;
 }
 
 /**
- * Onda 5.2: union de item do thread — mensagem real ou nota interna (nunca vai
- * ao cliente). A passagem é o TERCEIRO tipo: também não é mensagem, também não
- * vai ao cliente, e entra no fio pelo mesmo mecanismo.
+ * O fio do cliente contém mensagens e cartões de passagem. Observações internas
+ * ficam na ficha lateral da conversa, nunca entre as falas do atendimento.
  */
 export type ThreadItem =
   | { kind: "message"; ts: string; data: Message }
-  | { kind: "note"; ts: string; data: Note }
   | { kind: "passagem"; ts: string; data: CartaoDaPassagem };
 
-/** Intercala mensagens, notas e passagens por timestamp asc (puro, sem I/O — testado em thread-merge.test.ts). */
+/** Intercala mensagens e passagens por timestamp asc (puro, sem I/O). */
 export function mergeThreadItems(
   messages: Message[],
-  notes: Note[],
-  // Opcional porque o fio existe desde antes da passagem, e uma conversa que
-  // nunca saiu do automático não tem nenhuma.
   passagens: CartaoDaPassagem[] = [],
 ): ThreadItem[] {
   const items: ThreadItem[] = [
     ...messages.map((data): ThreadItem => ({ kind: "message", ts: data.sent_at, data })),
-    ...notes.map((data): ThreadItem => ({ kind: "note", ts: data.created_at, data })),
     ...passagens.map((data): ThreadItem => ({ kind: "passagem", ts: data.criadoEm, data })),
   ];
-  // Sort estável (Array#sort é estável no V8/Node): empate mantém a ordem de
-  // inserção acima — mensagens antes de notas no mesmo instante, e a passagem
-  // DEPOIS das duas, que é o que aconteceu: ela é consequência da última fala.
+  // No empate, a passagem vem depois da mensagem que a causou.
   items.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
   return items;
 }
@@ -87,12 +77,12 @@ export function ChatThread({
   onResponder,
   dono,
   contatoId,
+  contactName,
   searchTerm = "",
 }: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
   const q = useMessagesRealtime(conversationId);
-  const notes = useConversationNotes(conversationId);
   const passagens = usePassagensDaConversa(conversationId);
   const claim = useClaimConversation();
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -108,7 +98,6 @@ export function ChatThread({
   const jaAncorou = useRef(false);
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
-  const deleteNote = useDeleteNote(conversationId ?? "");
   const { editar, apagar, ocultar, restaurar } = useAlterarMensagem(conversationId);
   const canManage = activeOrg != null && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
   const canalAlteraEnviada = transportaMensagem(provider)
@@ -171,8 +160,8 @@ export function ChatThread({
   );
 
   const items: ThreadItem[] = useMemo(
-    () => mergeThreadItems(messages, notes, cartoes),
-    [messages, notes, cartoes],
+    () => mergeThreadItems(messages, cartoes),
+    [messages, cartoes],
   );
 
   const paginas = q.data?.pages.length ?? 0;
@@ -184,7 +173,7 @@ export function ChatThread({
     jaAncorou.current = false;
   }, [conversationId]);
 
-  // Rola ao fim na primeira carga e quando chega mensagem/nota nova — mas NÃO
+  // Rola ao fim na primeira carga e quando chega mensagem nova — mas NÃO
   // quando o crescimento veio do "Carregar mais antigas".
   //
   // A thread pagina para o PASSADO: cada `fetchNextPage` traz mensagens mais
@@ -231,9 +220,22 @@ export function ChatThread({
       const sc = scrollerRef.current;
       if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight > 120) return;
     }
-    // Fio ainda vazio não ancora nada: marcar aqui faria a guarda valer a partir
-    // da pintura em branco, que é exatamente o defeito acima.
-    if (items.length > 0) jaAncorou.current = true;
+    /**
+     * O CARTÃO PODE CHEGAR COM O ESQUELETO AINDA NA TELA (#2515).
+     *
+     * As passagens vêm de `usePassagensDaConversa`, uma consulta própria, e
+     * podem resolver ANTES da de mensagens. Aí `items.length` já é 1 enquanto
+     * `q.isLoading` ainda é verdadeiro — e o ramo do esqueleto NÃO monta
+     * `scrollerRef` nem `bottomRef`. Marcar `jaAncorou` nesse instante consumia
+     * a abertura sobre um `scrollIntoView` que roda em cima de um ref nulo:
+     * nada rolava, mas quando as mensagens chegassem a guarda de distância via
+     * 308px até o fim e devolvia sem rolar, deixando "Assumir e responder"
+     * abaixo da dobra (medido na run 37660047994: `base=1028`, `janela=720`).
+     *
+     * Por isso a marca só vale com o destino montado: enquanto o fio de
+     * verdade não existe, a abertura continua pendente.
+     */
+    if (items.length > 0 && bottomRef.current) jaAncorou.current = true;
 
     bottomRef.current?.scrollIntoView({
       behavior: primeiraAncoragem ? "auto" : "smooth",
@@ -324,7 +326,7 @@ export function ChatThread({
   }
 
   return (
-    <div {...sinalDoCanal} className="flex h-full min-w-0 flex-col">
+    <div {...sinalDoCanal} className="crm-message-thread flex h-full min-w-0 flex-col">
       {termo && (
         <div className="px-4 py-1 text-xs text-muted-foreground" role="status">
           {t("Resultados nas mensagens carregadas")}: {resultados.size}
@@ -369,22 +371,11 @@ export function ChatThread({
                     })
                   }
                 />
-              ) : item.kind === "note" ? (
-                <NoteCard
-                  key={`note-${item.data.id}`}
-                  note={item.data}
-                  // Só o autor ou manager+ vê o excluir — o backend barra o resto (403),
-                  // então não mostramos um botão que daria erro.
-                  onDelete={
-                    item.data.created_by_user_id === currentUser.id || canManage
-                      ? () => deleteNote.mutate(item.data.id)
-                      : undefined
-                  }
-                />
               ) : (
                 <MessageBubble
                   key={`msg-${item.data.id}`}
                   message={item.data}
+                  contactName={contactName}
                   searchMatch={resultados.has(item.data.id)}
                   debugCitations={debugCitations}
                   onResponder={onResponder}

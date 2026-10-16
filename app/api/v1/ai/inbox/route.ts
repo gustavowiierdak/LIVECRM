@@ -15,7 +15,9 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { resolverDestinosDosAvisos } from "@/lib/ai/inbox-destino";
+import { anexarLinkDePagamento } from "@/lib/cobranca/central";
 import { traduzir } from "@/lib/i18n/dicionario";
+import { carregarDestinatariosDaMensagem, usuarioRecebeAviso } from "@/lib/notifications/destinatarios-da-mensagem";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +34,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const authz = await requireRole("agent", { requestId, resource: "agent_inbox_items" });
   if (!authz.ok) return authz.response;
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
-  const { org } = authz;
+  const { org, user } = authz;
 
   const parsed = querySchema.safeParse(
     Object.fromEntries(new URL(req.url).searchParams.entries()),
@@ -75,6 +77,19 @@ export async function GET(req: NextRequest): Promise<Response> {
     .eq("organization_id", org.orgId)
     .eq("status", "open");
 
-  const items = await resolverDestinosDosAvisos(await createClient(), org.orgId, org.role, data);
+  // A Central continua mostrando o registro para auditoria, mas o som do
+  // handoff só pertence à fila do setor ou ao atendente responsável.
+  const comEscopo = await Promise.all(data.map(async (item) => {
+    if (item.kind !== "handoff") return item;
+    if (item.ref_kind !== "conversation" || !item.ref_id) return { ...item, avisar_operador: false };
+    try {
+      const destino = await carregarDestinatariosDaMensagem(admin, org.orgId, item.ref_id);
+      return { ...item, avisar_operador: destino !== null && usuarioRecebeAviso(destino, user.id) };
+    } catch {
+      return { ...item, avisar_operador: false };
+    }
+  }));
+  const comDestino = await resolverDestinosDosAvisos(await createClient(), org.orgId, org.role, comEscopo);
+  const items = await anexarLinkDePagamento(admin, org.orgId, org.role, comDestino);
   return ok({ items, open_count: openCount ?? 0 }, { requestId });
 }

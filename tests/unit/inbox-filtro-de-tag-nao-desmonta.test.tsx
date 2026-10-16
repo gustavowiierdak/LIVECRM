@@ -20,7 +20,7 @@
  * sua válvula.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { InboxFilters, type InboxFiltersValue } from "@/components/inbox/InboxFilters";
@@ -29,6 +29,7 @@ import type { ChannelSession } from "@/hooks/channels/useChannelSessions";
 import type { ActiveOrg } from "@/lib/auth/types";
 
 const activeOrgRef: { current: ActiveOrg | null } = { current: null };
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ activeOrg: activeOrgRef.current }),
 }));
@@ -90,6 +91,7 @@ async function abreOMenu() {
   // vermelho que não ensina nada.
   const user = userEvent.setup({ delay: null });
   const tela = render(<InboxFilters value={VALUE} onChange={() => {}} />);
+  await user.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
   await user.click(screen.getByRole("button", { name: GATILHO }));
   expect(screen.getByRole("menuitemcheckbox", { name: /vip/ })).toBeInTheDocument();
   expect(screen.getByRole("menuitemcheckbox", { name: /retorno/ })).toBeInTheDocument();
@@ -137,6 +139,7 @@ describe("não-regressão: o que a condicional protegia", () => {
     tagsRef.current = [];
     tagsDoContatoRef.current = [];
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
     expect(gatilho()).not.toBeInTheDocument();
   });
 
@@ -144,6 +147,7 @@ describe("não-regressão: o que a condicional protegia", () => {
     tagsRef.current = undefined;
     tagsDoContatoRef.current = undefined;
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
     expect(gatilho()).not.toBeInTheDocument();
   });
 
@@ -151,6 +155,7 @@ describe("não-regressão: o que a condicional protegia", () => {
     tagsRef.current = ["retorno"];
     tagsDoContatoRef.current = [];
     render(<InboxFilters value={{ ...VALUE, tag: "apagada" }} onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
     expect(gatilho()).toBeInTheDocument();
   });
 
@@ -164,6 +169,7 @@ describe("não-regressão: o que a condicional protegia", () => {
     render(
       <InboxFilters value={{ ...VALUE, tag: ["retorno", "apagada"] }} onChange={() => {}} />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
     expect(gatilho()).toBeInTheDocument();
   });
 });
@@ -177,6 +183,7 @@ describe("o modo E/OU marca só o modo ativo (#1274)", () => {
     render(
       <InboxFilters value={{ ...VALUE, tag: ["vip", "retorno"], tagMode }} onChange={() => {}} />,
     );
+    await user.click(screen.getByRole("button", { name: "Filtros de atendimento" }));
     await user.click(screen.getByRole("button", { name: GATILHO }));
     return {
       e: screen.getByRole("menuitemradio", { name: "Todas (E)" }),

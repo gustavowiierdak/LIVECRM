@@ -115,6 +115,38 @@ describe("a rota de retenção devolve só o que vale agora", () => {
   });
 });
 
+describe("o aviso antigo de bloqueio é corrigido pelo estado real do contato", () => {
+  it("passagem para humano não aparece como opt-out, sem alterar o trace histórico", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-15T20:00:00Z"), toFake: ["Date"] });
+    const r = await retencoes({
+      before_send_traces: [{ id: "trace-1", vetoed_code: "contato_bloqueado", created_at: "2026-10-15T19:45:00Z" }],
+      contacts: { is_blocked: false, force_human: true, is_personal: false },
+      messages: null,
+    });
+    expect(r).toMatchObject([{ id: "trace-1", vetoed_code: "automatico_pausado_para_humano" }]);
+  });
+
+  it("opt-out verdadeiro mantém o alerta de conformidade", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-15T20:00:00Z"), toFake: ["Date"] });
+    const r = await retencoes({
+      before_send_traces: [{ vetoed_code: "contato_bloqueado", created_at: "2026-10-15T19:45:00Z" }],
+      contacts: { is_blocked: true, force_human: true, is_personal: false },
+      messages: null,
+    });
+    expect(r.map((tr) => tr.vetoed_code)).toEqual(["contato_bloqueado"]);
+  });
+
+  it("sem evidência de opt-out, um trace antigo não acusa o cliente", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-15T20:00:00Z"), toFake: ["Date"] });
+    const r = await retencoes({
+      before_send_traces: [{ vetoed_code: "contato_bloqueado", created_at: "2026-10-15T19:45:00Z" }],
+      contacts: { is_blocked: false, force_human: false, is_personal: false },
+      messages: null,
+    });
+    expect(r.map((tr) => tr.vetoed_code)).toEqual(["parada_automatica_sem_motivo"]);
+  });
+});
+
 describe("o aviso diz de ONDE é a janela", () => {
   it("cidadeDoFuso diz o fuso como gente fala", () => {
     expect(cidadeDoFuso("America/Manaus")).toBe("Manaus");

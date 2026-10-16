@@ -46,6 +46,38 @@ describe("consultas IXC para o agente", () => {
     vi.mocked(carregarIntegracaoIxc).mockResolvedValue(INTEGRACAO);
   });
 
+  it("não aplica bloqueio de um endereço ao outro e exige seleção", async () => {
+    vi.mocked(buscarClienteIxc).mockResolvedValue({ id: "42" });
+    vi.mocked(listarContratosIxc).mockResolvedValue([
+      { id: "7", id_cliente: "42", status: "A", status_internet: "CA", endereco: "Rua A" },
+      { id: "8", id_cliente: "42", status: "A", status_internet: "A", endereco: "Rua B" },
+    ]);
+    const { ctx } = contexto();
+    expect(await crmListIxcContracts.handler({ document: CPF }, ctx)).toMatchObject({
+      precisa_selecionar_contrato: true,
+      bloqueio_financeiro: null,
+    });
+    expect(
+      await crmListIxcContracts.handler({ document: CPF, contract_id: "8" }, ctx),
+    ).toMatchObject({
+      contrato_selecionado: "8",
+      bloqueio_financeiro: false,
+      precisa_selecionar_contrato: false,
+    });
+    expect(
+      await crmListIxcContracts.handler({ document: CPF, contract_id: "9" }, ctx),
+    ).toMatchObject({ erro: "contrato_fora_do_cliente" });
+  });
+
+  it("status ausente não é ausência de bloqueio", async () => {
+    vi.mocked(buscarClienteIxc).mockResolvedValue({ id: "42" });
+    vi.mocked(listarContratosIxc).mockResolvedValue([{ id: "7", id_cliente: "42" }]);
+    expect(await crmListIxcContracts.handler({ document: CPF }, contexto().ctx)).toMatchObject({
+      bloqueio_financeiro: null,
+      diagnostico: "situacao_desconhecida",
+    });
+  });
+
   it("recusa chamada externa sem contato do turno, antes de acessar integração", async () => {
     const { ctx } = contexto(hashCpf(CPF), null);
     await expect(crmGetIxcCustomer.handler({ document: CPF }, ctx)).resolves.toMatchObject({
@@ -116,11 +148,67 @@ describe("consultas IXC para o agente", () => {
     expect(resposta).toMatchObject({
       encontrado: true,
       total: 1,
-      contratos: [{ id: "7", status: "A" }],
+      bloqueio_financeiro: false,
+      diagnostico: "sem_bloqueio_financeiro_no_ixc",
+      contratos: [
+        {
+          id: "7",
+          status: "A",
+          situacao_acesso: "ativo",
+          bloqueio_financeiro: false,
+        },
+      ],
     });
     expect(JSON.stringify(resposta)).not.toContain("campo_privado");
+    expect(resposta).toMatchObject({
+      aviso: expect.stringContaining("Não mencione ao cliente a ausência de bloqueio financeiro"),
+    });
     expect(listarContratosIxc).toHaveBeenCalledWith("https://ixc.example", "secreto", "42");
     expect(carregarIntegracaoIxc).toHaveBeenCalledWith(ctx.supabase, "org-1", "contracts");
+  });
+
+  it("traduz CA em bloqueio financeiro explícito para o agente", async () => {
+    const { ctx } = contexto();
+    vi.mocked(buscarClienteIxc).mockResolvedValue({
+      id: "42",
+      razao: "Cliente",
+      fantasia: null,
+      ativo: "S",
+    });
+    vi.mocked(listarContratosIxc).mockResolvedValue([
+      {
+        id: "7",
+        id_cliente: "42",
+        contrato: "Plano",
+        status: "A",
+        status_internet: "CA",
+        bloqueio_automatico: "S",
+        contrato_suspenso: "N",
+        desbloqueio_confianca: "P",
+        desbloqueio_confianca_ativo: "N",
+        restricao_auto_desbloqueio: "N",
+      },
+    ]);
+
+    await expect(crmListIxcContracts.handler({ document: CPF }, ctx)).resolves.toMatchObject({
+      encontrado: true,
+      bloqueio_financeiro: true,
+      contratos_bloqueados_financeiro: 1,
+      diagnostico: "bloqueio_financeiro_confirmado",
+      contratos: [
+        {
+          id: "7",
+          situacao_acesso: "bloqueado_financeiro",
+          bloqueio_financeiro: true,
+          desbloqueio_confianca: {
+            configuracao: "padrao_da_empresa",
+            disponivel_para_solicitar: true,
+            motivo: "disponivel",
+          },
+        },
+      ],
+      aviso: expect.stringContaining("causa da falta de acesso"),
+    });
   });
 
   it("não consulta o IXC quando a integração está desligada", async () => {

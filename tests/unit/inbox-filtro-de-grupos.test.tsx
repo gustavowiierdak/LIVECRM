@@ -60,6 +60,7 @@ function montar() {
 }
 
 async function clicarEmGrupos() {
+  fireEvent.click(await screen.findByRole("button", { name: "Filtros de atendimento" }));
   const botao = await screen.findByRole("button", { name: "Grupos" });
   fireEvent.click(botao);
 }

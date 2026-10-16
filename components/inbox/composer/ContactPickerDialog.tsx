@@ -121,8 +121,8 @@ export function ContactPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="crm-inbox-dialog sm:max-w-md">
+        <DialogHeader className="crm-dialog-header">
           <DialogTitle>{t("Enviar contato")}</DialogTitle>
           <DialogDescription>
             {t("Escolha alguém da base ou informe nome e telefone — como no WhatsApp.")}
@@ -252,7 +252,7 @@ export function ContactPickerDialog({
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="crm-dialog-footer">
           <Button type="button" variant="outline" onClick={() => close(false)} disabled={sending}>
             Cancelar
           </Button>

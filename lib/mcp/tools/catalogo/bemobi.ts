@@ -14,9 +14,9 @@ export const TOOLS_BEMOBI = declararTools([
   {
     name: "crm_send_bemobi_payment",
     category: "write",
-    rotulo: "Enviar PIX, boleto ou segunda via",
+    rotulo: "Enviar boleto, PIX e PDF separados",
     explicacao:
-      "Busca o meio de pagamento diretamente na Bemobi e envia ao cliente real sem mostrar o código financeiro para a IA.",
+      "Busca o pacote da fatura na Bemobi e envia linha digitável, PIX copia e cola e PDF em mensagens separadas, sem mostrar os códigos financeiros para a IA.",
     oQueToca: "Pagamento do assinante",
     risco: "critico",
     pacotes: ["atender"],

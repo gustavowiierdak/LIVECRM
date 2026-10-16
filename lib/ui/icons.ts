@@ -22,6 +22,7 @@ export {
   Sparkle,
   ShieldCheck,
   Gear,
+  Coins,
   House,
   // admin platform
   Buildings,
@@ -46,6 +47,9 @@ export {
   Dot,
   // actions
   ArrowBendUpLeft,
+  // videochamada (#2440): ícone de câmera, não Video (que no Phosphor é a
+  // janela de player) — junto do Phone do DialButton, a família é a mesma.
+  VideoCamera,
   List,
   Bell,
   BellSlash,
@@ -66,6 +70,7 @@ export {
   DownloadSimple,
   CloudArrowDown,
   Archive,
+  FolderSimple,
   // origem de uma captação de formulário (página, IP, link para o lead)
   Globe,
   ArrowSquareOut,

@@ -21,8 +21,10 @@ export interface ConversationCounts {
   all: number;
   /** Opcional pelo mesmo motivo dos de cima: cache gravado antes deste deploy não tem. */
   closed?: number;
-  /** A aba "Arquivadas" (#923). Opcional pelo mesmo motivo: cache antigo não tem. */
+  /** Parcela arquivada do histórico, mantida para compatibilidade da API/cache. */
   archived?: number;
+  /** Histórico unificado. Ausente em caches anteriores à unificação. */
+  encerrados?: number;
 }
 
 /** Os filtros auxiliares ligados na barra, que a contagem tem de aplicar junto. */
@@ -40,6 +42,7 @@ export interface FiltrosDaContagem {
   /** E ou OU entre as etiquetas escolhidas (#1274). `e` é o padrão. */
   tagMode?: ModoDeEtiqueta;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
 }
 
 /**
@@ -60,6 +63,7 @@ export function useConversationCounts(
   // URL sem mudar o sentido do filtro.
   if (filtros.tagMode === "ou") qs.set("modo", "ou");
   if (filtros.channel_session_id) qs.set("channel_session_id", filtros.channel_session_id);
+  if (filtros.atendimento_setor_id) qs.set("atendimento_setor_id", filtros.atendimento_setor_id);
   const sufixo = qs.toString();
 
   return useQuery({
@@ -69,6 +73,7 @@ export function useConversationCounts(
     queryKey: ["conversation-counts", orgId, sufixo],
     enabled: !!orgId,
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: () =>
       apiClient
         .get<{ data: ConversationCounts }>(

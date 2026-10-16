@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { getOpenConversationId } from "@/hooks/notifications/OpenConversationContext";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
+import { agendarRecargaDasConversas } from "@/hooks/inbox/recargaDasConversas";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { avatarUrlServivel } from "@/lib/notifications/avatar_url";
 import { entregarAviso } from "@/lib/notifications/deliver";
@@ -114,8 +116,39 @@ async function contactIdFromRow(
   }
 }
 
+/**
+ * Esta pessoa deve ser avisada desta mensagem? A regra (IA silenciosa, fila
+ * do setor ou atendente responsável) é a
+ * MESMA do push do servidor — `lib/notifications/destinatarios-da-mensagem.ts`
+ * — e é decidida pela rota, no servidor.
+ *
+ * Por que não decidir aqui com `GET /conversations/[id]` e o papel ativo: o
+ * ramo "sem atendente, mas o contato tem negócio aberto com dono" depende de
+ * `crm_leads`, e a RLS esconde de um `agent` (no modo de visibilidade padrão)
+ * todo negócio de outro dono. Daqui, "não vejo negócio" e "não há negócio" são
+ * a mesma resposta — e o atendente seria avisado justamente do cliente alheio.
+ * O cabeçalho da rota tem o argumento inteiro.
+ *
+ * Só `avisar === true` notifica. Falha de leitura não pode transformar uma
+ * conversa ainda com a IA em interrupção para a equipe; a lista segue ao vivo.
+ */
+async function devoAvisar(conversationId: string | null): Promise<boolean> {
+  if (!conversationId) return false;
+  try {
+    const r = await fetch(`/api/v1/conversations/${conversationId}/aviso-de-mensagem`, {
+      credentials: "include",
+    });
+    if (!r.ok) return false;
+    const json = (await r.json()) as { data?: { avisar?: unknown } | null };
+    return json.data?.avisar === true;
+  } catch {
+    return false;
+  }
+}
+
 export function useInboundMessageAlerts(): void {
   const orgId = useActiveOrg()?.orgId ?? null;
+  const qc = useQueryClient();
 
   useEffect(() => {
     if (!orgId) return;
@@ -123,9 +156,16 @@ export function useInboundMessageAlerts(): void {
   }, [orgId]);
 
   const onChange = useCallback((payload: unknown) => {
+    // Atualizar os dados independe de exibir um aviso (permissão, foco ou
+    // conversa aberta). Este consumidor permanece montado fora do Inbox.
+    agendarRecargaDasConversas(qc);
     const row = rowFromRealtime(payload);
     if (!row) return;
     const conversationId = typeof row.conversation_id === "string" ? row.conversation_id : null;
+    if (conversationId) {
+      void qc.invalidateQueries({ queryKey: ["webchat-attendance"],
+        predicate: (query) => query.queryKey[3] === conversationId }, { cancelRefetch: false });
+    }
     const direction = typeof row.direction === "string" ? row.direction : null;
     if (
       !shouldNotifyInbound({
@@ -139,6 +179,7 @@ export function useInboundMessageAlerts(): void {
       return;
     }
     void (async () => {
+      if (!(await devoAvisar(conversationId))) return;
       const contactId = await contactIdFromRow(row, conversationId);
       const bits = contactId
         ? await contactNotifyBits(contactId)
@@ -156,7 +197,7 @@ export function useInboundMessageAlerts(): void {
         icon: bits.icon,
       });
     })();
-  }, []);
+  }, [qc]);
 
   useRealtimeChannel({
     name: orgId ? `alerts-messages-${orgId}` : "alerts-messages-disabled",

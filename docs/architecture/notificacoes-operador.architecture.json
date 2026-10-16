@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Notificações do atendente",
+    "subtitle": "Permissão explícita, inscrição autenticada e entrega em segundo plano",
+    "output": "notificacoes-operador.html",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "pessoa", "label": "Atendente" },
+    { "id": "app", "label": "Navegador e aplicativo" },
+    { "id": "servidor", "label": "Servidor" }
+  ],
+  "mainPath": ["entrada", "permissao", "inscricao", "eventos", "push", "destino"],
+  "nodes": [
+    {
+      "id": "entrada",
+      "lane": "pessoa",
+      "col": 0,
+      "type": "ui",
+      "label": "Inbox e Configurações: OperatorNotificationPrompt"
+    },
+    {
+      "id": "permissao",
+      "lane": "app",
+      "col": 1,
+      "type": "service",
+      "label": "useNotificationPermission: pedido nativo no clique"
+    },
+    {
+      "id": "inscricao",
+      "lane": "servidor",
+      "col": 2,
+      "type": "api",
+      "label": "GET/PUT notifications/push: VAPID, sessão, RLS, audit"
+    },
+    {
+      "id": "eventos",
+      "lane": "servidor",
+      "col": 3,
+      "type": "service",
+      "label": "message.received e central.aviso_criado existentes"
+    },
+    {
+      "id": "push",
+      "lane": "app",
+      "col": 4,
+      "type": "service",
+      "label": "notify-sw.js: aviso nativo com aba fechada ou sem foco"
+    },
+    {
+      "id": "destino",
+      "lane": "pessoa",
+      "col": 5,
+      "type": "ui",
+      "label": "Clique abre conversa ou Central; acesso continua validado"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "entrada",
+      "to": "permissao",
+      "label": "Ativar notificações, sem pedir automaticamente"
+    },
+    {
+      "id": "e2",
+      "from": "permissao",
+      "to": "inscricao",
+      "label": "Permissão concedida; worker ativo e inscrição do dispositivo"
+    },
+    {
+      "id": "e3",
+      "from": "inscricao",
+      "to": "entrada",
+      "label": "Confirma só após PUT OK; falta de configuração e erro têm saída visível"
+    },
+    {
+      "id": "e4",
+      "from": "inscricao",
+      "to": "eventos",
+      "label": "push_subscriptions por organização e usuário"
+    },
+    {
+      "id": "e5",
+      "from": "eventos",
+      "to": "push",
+      "label": "Handler existente; mensagens usam destinatários e visibilidade da conversa"
+    },
+    {
+      "id": "e6",
+      "from": "push",
+      "to": "destino",
+      "label": "Notificação contém destino; clique foca ou abre a janela"
+    },
+    {
+      "id": "e7",
+      "from": "destino",
+      "to": "entrada",
+      "label": "Configurações permitem rever permissão e tentar ativação novamente"
+    }
+  ]
+}

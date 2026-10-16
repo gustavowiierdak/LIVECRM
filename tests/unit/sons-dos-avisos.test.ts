@@ -94,6 +94,16 @@ describe("qual som cada aviso pede", () => {
     expect(sonsNovos(null, [{ id: "a", kind: "handoff", ref_kind: null }])).toEqual([]);
   });
 
+  it("handoff de outro setor não toca; somente o endereçado ao operador toca", () => {
+    expect(sonsNovos(new Set(), [
+      { id: "outro", kind: "handoff", ref_kind: "conversation", avisar_operador: false },
+      { id: "meu", kind: "handoff", ref_kind: "conversation", avisar_operador: true },
+    ])).toEqual(["pessoa"]);
+    expect(sonsNovos(new Set(), [
+      { id: "outro", kind: "handoff", ref_kind: "conversation", avisar_operador: false },
+    ])).toEqual([]);
+  });
+
   it("só o aviso que não estava lá toca — e um som por tipo", () => {
     const vistos = new Set(["a"]);
     expect(

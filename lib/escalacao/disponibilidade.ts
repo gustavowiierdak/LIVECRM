@@ -53,6 +53,7 @@ export async function quemPodeAssumirAgora(
   db: Queryable,
   tenantId: string,
   now: Date,
+  conversationId?: string,
 ): Promise<QuemPodeAssumir> {
   const { rows } = await db.query<LinhaDeDisponibilidade>(
     `select uo.user_id,
@@ -70,8 +71,18 @@ export async function quemPodeAssumirAgora(
         and aa.user_id = uo.user_id
         and aa.is_available
       where uo.organization_id = $1
-        and uo.revoked_at is null`,
-    [tenantId, OPEN_LOAD_STATUSES],
+        and uo.revoked_at is null
+        ${conversationId ? `and exists (
+          select 1 from conversations v where v.organization_id=$1 and v.id=$3
+          and (v.atendimento_setor_id is null or exists (
+            select 1 from atendimento_setor_membros sm where sm.organization_id=$1
+              and sm.setor_id=v.atendimento_setor_id and sm.user_id=uo.user_id))
+          and (not exists(select 1 from channel_routing_policies p where p.organization_id=$1 and p.channel_session_id=v.channel_session_id)
+            or exists(select 1 from channel_routing_policies p join channel_routing_responsibles r
+              on r.organization_id=p.organization_id and r.policy_id=p.id
+              where p.organization_id=$1 and p.channel_session_id=v.channel_session_id and r.user_id=uo.user_id))
+        )` : ''}`,
+    [tenantId, OPEN_LOAD_STATUSES, ...(conversationId ? [conversationId] : [])],
   );
 
   // Viewer não é insumo de roteamento — mesmo corte do roster da API.
@@ -141,9 +152,10 @@ export async function expectativaDeAtendimento(
   db: Queryable,
   tenantId: string,
   now: Date,
+  conversationId?: string,
 ): Promise<{ quem: QuemPodeAssumir | null; frase: string }> {
   try {
-    const quem = await quemPodeAssumirAgora(db, tenantId, now);
+    const quem = await quemPodeAssumirAgora(db, tenantId, now, conversationId);
     return { quem, frase: fraseDeExpectativa(quem) };
   } catch {
     return {

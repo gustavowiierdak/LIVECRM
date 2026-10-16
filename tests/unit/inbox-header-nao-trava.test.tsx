@@ -127,7 +127,7 @@ describe("header do inbox — não trava a largura da tela", () => {
     renderHeader();
     // Se um dia alguém "resolver" o aperto colapsando ações num menu, este caso
     // reprova. Esconder ação de quem atende é pior que uma segunda linha.
-    for (const rotulo of ["Assumir", "Transferir", "Fechar"]) {
+    for (const rotulo of ["Assumir", "Transferir", "Encerrar"]) {
       expect(screen.getByText(rotulo), `a ação "${rotulo}" sumiu do header`).toBeTruthy();
     }
   });
@@ -152,11 +152,12 @@ describe("header do inbox — não trava a largura da tela", () => {
     const linhaDoNome = screen.getByRole("heading", { name: "Fulana" }).parentElement as HTMLElement;
     expect(linhaDoNome.contains(selo), "o selo voltou para a linha do nome").toBe(false);
 
-    for (const rotulo of ["Liberar", "Devolver ao automático", "Transferir", "Lembrar", "Fechar", "Arquivar"]) {
+    for (const rotulo of ["Liberar", "Devolver ao automático", "Transferir", "Lembrar", "Encerrar"]) {
       const botao = screen.getByRole("button", { name: rotulo });
       expect(barra.contains(botao), `a ação "${rotulo}" saiu da barra`).toBe(true);
     }
     expect(screen.queryByRole("button", { name: "Mais ações" }), "ação de quem atende escondida num menu").toBeNull();
+    expect(screen.queryByRole("button", { name: "Arquivar" }), "o histórico unificado só oferece Encerrar").toBeNull();
   });
 
   it('"Ver contato" existe no DOM e só se cala onde há outra porta', () => {

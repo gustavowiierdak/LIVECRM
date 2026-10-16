@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "project": {
+    "name": "LIVE CRM",
+    "productType": "Customer support workspace",
+    "stack": ["nextjs", "react", "shadcn", "tailwind-v4"]
+  },
+  "sources": {
+    "tokens": ["app/globals.css", "app/app/_components/workspace.module.css"],
+    "components": ["components/ui", "components/inbox", "components/shell"],
+    "assets": [],
+    "instructions": ["AGENTS.md", "CLAUDE.md"]
+  },
+  "components": {
+    "preferredPrimitives": ["radix-ui"],
+    "patterns": [
+      "Authenticated shell",
+      "Resizable three-panel inbox",
+      "Mobile conversation and contact sheet"
+    ]
+  },
+  "decisions": [
+    {
+      "date": "2026-10-16",
+      "scope": "AI hub monthly consumption",
+      "decision": "Compact reference-inspired monthly usage card using existing Card, Button, canonical icons and budget query. Preserve USD denomination, show partial pricing, unknown/loading/error states and clamp only the visual progress bar. Gear links to existing budget settings. No fabricated BRL conversion, new dependency or automatic budget policy."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Customer inspector service details",
+      "decision": "Present protocol, start date, channel, assignee and sector in one consistently aligned two-column definition list. Keep internal observations clearly named but remove duplicate privacy copy and the divider immediately above them. Retain all data sources and actions; this is a compact presentation-only refinement for desktop and mobile contact sheet."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Internal observations in the conversation inspector",
+      "decision": "Keep the customer transcript and composer for customer replies only. Reuse the existing private conversation-note storage, media, mentions and permissions in an Observações section of the right inspector and mobile contact sheet. Show the two newest notes first with an explicit Ver todas control, a private note editor, and honest loading/error states. Do not change the visitor transport or WhatsApp message pipeline."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Operator notification activation",
+      "decision": "Expose a compact dismissible activation prompt in the queue and a permanent diagnostic in notification settings. Request native permission only on click; distinguish permission from a server-confirmed push subscription and show actionable blocked, unavailable and retry states. Reuse current tokens, auth-scoped API and event delivery. Never imply closed-tab delivery when installation keys are absent."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Webchat quoted replies",
+      "decision": "Reuse the installed message-menu pattern with Responder citando. Show a cancellable quote preview above the editor and a shared author/time/text block in operator and visitor history. Preserve brand colors, notes separation, media, keyboard focus, session isolation and retry draft. Persist only server-resolved quote data in existing message metadata, atomically with the existing send."
+    },
+    {
+      "date": "2026-10-15",
+      "scope": "Inbox attendance history",
+      "decision": "Unify closed and archived under Encerrados, with a single Encerrar action and explicit Reabrir for both stored statuses. Preserve history, API status compatibility, and old archived deep links. No notification badge on history. Counts sum existing disjoint results without another query."
+    },
+    {
+      "date": "2026-10-14",
+      "scope": "Inbox chat palette",
+      "decision": "User explicitly requested OPA colors, primarily the customer conversation. Supersede brand-accent retention only while Inbox is mounted: graphite/navy surfaces, matching slate incoming/outgoing bubbles and violet solid actions. Keep a lighter violet for dark-mode text/focus, theme choice, all channel capabilities and original public/login branding. Scope tokens to mounted Inbox and body for Radix portals. No new dependencies or remote assets."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Conversation workspace refinement",
+      "decision": "Supersedes phase 3's wrapping desktop action bar: move the same mounted controls into a fixed inspector footer at 1280px, retaining inline controls below that breakpoint. Compact identity and avatar, minimize the web channel strip and omit the redundant single active session picker. Preserve themes, real metadata, action gates, dialogs, media and composer capabilities. User screenshots are the reference; 21st CLI is unavailable."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Operator start, phase 6",
+      "decision": "Use OPA's compact count-card hierarchy for the unselected workspace, spanning conversation and contact columns while preserving the queue. Show only canonical RLS-scoped counts for Fila, Minhas, Automático and Fechadas; shortcuts clear auxiliary filters to match their unfiltered counts. Unknown/error is not zero. Reuse query cache, Button, icons, search and keyboard-help dialog. Desktop Conversas returns to overview; mobile still opens directly on the queue. No synthetic charts, time metrics, status or new claim behavior."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Contact inspector, phase 5",
+      "decision": "Adopt the live OPA reference's centered identity, compact IXC association, full-width profile action and separated operational metadata. Reuse Avatar and the authorized contact-avatar endpoint; preserve initials without a photo. Add explicit phone-copy feedback. Keep demands and conversation tags visible; fold empty secondary context with native keyboard-accessible details, expanding errors and populated working sections. Preserve all existing links, mutations, permissions and responsive contact sheet. No fabricated protocol, new backend or OPA assets."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Message presentation, phase 4",
+      "decision": "Reuse MessageBubble, MediaRenderer and DocumentCard inside a shared MessageFrame: recorded sender above content, decorative generic avatar outside, 8px slate bubbles, semantic timestamps and responsive widths. Keep existing read receipts, failures, edits, citations, notes and menus. Webchat uses recorded sender_name, never today's assignee; unknown authors stay Atendente. PDF links use the same HTTPS validation as the public portal. No transport, API or database change.",
+      "reference": "Live OPA conversation inspected read-only: external avatars and author labels, compact bubbles, corner timestamps and media cards. Keep local icons and organization theme; no OPA assets. 21st search unavailable without login; existing primitives reused."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Conversation header, phase 3",
+      "decision": "Separate identity and contact tools from the wrapping service-action row, preserving visible action labels instead of copying OPA menus. Keep the canonical owner/status/channel sources, permissions, hooks and confirmations. Use existing brand tokens and icons; no new runtime dependency or business rule."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Operator inbox, phases 1 and 2",
+      "decision": "Use the live OPA operator screen inspected in Chrome as the primary reference, ahead of the supplied clone. Prioritize vertical queues, compact filters and text-first ticket rows. Keep all CRM semantics and organization-controlled accents.",
+      "implementation": "InboxRail presents the existing InboxFilters tabs and TopBar tools through portals, one mounted instance per control. Desktop uses vertical keyboard navigation; mobile returns the same tabs to the list. Sidebar expansion exposes the full permission-filtered catalog. Filters collapse without clearing and show an active count. No fabricated protocol, metrics, new backend, or OPA assets."
+    },
+    {
+      "date": "2026-10-13",
+      "scope": "Authenticated operator UI",
+      "decision": "Use the customer-provided OPA Suite clone as visual reference: compact navigation rail, visible queues, neutral cool surfaces and distinct conversation/contact panels. Retain configured brand accents, light/dark preferences, all existing navigation, permissions and business actions. Public login and customer webchat remain unchanged.",
+      "reference": "User-provided OPASUITE ENG REVERSA/opasuite-clone/src/styles.css and src/App.tsx, demo rendered locally on 2026-10-13",
+      "implementation": "Reuse local Radix/shadcn components and canonical icons. Match wide-screen side panels (351px / 347px), slate bubbles, 32px dotted conversation background, flatter contact profile and compact queue strip. Retain brand accents on actions and selections. No new runtime dependencies, third-party assets, backend integration or remote fonts. Scope visual tokens to the mounted operator shell.",
+      "constraint": "21st catalog search requires authentication unavailable in this session; use the supplied reference, not guessed catalog components."
+    }
+  ]
+}

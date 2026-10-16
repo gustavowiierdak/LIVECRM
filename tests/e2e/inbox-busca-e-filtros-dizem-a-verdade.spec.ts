@@ -27,6 +27,9 @@
  * O caminho feliz é o que teste manual já cobre. O que paga é provocar a falha:
  * uma letra só, espaço duplo, termo inexistente, filtro que zera a lista.
  */
+import { randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
 import { expect, test } from "./helpers/test";
 
 import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
@@ -81,21 +84,14 @@ test("CONTROLE: com dois caracteres a busca VAI ao servidor", async ({ page }) =
   });
 
   await page.getByLabel(CAMPO_DE_BUSCA).fill("an");
-  await expect
-    .poll(() => pedidos.length, { timeout: 5_000 })
-    .toBeGreaterThan(0);
+  await expect.poll(() => pedidos.length, { timeout: 5_000 }).toBeGreaterThan(0);
 });
 
 test("o placeholder promete o que a busca faz — a ÚLTIMA mensagem", async ({ page }) => {
-  await expect(page.getByLabel(CAMPO_DE_BUSCA)).toHaveAttribute(
-    "placeholder",
-    /última mensagem/i,
-  );
+  await expect(page.getByLabel(CAMPO_DE_BUSCA)).toHaveAttribute("placeholder", /última mensagem/i);
 });
 
-test("lista vazia por filtro NÃO se passa por caixa vazia, e mantém a saída", async ({
-  page,
-}) => {
+test("lista vazia por filtro NÃO se passa por caixa vazia, e mantém a saída", async ({ page }) => {
   // Termo que não casa nada: a lista zera POR FILTRO, não por ausência.
   await page.getByLabel(CAMPO_DE_BUSCA).fill("zzqqxxnaoexiste");
 
@@ -114,24 +110,19 @@ test('"Limpar filtros" devolve a lista e MANTÉM a aba', async ({ page }) => {
   await page.getByRole("button", { name: /Limpar filtros/i }).click();
 
   await expect(page.getByLabel(CAMPO_DE_BUSCA)).toHaveValue("");
-  await expect(
-    page.getByText(/Nenhuma conversa com esses filtros/i),
-  ).toHaveCount(0);
+  await expect(page.getByText(/Nenhuma conversa com esses filtros/i)).toHaveCount(0);
 });
 
-test('"Não lidos" VAI ao servidor — o defeito era filtrar a página carregada', async ({
-  page,
-}) => {
+test('"Não lidos" VAI ao servidor — o defeito era filtrar a página carregada', async ({ page }) => {
   const comUnread: string[] = [];
   page.on("request", (r) => {
     if (r.url().includes("unread=true")) comUnread.push(r.url());
   });
 
+  await page.getByRole("button", { name: "Filtros de atendimento" }).click();
   await page.getByRole("button", { name: /Não lidos/i }).click();
 
-  await expect
-    .poll(() => comUnread.length, { timeout: 5_000 })
-    .toBeGreaterThan(0);
+  await expect.poll(() => comUnread.length, { timeout: 5_000 }).toBeGreaterThan(0);
 });
 
 test("trocar de aba logo após digitar NÃO volta à aba anterior", async ({ page }) => {
@@ -158,20 +149,50 @@ test('a aba "Fechadas" mostra número', async ({ page }) => {
   // E ele CRIA a sua em vez de fechar uma existente. Este Supabase é
   // compartilhado entre frentes; fechar conversa alheia muda o mundo de outra
   // spec, e o estrago apareceria longe daqui.
-  const aberta = await page.request.post("/api/v1/conversations/open-with-contact", {
-    data: { phone_number: `+5511${Date.now().toString().slice(-9)}`, name: "Arquivo do teste" },
+  // O teste não depende de um WhatsApp conectado nem altera canais existentes.
+  const env = credenciaisSupabaseDeTeste();
+  const db = createClient(env.url, env.serviceRole, { auth: { persistSession: false } });
+  const org = (lerCreds() as ReturnType<typeof lerCreds> & { org_id: string }).org_id;
+  expect(org).toBeTruthy();
+  const channel = randomUUID();
+  let contact: string | undefined;
+  let conversation: string | undefined;
+  const { error } = await db.from("channel_sessions").insert({
+    id: channel,
+    organization_id: org,
+    waha_session_name: `contador-${channel}`,
+    display_name: "Canal do teste de contador",
+    status: "STOPPED",
+    webhook_secret_encrypted: "\\x00",
   });
-  expect(aberta.ok(), await aberta.text()).toBe(true);
-  // `open-with-contact` devolve `{ conversation_id, contact_id }` — NAO um `id`.
-  // Supor `id` produzia `invalid input syntax for type uuid: "undefined"`, e o
-  // erro chegava como 500 do banco, longe da causa. Medido no CI em 2026-09-13.
-  const { data: conversa } = await aberta.json();
+  if (error) throw error;
+  try {
+    const aberta = await page.request.post("/api/v1/conversations/open-with-contact", {
+      data: {
+        channel_session_id: channel,
+        phone_number: `+5511${Date.now().toString().slice(-9)}`,
+        name: "Arquivo do teste",
+      },
+    });
+    expect(aberta.ok(), await aberta.text()).toBe(true);
+    // `open-with-contact` devolve `{ conversation_id, contact_id }` — NAO um `id`.
+    // Supor `id` produzia `invalid input syntax for type uuid: "undefined"`, e o
+    // erro chegava como 500 do banco, longe da causa. Medido no CI em 2026-09-13.
+    const { data: conversa } = await aberta.json();
+    contact = conversa.contact_id;
+    conversation = conversa.conversation_id;
 
-  const fechada = await page.request.patch(`/api/v1/conversations/${conversa.conversation_id}`, {
-    data: { status: "closed" },
-  });
-  expect(fechada.ok(), await fechada.text()).toBe(true);
+    const fechada = await page.request.patch(`/api/v1/conversations/${conversa.conversation_id}`, {
+      data: { status: "closed" },
+    });
+    expect(fechada.ok(), await fechada.text()).toBe(true);
 
-  await page.reload();
-  await expect(page.getByRole("tab", { name: /Fechadas/i })).toHaveText(/\d/);
+    await page.reload();
+    await expect(page.getByRole("tab", { name: /Fechadas/i })).toHaveText(/\d/);
+  } finally {
+    if (conversation)
+      await db.from("conversations").delete().eq("id", conversation).eq("organization_id", org);
+    if (contact) await db.from("contacts").delete().eq("id", contact).eq("organization_id", org);
+    await db.from("channel_sessions").delete().eq("id", channel).eq("organization_id", org);
+  }
 });

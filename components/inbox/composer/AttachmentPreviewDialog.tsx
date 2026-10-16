@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FileText } from "@/lib/ui/icons";
 import { formatBytes } from "@/components/inbox/media/media-utils";
 
 interface Props {
+  mode?: "reply" | "note";
   file: File | null;
   sending: boolean;
   onCancel: () => void;
@@ -16,7 +17,7 @@ interface Props {
 }
 
 /** Preview antes do envio (padrão WhatsApp): thumb ou card + legenda. */
-export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Props) {
+export function AttachmentPreviewDialog({ mode = "reply", file, sending, onCancel, onSend }: Props) {
   const t = useT();
   const [caption, setCaption] = useState("");
   useEffect(() => setCaption(""), [file]);
@@ -32,9 +33,14 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="crm-inbox-dialog max-w-md">
+        <DialogHeader className="crm-dialog-header">
           <DialogTitle>{t("Enviar anexo")}</DialogTitle>
+          <DialogDescription>
+            {mode === "note"
+              ? t("Este anexo ficará na nota interna, visível apenas para a equipe.")
+              : t("Este anexo será enviado ao cliente.")}
+          </DialogDescription>
         </DialogHeader>
         <div className="flex items-center justify-center rounded-lg bg-muted/40 p-3">
           {isImage && objectUrl && (
@@ -42,10 +48,10 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
           )}
           {isVideo && objectUrl && <video src={objectUrl} controls className="max-h-64 rounded-md" />}
           {!isImage && !isVideo && (
-            <div className="flex items-center gap-3 py-4">
-              <FileText size={28} weight="duotone" className="text-primary" aria-hidden />
-              <div className="text-sm">
-                <p className="font-medium">{file.name}</p>
+            <div className="flex min-w-0 items-center gap-3 py-4">
+              <FileText size={28} weight="duotone" className="shrink-0 text-primary" aria-hidden />
+              <div className="min-w-0 text-sm">
+                <p className="break-all font-medium">{file.name}</p>
                 <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
               </div>
             </div>
@@ -58,7 +64,7 @@ export function AttachmentPreviewDialog({ file, sending, onCancel, onSend }: Pro
           aria-label={t("Legenda")}
           onKeyDown={(e) => e.key === "Enter" && !sending && onSend(caption.trim())}
         />
-        <DialogFooter>
+        <DialogFooter className="crm-dialog-footer">
           <Button variant="ghost" onClick={onCancel} disabled={sending}>
             {t("Cancelar")}
           </Button>

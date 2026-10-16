@@ -84,7 +84,7 @@ export function AudioPlayer({ messageId, isOutbound, src }: Props) {
   };
 
   return (
-    <div className="flex w-60 items-center gap-2 py-1">
+    <div className="flex w-60 max-w-full items-center gap-2 py-1">
       <audio ref={audioRef} src={src ?? mediaSrc(messageId)} preload="metadata" />
       <button
         type="button"
@@ -127,7 +127,7 @@ export function AudioPlayer({ messageId, isOutbound, src }: Props) {
           "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums transition-colors",
           isOutbound
             ? "bg-primary-foreground/20 text-primary-foreground"
-            : "bg-primary/10 text-primary",
+            : "bg-primary/10 text-foreground",
         )}
       >
         {RATES[rateIdx]}x

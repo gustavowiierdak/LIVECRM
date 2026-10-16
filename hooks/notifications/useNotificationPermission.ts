@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 import { emitNotification } from "@/lib/notifications/emit";
 import {
@@ -11,16 +11,27 @@ import {
   setAlertsEnabled,
   type NotificationPermissionState,
 } from "@/lib/notifications/permission";
-import { syncPushSubscription } from "@/lib/notifications/push_client";
-import { ensureNotifyServiceWorker } from "@/lib/notifications/service_worker";
+import {
+  getPushStatus,
+  getServerPushStatus,
+  subscribePushStatus,
+  syncPushSubscription,
+  type PushStatus,
+} from "@/lib/notifications/push_client";
 import { resumeAudio } from "@/lib/notifications/sounds";
 
-function confirmOnOs(on: boolean): void {
+function confirmOnOs(on: boolean, background = false): void {
   emitNotification({
     kind: "alerts_toggle",
-    title: on ? "Alertas ligados" : "Alertas desligados",
+    title: on
+      ? background
+        ? "Notificações ativadas"
+        : "Permissão de notificações liberada"
+      : "Alertas desligados",
     body: on
-      ? "Novas mensagens aparecem na bandeja do sistema."
+      ? background
+        ? "Este navegador está pronto para receber avisos de novas mensagens."
+        : "Os avisos estão disponíveis com o site aberto."
       : "Este navegador não vai mais avisar na bandeja.",
     force: true,
     sound: on ? "success" : "failure",
@@ -30,6 +41,7 @@ function confirmOnOs(on: boolean): void {
 export function useNotificationPermission(): {
   permission: NotificationPermissionState;
   enabled: boolean;
+  pushStatus: PushStatus;
   request: () => Promise<NotificationPermissionState>;
   setEnabled: (on: boolean) => void;
 } {
@@ -61,33 +73,31 @@ export function useNotificationPermission(): {
    * sem ter quebrado nada.
    */
   const permission = useSyncExternalStore(assinarPermissao, getPermission, getPermission);
-  const [enabled, setEnabledState] = useState(false);
-
-  useEffect(() => {
-    setEnabledState(areAlertsEnabled());
-  }, []);
+  const enabled = useSyncExternalStore(assinarPermissao, areAlertsEnabled, () => false);
+  const pushStatus = useSyncExternalStore(subscribePushStatus, getPushStatus, getServerPushStatus);
 
   const request = useCallback(async () => {
-    await resumeAudio();
-    const next = await requestPermission();
+    // A chamada nativa precisa acontecer dentro do clique, antes de qualquer
+    // await: esperar pelo áudio pode perder a ativação transitória do usuário.
+    const permissionRequest = requestPermission();
+    void resumeAudio().catch(() => {});
+    const next = await permissionRequest;
     if (next === "granted") {
       setAlertsEnabled(true);
-      setEnabledState(true);
-      void ensureNotifyServiceWorker().then(() => syncPushSubscription());
-      confirmOnOs(true);
+      const result = await syncPushSubscription();
+      if (result !== "error") confirmOnOs(true, result === "ready");
     }
     return next;
   }, []);
 
   const setEnabled = useCallback((on: boolean) => {
     setAlertsEnabled(on);
-    setEnabledState(on);
     if (on) {
-      void resumeAudio();
-      void ensureNotifyServiceWorker().then(() => syncPushSubscription());
+      void resumeAudio().catch(() => {});
+      void syncPushSubscription();
     }
     confirmOnOs(on);
   }, []);
 
-  return { permission, enabled, request, setEnabled };
+  return { permission, enabled, pushStatus, request, setEnabled };
 }

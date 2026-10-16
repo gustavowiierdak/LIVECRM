@@ -12,7 +12,9 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/atendimento\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   // O portal não tem sessão Supabase: cada handler valida a sessão opaca
   // HttpOnly, Origin e CSRF próprios. Âncora evita abrir rotas futuras.
-  /^\/api\/public\/webchat\/(consume|session|messages|start)$/,
+  /^\/api\/public\/webchat\/(consume|session|messages|start|media|push)$/,
+  /^\/api\/public\/webchat\/manifest(?:\/[0-9a-f-]{36})?$/i,
+  /^\/api\/public\/webchat\/media\/[0-9a-f-]{36}$/,
   /^\/login(\/.*)?$/,
   /^\/signup$/,
   /^\/auth\/confirm$/,
@@ -33,6 +35,10 @@ export const PUBLIC_PATHS: RegExp[] = [
   // Retorno de OAuth social: documento público sem efeitos que reconecta a
   // navegação interna para manter os cookies de sessão sob SameSite=Strict.
   /^\/auth\/social-return$/,
+  // Volta do provedor de pagamento (checkout, portal): mesma natureza da linha
+  // acima — vem de outro site, o cookie Strict não viaja, e a rota é só a ponte
+  // para um destino FIXO (`app/cobranca/volta/route.ts`), sem efeito.
+  /^\/cobranca\/volta$/,
   /^\/403$/,
   /^\/admin\/forbidden$/,
   /^\/404$/,

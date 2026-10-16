@@ -23,6 +23,19 @@ describe("retentionCopy — tradução leiga dos vetos before_send", () => {
     expect(retentionCopy("lgpd_missing_legal_basis", ctx).kind).toBe("compliance");
   });
 
+  it("não chama a passagem para humano de opt-out", () => {
+    const r = retentionCopy("automatico_pausado_para_humano", ctx);
+    expect(r.title).toBe("Automático pausado para atendimento humano");
+    expect(r.description).toContain("encaminhado à equipe");
+    expect(JSON.stringify(r)).not.toMatch(/opt-out|conformidade/i);
+  });
+
+  it("não inventa opt-out para contato pessoal ou registro antigo ambíguo", () => {
+    for (const code of ["contato_pessoal", "parada_automatica_sem_motivo"]) {
+      expect(JSON.stringify(retentionCopy(code, ctx))).not.toMatch(/opt-out|conformidade/i);
+    }
+  });
+
   it("classifica promise/disclosure como qualidade", () => {
     expect(retentionCopy("promise_out_of_table", ctx).kind).toBe("quality");
     expect(retentionCopy("promise_semantic", ctx).kind).toBe("quality");

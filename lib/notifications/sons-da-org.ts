@@ -88,12 +88,13 @@ export function somDoAviso(aviso: { kind: string; ref_kind: string | null; title
  */
 export function sonsNovos(
   vistos: ReadonlySet<string> | null,
-  avisos: ReadonlyArray<{ id: string; kind: string; ref_kind: string | null; title?: string | null }>,
+  avisos: ReadonlyArray<{ id: string; kind: string; ref_kind: string | null; title?: string | null; avisar_operador?: boolean }>,
 ): TipoDeSom[] {
   if (vistos === null) return [];
   const tipos = new Set<TipoDeSom>();
   for (const a of avisos) {
     if (vistos.has(a.id)) continue;
+    if (a.kind === "handoff" && a.avisar_operador !== true) continue;
     const som = somDoAviso(a);
     if (som) tipos.add(som);
   }

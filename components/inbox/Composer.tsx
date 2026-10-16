@@ -17,7 +17,15 @@ import { ContactPickerDialog } from "@/components/inbox/composer/ContactPickerDi
 import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 import { ReplyReviewPanel } from "@/components/inbox/composer/ReplyReviewPanel";
 import { EmojiButton } from "@/components/inbox/composer/EmojiButton";
+import { ComposerModeSwitch } from "@/components/inbox/composer/ComposerModeSwitch";
+import {
+  MentionMenu,
+  opcoesDeMencao,
+  resolverMencao,
+  type OpcaoDeMencao,
+} from "@/components/inbox/composer/MentionMenu";
 import { resolveSlash, TemplateMenu } from "@/components/inbox/composer/TemplateMenu";
+import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
 import { X } from "lucide-react";
@@ -30,6 +38,7 @@ import {
   type MotivoDeRecusa,
 } from "@/lib/inbox/rascunho-sugerido";
 import { apiClient } from "@/lib/api/client";
+import { embutirMencoes, podarMencoes, type MencaoEscolhida } from "@/lib/notifications/mentions";
 import { cn } from "@/lib/utils";
 
 export interface ComposerHandle {
@@ -63,6 +72,8 @@ interface Props {
   conversationId: string;
   initialDraft?: string;
   initialMode?: "reply" | "note";
+  /** Exibe apenas o editor escolhido; notas ficam na ficha lateral do atendimento. */
+  fixedMode?: "reply" | "note";
   onDraftChange?: (text: string, mode: "reply" | "note") => void;
   active?: boolean;
   disabled?: boolean;
@@ -104,6 +115,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     conversationId,
     initialDraft = "",
     initialMode = "reply",
+    fixedMode,
     active = true,
     onDraftChange,
     disabled,
@@ -136,7 +148,26 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [pendingEm, setPendingEm] = useState<"reply" | "note">("reply");
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const [mode, setMode] = useState<"reply" | "note">(initialMode);
+  const [selectedMode, setMode] = useState<"reply" | "note">(initialMode);
+  const mode = fixedMode ?? selectedMode;
+  /**
+   * Menção de atendente (#2372) — e o motivo de ser quatro estados.
+   *
+   * `caret` porque o gatilho `@` é relativo à POSIÇÃO do cursor, não ao fim do
+   * texto: `@` no meio da frase tem de abrir a lista ali, e a inserção troca
+   * o trecho dali pra frente.
+   *
+   * `mencoes` é o que foi ESCOLHIDO na lista. O campo mostra o nome
+   * (`@Ana Lima`); o id entra só quando o corpo sai da tela (`embutirMencoes`),
+   * porque ninguém lê `@[Ana Lima](mencao:2f9c…)` enquanto escreve.
+   *
+   * `mencaoDispensada` (Esc) e `mencaoIndice` (setas) são o mesmo desenho do
+   * slash-menu de sempre, para os dois menus não disputarem a mesma tecla.
+   */
+  const [caret, setCaret] = useState(initialDraft.length);
+  const [mencoes, setMencoes] = useState<MencaoEscolhida[]>([]);
+  const [mencaoDispensada, setMencaoDispensada] = useState(false);
+  const [mencaoIndice, setMencaoIndice] = useState(0);
   useEffect(() => {
     onDraftChange?.(text, mode);
   }, [text, mode, onDraftChange]);
@@ -147,6 +178,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const templates = useMessageTemplates();
   const slash = resolveSlash(text);
   const menuOpen = mode === "reply" && slash.open && !menuDismissed;
+
+  // SÓ em nota: a menção é assunto interno, e uma menção no campo de resposta
+  // sairia para o cliente como texto solto. A query roda enquanto a lista está
+  // aberta — fechou o `@`, não há porque ir buscar os atendentes.
+  const gatilho = mode === "note" && !mencaoDispensada ? resolverMencao(text, caret) : null;
+  const membros = useAssignableMembers(gatilho !== null);
+  const opcoes = gatilho ? opcoesDeMencao(membros.data ?? [], gatilho.query, t("Atendente")) : [];
+  const mencaoAberta = gatilho !== null;
+  const opcaoAtual = opcoes[mencaoIndice] ?? opcoes[0];
 
   useImperativeHandle(ref, () => ({
     focus: () => taRef.current?.focus(),
@@ -173,27 +213,84 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
   }
 
+  /**
+   * Escolhe da lista e escreve o NOME no campo (`@Ana Lima `) — o id entra só
+   * na hora de salvar (`embutirMencoes`), porque é o nome que quem digita lê.
+   *
+   * A posição vem do `gatilho`, não do fim do texto: o `@` pode estar no meio
+   * da frase, e o que se troca é do `@` até o cursor.
+   */
+  function escolherMencao(opcao: OpcaoDeMencao): void {
+    const gatilhoAqui = resolverMencao(text, caret);
+    if (!gatilhoAqui) return;
+    const inserido = `@${opcao.rotulo} `;
+    setText(text.slice(0, gatilhoAqui.start) + inserido + text.slice(caret));
+    setMencoes((atual) => [...atual, { id: opcao.membro.user_id, nome: opcao.rotulo }]);
+    const pos = gatilhoAqui.start + inserido.length;
+    setCaret(pos);
+    setMencaoIndice(0);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+      autoresize();
+    });
+  }
+
   function handleSubmit() {
-    const body = text.trim();
-    if (!body || (mode === "note" ? isDisabled : respostaBarrada)) return;
+    const legivel = text.trim();
+    if (!legivel || (mode === "note" ? isDisabled : respostaBarrada)) return;
+
+    // A menção vira token AQUI, na saída do campo (#2372): o que fica no
+    // rascunho, no `onDraftChange` e no `restoreOnError` é o nome legível, e
+    // o id só viaja no corpo que sai para o banco. Em modo RESPOSTA não há
+    // token nenhum — menção é assunto de nota interna, e uma menção no campo
+    // de resposta sairia para o cliente.
+    const corpo = mode === "note" ? embutirMencoes(legivel, mencoes) : legivel;
 
     setText("");
     requestAnimationFrame(() => autoresize());
 
+    // Se a pessoa já começou a próxima resposta, preserve os dois textos.
+    const restaurar = (current: string) => (current ? `${legivel}\n${current}` : legivel);
     const restoreOnError = () => {
-      // Se a pessoa já começou a próxima resposta, preserve os dois textos.
-      setText((current) => (current ? `${body}\n${current}` : body));
+      setText(restaurar);
       requestAnimationFrame(() => autoresize());
     };
+    // As escolhas DESTA nota, guardadas no envio: o campo segue editável
+    // durante o envio, e a 1ª tecla poda `mencoes` contra um texto que já não
+    // tem o `@Nome` enviado. Sem isto, o retry voltava sem o id e saía como
+    // texto puro (com homônimos, avisando os dois).
+    const mencoesEnviadas = mencoes;
 
     if (mode === "note") {
-      createNote.mutate({ conversation_id: conversationId, body }, { onError: restoreOnError });
+      createNote.mutate(
+        { conversation_id: conversationId, body: corpo },
+        {
+          onError: () => {
+            restoreOnError();
+            // Na FRENTE das atuais: o texto enviado volta antes do novo, e o
+            // `embutirMencoes` pareia ocorrência e escolha por ordem.
+            const restaurado = restaurar(taRef.current?.value ?? "");
+            setMencoes((atual) =>
+              podarMencoes(restaurado, [...mencoesEnviadas, ...atual.filter((m) => !mencoesEnviadas.includes(m))]),
+            );
+          },
+          // Só depois de gravar, e só as escolhas DESTA nota — a lista pode já
+          // ter a menção da PRÓXIMA, escolhida enquanto esta ainda estava no ar
+          // (`mencoesEnviadas`): zerar tudo apagava a escolha dela, e a nota
+          // seguinte sairia como texto puro (com homônimos, avisando os dois).
+          onSuccess: () =>
+            setMencoes((atual) => atual.filter((m) => !mencoesEnviadas.includes(m))),
+        },
+      );
       return;
     }
     send.mutate(
       {
         conversation_id: conversationId,
-        body,
+        body: legivel,
         type: "text",
         ...(respondendo ? { reply_to_message_id: respondendo.id } : {}),
       },
@@ -277,6 +374,36 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       setMenuDismissed(true);
       return;
     }
+    // A lista de menções come as teclas ANTES do Enter salvar — a mesma lei
+    // do slash-menu: com o menu aberto, Enter escolhe, não envia.
+    if (mencaoAberta) {
+      if (e.key === "Escape") {
+        setMencaoDispensada(true);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMencaoIndice((i) => (opcoes.length ? (i + 1) % opcoes.length : 0));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMencaoIndice((i) => (opcoes.length ? (i - 1 + opcoes.length) % opcoes.length : 0));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (opcaoAtual) escolherMencao(opcaoAtual);
+        return;
+      }
+      // Tab só é intercepted quando HÁ o que escolher: sem opção, o Tab tem de
+      // continuar Tab — prender o foco num menu vazio é teclado sequestrado.
+      if (e.key === "Tab" && opcaoAtual) {
+        e.preventDefault();
+        escolherMencao(opcaoAtual);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (menuOpen) return; // deixa o Enter pro menu; não envia /query como mensagem
@@ -295,8 +422,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <>
       <div
+        data-mode={mode}
         className={cn(
-          "relative border-t border-border bg-background px-3 py-2",
+          "crm-composer relative border-t border-border bg-background px-3 py-2",
           mode === "note" && "border-warning/40 bg-warning-bg",
         )}
       >
@@ -309,6 +437,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           templates={templates.data ?? []}
           onPick={applyTemplate}
           onClose={() => setMenuDismissed(true)}
+        />
+        {/* A LISTA DE ATENDENTES (#2372) — só em nota, só enquanto o `@` está
+            aberto. O MESMO canto do slash-menu, que só existe em resposta: os
+            dois nunca aparecem juntos. */}
+        <MentionMenu
+          open={mencaoAberta}
+          opcoes={opcoes}
+          indice={opcaoAtual ? opcoes.indexOf(opcaoAtual) : 0}
+          onPick={escolherMencao}
         />
         {/* O AVISO DO RASCUNHO SUGERIDO (issue #1611) — acima dos modos, sempre
             que a resposta está liberada. Nada aqui envia: a faixa só diz de onde
@@ -332,32 +469,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </p>
           </div>
         )}
-        <div className="mb-1.5 flex gap-1">
-          <button
-            type="button"
-            onClick={() => setMode("reply")}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-              mode === "reply"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {t("Responder")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("note")}
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-              mode === "note"
-                ? "bg-warning text-warning-fg"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            {t("Nota interna")}
-          </button>
-        </div>
+        {!fixedMode && <ComposerModeSwitch mode={mode} onChange={setMode} />}
+        {fixedMode === "note" && (
+          <p className="mb-2 text-xs text-muted-foreground">{t("Só a equipe vê estas observações.")}</p>
+        )}
         {/*
           A FAIXA DA CITAÇÃO — o que o atendente escolheu responder.
 
@@ -388,7 +503,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="crm-composer-editor">
+          <div className="crm-composer-tools">
           {/* O "+" existe nos DOIS modos desde a F3 da #1863: em "Nota interna"
               ele abre o mesmo menu, com as DUAS primeiras opções — foto/vídeo e
               documento — porque a nota passou a aceitar anexo. A terceira
@@ -420,14 +536,33 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               });
             }}
           />
+          </div>
           <textarea
             ref={taRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
+              const pos = e.target.selectionStart ?? e.target.value.length;
+              setCaret(pos);
+              setMencaoIndice(0);
+              // A escolha que sumiu do texto sai da lista AGORA (#2463): com
+              // duas pessoas de mesmo rótulo, a escolha apagada roubava o
+              // `@Nome` da próxima e a nota notificava quem não foi mencionado.
+              //
+              // Só na edição À MÃO, de propósito: o envio limpa o campo sem
+              // passar por aqui, e é isso que mantém as menções valendo para o
+              // retry depois de uma falha. Quem digita DURANTE o envio poda as
+              // escolhas aqui — o `onError` da nota devolve as que foram enviadas.
+              setMencoes((atual) => podarMencoes(e.target.value, atual));
               if (!resolveSlash(e.target.value).open) setMenuDismissed(false);
+              // Sumiu o `@` (apagou, ou o Enter escolheu): o Esc de uma vez
+              // não pode travar a lista da PRÓXIMA menção.
+              if (!resolverMencao(e.target.value, pos)) setMencaoDispensada(false);
               autoresize();
             }}
+            // Seta e clique movem o cursor sem digitar: sem isto o `caret`
+            // ficaria parado no fim e a lista abriria onde o texto não está.
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             rows={1}
@@ -462,7 +597,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             <Button
               type="button"
               size="icon"
-              className="h-9 w-9 shrink-0"
+              className="crm-composer-send h-9 w-9 shrink-0"
               onClick={handleSubmit}
               disabled={(mode === "note" ? isDisabled : respostaBarrada) || !text.trim()}
               aria-label={t("Enviar")}
@@ -475,6 +610,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       </div>
       <AttachmentPreviewDialog
+        mode={pendingEm}
         file={pendingFile}
         sending={upload.isPending || send.isPending || createNote.isPending}
         onCancel={() => setPendingFile(null)}

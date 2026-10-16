@@ -46,4 +46,7 @@ function descarregar(qc: QueryClient): void {
   agendadas.delete(qc);
   void qc.invalidateQueries({ queryKey: ["conversations"] });
   void qc.invalidateQueries({ queryKey: ["conversation"] });
+  // A lista e os badges são consultas diferentes. Antes, o evento chegava e a
+  // conversa mudava, mas a bolinha só acompanhava no polling de 30 s ou no F5.
+  void qc.invalidateQueries({ queryKey: ["conversation-counts"] });
 }

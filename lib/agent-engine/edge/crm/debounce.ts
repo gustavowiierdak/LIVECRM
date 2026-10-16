@@ -7,8 +7,8 @@
  * e a exclusão do job em HOLD — e as duas precisam de régua própria.
  *
  * Contrato:
- *   - mensagem que chega enquanto há job PENDING **do mesmo contato** com a
- *     janela ainda aberta (`run_after > now()`) viaja de carona nele: o turno lê
+ *   - mensagem que chega enquanto há job PENDING **da mesma conversa e do mesmo
+ *     atendimento** dentro da janela de debounce viaja de carona nele: o turno lê
  *     o histórico completo e responde a todas as mensagens do lote;
  *   - mensagem que chega fora da janela abre janela nova;
  *   - `debounceMs = 0` desliga a coalescência: job imediato, zero consulta.
@@ -35,10 +35,17 @@ import type pg from 'pg';
  * (2026-09-14): 6 mensagens ao longo de 7h, zero resposta, zero job novo — só o
  * coalescing silencioso repetido no mesmo job com `held_run_after` no payload.
  */
-const SQL_JOB_PARA_COALESCER = `select id from job_queue
- where organization_id = $1 and contact_id = $2
-   and kind = 'inbound_turn' and status = 'pending' and run_after > now()
-   and not (payload ? 'held_run_after')
+const SQL_JOB_PARA_COALESCER = `select j.id from job_queue j
+ join conversations c on c.id = $3 and c.organization_id = $1
+ where j.organization_id = $1 and j.contact_id = $2
+   and j.payload->>'conversation_id' = $3::text
+   and j.kind = 'inbound_turn' and j.status = 'pending'
+   and j.created_at >= $4::timestamptz - ($5::integer * interval '1 millisecond')
+   and j.run_after > $4::timestamptz
+   and j.run_after <= $4::timestamptz + ($5::integer * interval '1 millisecond')
+   and (j.payload->'service_boundary'->>'service_revision' is null
+        or j.payload->'service_boundary'->>'service_revision' = c.service_revision::text)
+   and not (j.payload ? 'held_run_after')
  limit 1`;
 
 /** O que fazer com a mensagem que acabou de chegar. */
@@ -49,11 +56,16 @@ export type DecisaoDeRajada =
 /** Job pendente do contato que pode receber a mensagem de carona. */
 export async function buscarJobParaCoalescer(
   pool: pg.Pool,
-  alvo: { organizationId: string; contactId: string },
+  alvo: { organizationId: string; contactId: string; conversationId: string },
+  debounceMs: number,
+  agora: number = Date.now(),
 ): Promise<string | undefined> {
   const { rows } = await pool.query<{ id: string }>(SQL_JOB_PARA_COALESCER, [
     alvo.organizationId,
     alvo.contactId,
+    alvo.conversationId,
+    new Date(agora),
+    Math.min(debounceMs, TETO_DEBOUNCE_MS),
   ]);
   return rows[0]?.id;
 }
@@ -95,12 +107,12 @@ export function debounceEfetivo(
 /** Decide entre carona em job existente e janela nova. */
 export async function decidirRajada(
   pool: pg.Pool,
-  alvo: { organizationId: string; contactId: string },
+  alvo: { organizationId: string; contactId: string; conversationId: string },
   debounceMs: number,
   agora: number = Date.now(),
 ): Promise<DecisaoDeRajada> {
   if (debounceMs > 0) {
-    const jobId = await buscarJobParaCoalescer(pool, alvo);
+    const jobId = await buscarJobParaCoalescer(pool, alvo, debounceMs, agora);
     if (jobId !== undefined) return { tipo: 'coalescido', jobId };
   }
   return { tipo: 'enfileirar', runAfter: janelaDeRajada(debounceMs, agora) };

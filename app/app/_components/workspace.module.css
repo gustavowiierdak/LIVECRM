@@ -1,0 +1,874 @@
+/* Operator workspace only. Public login and customer webchat keep their skin.
+   The requested OPA-style palette overrides only presentation, not saved Marca
+   settings or semantic status colors. The existing theme preference remains. */
+:global(:root):has(.workspace) {
+  --color-bg: #f5f6f9;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #eef0f5;
+  --color-text: #242832;
+  --color-text-muted: #586171;
+  --color-text-subtle: #697385;
+  --color-border: #e0e4ec;
+  --color-border-strong: #c4cbd7;
+  --workspace-chat: #eef0f5;
+  --workspace-chat-dot: #d8dce5;
+  --workspace-message-incoming: #ffffff;
+  --workspace-message-outgoing: #e3e5ef;
+}
+
+:global(:root[data-theme="dark"]):has(.workspace) {
+  --color-bg: #1b1d23;
+  --color-surface: #22252d;
+  --color-surface-elevated: #2c303b;
+  --color-text: #e9eaf1;
+  --color-text-muted: #b3b9c8;
+  --color-text-subtle: #969fb1;
+  --color-border: #383d4b;
+  --color-border-strong: #525c70;
+  --workspace-chat: #2b2f3e;
+  --workspace-chat-dot: #3a3f50;
+  --workspace-message-incoming: #3b4051;
+  --workspace-message-outgoing: #454b60;
+}
+
+:global(:root[data-theme="dark"]):has(.workspace :global(.crm-inbox)) {
+  --color-bg: #222630;
+  --color-surface: #222630;
+  --color-surface-elevated: #373d4e;
+  --color-border: #3b4150;
+  --color-text-muted: #c1c6d2;
+  --workspace-chat: #2b3040;
+  --workspace-message-incoming: #454b60;
+  --workspace-message-outgoing: #454b60;
+}
+
+/* Marca is emitted on body for Radix portals. Declare the operator palette at
+   that same boundary; :root:root wins regardless of stylesheet load order.
+   The Inbox marker removes the override outside the attendance workspace.
+   Rebind compatibility aliases here: inherited var() values resolve at their
+   declaration site, so otherwise a legacy primary button keeps the brand hue. */
+:global(:root:root) :global(body):has(.workspace :global(.crm-inbox)) {
+  --workspace-action: #4434cc;
+  --workspace-action-hover: #3829b1;
+  --workspace-action-fg: #ffffff;
+  --color-accent: #4434cc;
+  --color-accent-hover: #3829b1;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #ebe9fc;
+  --color-accent-500: #6a58e5;
+  --primary: var(--workspace-action);
+  --primary-foreground: var(--workspace-action-fg);
+  --accent-foreground: var(--color-accent-fg);
+  --ring: var(--color-accent-500);
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --secondary: var(--color-surface-elevated);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-surface-elevated);
+  --muted-foreground: var(--color-text-muted);
+  --border: var(--color-border);
+  --input: var(--color-border);
+}
+
+:global(:root:root[data-theme="dark"]) :global(body):has(.workspace :global(.crm-inbox)) {
+  /* Text/focus need a lighter violet than the solid OPA-style action fill. */
+  --color-accent: #c1b9ff;
+  --color-accent-hover: #d0caff;
+  --color-accent-fg: #222630;
+  --color-accent-soft: #34304e;
+  --color-accent-500: #a99dff;
+}
+
+/* Keep solid CTAs violet in both modes, including portaled dialogs. Text links
+   and selected outlines use the contrast-safe accent above, not this fill. */
+:global(body):has(.workspace :global(.crm-inbox)) :global(.bg-accent) {
+  background-color: var(--workspace-action);
+  color: var(--workspace-action-fg);
+}
+
+:global(body):has(.workspace :global(.crm-inbox)) :global(.hover\:bg-accent-hover:hover) {
+  background-color: var(--workspace-action-hover);
+  color: var(--workspace-action-fg);
+}
+.workspace {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Banners use real space; flex distributes the remaining viewport without
+   assuming a fixed height for connection, billing or impersonation notices. */
+:global([data-marca-org]):has(.workspace :global(.crm-inbox)) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.workspace:has(:global(.crm-inbox)),
+.workspace:has(:global(.crm-inbox)) > div {
+  min-height: 0;
+}
+
+.workspace:has(:global(.crm-inbox)) {
+  flex: 1;
+}
+
+.workspace:has(:global(.crm-inbox)) :global(.crm-navigation) {
+  height: 100%;
+}
+
+/* No extra frame around the inbox. Keep the shared bottom-occupancy contract
+   for mobile navigation and calls; other app routes retain their own padding. */
+.content:has(:global(.crm-inbox)) {
+  min-height: 0;
+  padding: 0;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--rodape-ocupado, 0px));
+}
+
+.workspace :global(.crm-inbox) {
+  height: 100%;
+  background: var(--color-bg);
+}
+
+/* Overview replaces only the unselected workspace, never the queue. Its
+   counters share the canonical RLS-scoped query; there are no demo metrics. */
+.workspace :global(.crm-inbox-home) {
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(20px, 2.5vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.workspace :global(.crm-home-header),
+.workspace :global(.crm-home-feedback) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.workspace :global(.crm-home-queues) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 16px;
+}
+
+.workspace :global(.crm-home-queue) {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  text-align: start;
+  cursor: pointer;
+}
+
+.workspace :global(.crm-home-queue):hover {
+  background: var(--color-surface-elevated);
+  border-color: var(--color-border-strong);
+}
+
+.workspace :global(.crm-home-queue):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.workspace :global(.crm-home-queue-icon) {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: var(--color-surface-elevated);
+  color: var(--color-accent);
+}
+
+.workspace :global(.crm-home-count) {
+  display: block;
+  margin-block: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace :global(.crm-home-feedback) {
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.workspace :global(.crm-home-start) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  min-height: 280px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  text-align: center;
+}
+
+.workspace :global(.crm-topbar),
+.workspace :global(.crm-navigation),
+.workspace :global(.crm-queue),
+.workspace :global(.crm-inbox-filters),
+.workspace :global(.crm-conversation-header) {
+  background: var(--color-surface);
+}
+
+.workspace :global(.crm-navigation) nav a {
+  min-height: 40px;
+  border-radius: 6px;
+}
+
+.workspace :global(.crm-navigation) a[aria-current="page"] {
+  background: transparent;
+  color: var(--color-accent);
+  box-shadow: inset 3px 0 var(--color-accent);
+}
+
+.workspace :global(.crm-navigation) a[aria-current="page"] svg {
+  color: var(--color-accent);
+}
+
+.workspace :global(.crm-navigation) nav a:hover {
+  background: var(--color-surface-elevated);
+}
+
+.workspace :global(.crm-queue-tabs) {
+  padding: 6px 10px 10px;
+}
+
+/* Existing Radix tabs retain their keyboard behavior, filters and live counts.
+   Compact icon strip mirrors the reference rail without duplicating the CRM's
+   routing or permission model. On desktop the active queue is named above the
+   strip; every tab keeps its accessible name and native hover title. */
+.workspace :global(.crm-queue-tabs) > div > button,
+.workspace :global(.crm-queue-tabs) > div > span {
+  display: none;
+}
+
+.workspace :global(.crm-queue-tabs) [role="tablist"] {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  overflow: visible;
+}
+
+.workspace :global(.crm-queue-tabs) [role="tab"] {
+  position: relative;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.workspace :global(.crm-queue-tabs) [role="tab"][data-state="active"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.workspace :global(.crm-queue-label) {
+  font-size: 10px;
+}
+
+.workspace :global(.crm-queue-count) {
+  position: absolute;
+  right: 6px;
+  top: 2px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--color-surface-elevated);
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.workspace :global(.crm-queue) [data-conversation-id] {
+  padding: 9px 10px;
+  gap: 8px;
+  min-height: 66px;
+}
+
+.workspace :global(.crm-queue) [data-conversation-id][aria-current="true"] {
+  background: var(--color-accent-soft);
+}
+
+.workspace
+  :global(.crm-queue)
+  [data-conversation-id][aria-current="true"]
+  :global(.text-text-subtle) {
+  color: var(--color-text-muted);
+}
+
+.workspace :global(.crm-message-thread),
+.workspace :global(.crm-webchat-operator) [role="log"] {
+  background-color: var(--workspace-chat);
+  background-image: radial-gradient(var(--workspace-chat-dot) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.workspace :global(.crm-conversation-header) {
+  gap: 0;
+  padding: 0;
+}
+
+.workspace :global(.crm-conversation-heading) {
+  padding: 8px 12px;
+}
+
+.workspace :global(.crm-conversation-identity) {
+  flex-basis: 220px;
+}
+
+.workspace :global(.crm-conversation-title) h2 {
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.workspace :global(.crm-conversation-controls) {
+  border-top: 1px solid var(--color-border);
+  padding: 8px 16px;
+}
+
+.workspace :global(.crm-conversation-actions) button,
+.workspace :global(.crm-conversation-actions) a {
+  min-height: 32px;
+  height: auto;
+}
+
+.workspace :global(.crm-conversation-tools) button {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* The transcript is the primary working surface. One mounted set of service
+   controls moves to the inspector on desktop; narrow screens keep it inline. */
+.workspace :global(.crm-service-dock) {
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-controls) {
+  padding: 12px;
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-actions) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace :global(.crm-service-dock) :global(.crm-conversation-actions) button {
+  min-width: 0;
+  padding: 8px;
+  white-space: normal;
+  font-size: 12px;
+}
+
+.workspace :global(.crm-service-dock) [data-testid="devolver-ao-automatico"],
+.workspace :global(.crm-service-dock) [data-testid="pausar-o-automatico"] {
+  grid-column: 1 / -1;
+}
+
+@media (pointer: coarse) {
+  .workspace :global(.crm-conversation-actions) button,
+  .workspace :global(.crm-conversation-actions) a,
+  .workspace :global(.crm-conversation-tools) button {
+    min-height: 44px;
+  }
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-panel) {
+  gap: 16px;
+  padding: 20px 18px;
+  background: var(--color-surface);
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-panel) > * {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-actions) :is(button, a) {
+  min-height: 34px;
+  height: auto;
+  white-space: normal;
+  font-size: 12px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-service) {
+  border-top: 1px solid var(--color-border-strong);
+  padding-top: 16px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-disclosure) > summary {
+  cursor: pointer;
+  padding-block: 6px;
+  color: var(--color-text-muted);
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-disclosure) > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-disclosure) > summary h3 {
+  display: inline;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-disclosure) [data-testid="inbox-enrichment"] {
+  border: 0;
+  padding: 0;
+}
+
+:global(:root):has(.workspace)
+  :global(.crm-contact-disclosure)
+  [data-testid="inbox-enrichment"]
+  > h3 {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  :global(:root):has(.workspace) :global(.crm-contact-actions) :is(button, a),
+  :global(:root):has(.workspace) :global(.crm-contact-phone) button,
+  :global(:root):has(.workspace) :global(.crm-contact-disclosure) > summary {
+    min-height: 44px;
+  }
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-panel) h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.workspace :global(.crm-navigation) {
+  background: var(--color-bg);
+}
+
+.workspace :global(.crm-inbox-filters) h1 {
+  padding: 0;
+  font-size: 12px;
+}
+
+.workspace :global(.crm-inbox-filters) input {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.workspace :global(.crm-topbar) {
+  height: 44px;
+}
+
+.workspace :global(.crm-chat-bubble) {
+  border-radius: 8px;
+  padding: 10px 12px 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.workspace :global(.crm-message-content) {
+  max-width: min(82%, 760px);
+}
+
+.workspace :global(.crm-message-sender) {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.workspace :global(.crm-message-avatar) {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.workspace :global(.crm-message-row[data-direction="inbound"] .crm-chat-bubble) {
+  border-top-left-radius: 2px;
+}
+
+.workspace :global(.crm-message-row[data-direction="outbound"] .crm-chat-bubble) {
+  border-top-right-radius: 2px;
+}
+
+.workspace :global(.crm-message-document) {
+  border: 1px solid var(--color-border-strong);
+}
+
+.workspace :global(.crm-chat-bubble.pr-8) {
+  padding-right: 32px;
+}
+
+.workspace :global(.crm-chat-bubble) audio,
+.workspace :global(.crm-chat-bubble) video {
+  max-width: 100%;
+}
+
+@media (max-width: 639px) {
+  .workspace :global(.crm-message-row) {
+    padding-inline: 10px;
+    gap: 6px;
+  }
+  .workspace :global(.crm-message-avatar) {
+    width: 24px;
+    height: 24px;
+  }
+  .workspace :global(.crm-message-content) {
+    max-width: calc(100% - 40px);
+  }
+}
+
+.workspace :global(.crm-chat-incoming) {
+  background: var(--workspace-message-incoming);
+}
+
+.workspace :global(.crm-chat-outgoing) {
+  background: var(--workspace-message-outgoing);
+}
+
+/* The same writing surface for both transports. The note destination stays
+   visible after typing; attachment and audio controls retain their handlers. */
+.workspace :global(.crm-composer) {
+  padding: 10px 12px;
+}
+
+.workspace :global(.crm-composer-modes) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.workspace :global(.crm-composer-modes) > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.workspace :global(.crm-composer-modes) > button:hover {
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+}
+
+.workspace :global(.crm-composer-modes) > button[aria-pressed="true"] {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: inset 0 -2px var(--color-accent);
+}
+
+.workspace :global(.crm-composer-modes) > button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.workspace :global(.crm-composer-private) {
+  flex: 1 1 200px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--color-warning-fg);
+}
+
+.workspace :global(.crm-composer-editor) {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.workspace :global(.crm-composer-editor):focus-within {
+  border-color: var(--color-accent);
+}
+
+.workspace :global(.crm-composer-tools) {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.workspace :global(.crm-composer-editor) > textarea {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  font-size: 13px;
+  padding-inline: 4px;
+}
+
+.workspace :global(.crm-composer-send) {
+  border-radius: 8px;
+}
+
+/* Radix portals sit outside the shell. Opt in only these inbox dialogs;
+   public webchat and the shared primitives keep their own presentation. */
+:global(:root):has(.workspace) :global(.crm-inbox-dialog) {
+  width: calc(100% - 24px);
+  max-width: 28rem;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+  gap: 20px;
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+:global(:root):has(.workspace) :global(.crm-dialog-header) {
+  padding-right: 24px;
+  gap: 6px;
+  text-align: left;
+}
+
+:global(:root):has(.workspace) :global(.crm-dialog-header) h2 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+:global(:root):has(.workspace) :global(.crm-dialog-header) p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+:global(:root):has(.workspace) :global(.crm-dialog-footer) {
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+:global(:root):has(.workspace) :global(.crm-dialog-footer) > * {
+  margin: 0;
+}
+
+:global(:root):has(.workspace) :global(.crm-inbox-dialog) > button:last-child {
+  width: 32px;
+  height: 32px;
+  top: 12px;
+  right: 12px;
+}
+
+@media (max-width: 639px) {
+  .workspace :global(.crm-composer) {
+    padding: 8px;
+  }
+  .workspace :global(.crm-composer-modes) > button,
+  .workspace :global(.crm-composer-tools) button,
+  .workspace :global(.crm-composer-send) {
+    min-height: 44px;
+  }
+  .workspace :global(.crm-composer-tools) button,
+  .workspace :global(.crm-composer-send) {
+    min-width: 44px;
+  }
+  .workspace :global(.crm-composer-editor) > textarea {
+    min-height: 44px;
+  }
+  :global(:root):has(.workspace) :global(.crm-dialog-footer) button {
+    min-height: 44px;
+  }
+  :global(:root):has(.workspace) :global(.crm-inbox-dialog) > button:last-child {
+    width: 44px;
+    height: 44px;
+    top: 6px;
+    right: 6px;
+  }
+}
+
+/* Delivery labels inherit the bubble's accessible foreground, not the brand
+   button foreground. Keep warning/error colors and search marks independent. */
+.workspace :global(.crm-chat-bubble) :global(.text-primary-foreground) {
+  color: var(--color-text);
+}
+
+.workspace :global(.crm-webchat-channel) {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 2px 12px;
+  background: var(--color-surface);
+}
+
+.workspace :global(.crm-webchat-channel) > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace :global(.crm-channel-description) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.workspace :global(.crm-webchat-channel) h2 {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.workspace :global(.crm-webchat-channel) > div:first-child > span {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+}
+
+.workspace :global(.crm-webchat-session) {
+  padding: 4px 16px;
+  background: var(--color-surface);
+}
+
+.workspace :global(.crm-webchat-session) select {
+  height: 30px;
+  font-size: 12px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-identity) {
+  padding: 4px 0 0;
+  gap: 6px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-name) {
+  font-size: 15px;
+}
+
+:global(:root):has(.workspace) :global(.crm-contact-avatar) {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 2px;
+}
+
+@media (min-width: 768px) {
+  .workspace :global(.crm-rail-queues) :global(.crm-queue-tabs) {
+    padding: 0;
+  }
+  .workspace :global(.crm-rail-queues) [role="tablist"] {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .workspace :global(.crm-rail-queues) [role="tab"] {
+    width: 100%;
+    min-height: 40px;
+    border: 0;
+  }
+  .workspace :global(.crm-rail-queues) [role="tab"][data-state="active"] {
+    box-shadow: inset 3px 0 var(--color-accent);
+  }
+  /* The operator rail follows the Opa pictograms: a warm filled conversation
+     bubble for personal chats, outlined clock/robot/folder for the other views. */
+  .workspace :global(.crm-rail-queues) :global(.crm-queue-icon--mine) {
+    color: #f28c00;
+  }
+  .workspace :global(.crm-rail-queues) :global(.crm-queue-count) {
+    right: 0;
+    top: 0;
+    display: grid;
+    min-width: 14px;
+    height: 14px;
+    place-items: center;
+    padding: 0 2px;
+    border-radius: 999px;
+    font-size: 9px;
+    line-height: 1;
+    background: #1688e9;
+    color: #fff;
+  }
+  .workspace :global(.crm-navigation.w-60) :global(.crm-queue-label) {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    font-size: 12px;
+  }
+  .workspace :global(.crm-navigation.w-60) :global(.crm-rail-queues) [role="tab"] {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 8px 12px;
+    gap: 12px;
+  }
+  .workspace :global(.crm-navigation.w-60) :global(.crm-rail-tools) > div {
+    flex-direction: row;
+    justify-content: space-evenly;
+    margin-bottom: 8px;
+  }
+  .workspace :global(.crm-queue-tabs) [role="tablist"] {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .workspace :global(.crm-queue-label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .workspace :global(.crm-queue-tabs) [role="tab"] svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 767px) {
+  .workspace :global(.crm-queue-tabs) [role="tab"] {
+    min-height: 44px;
+  }
+}
+
+/* Short viewports (small phones / zoom) must keep the editor and transcript
+   visible. All service actions remain scrollable and keyboard reachable. */
+@media (max-width: 767px) and (max-height: 700px) {
+  .workspace :global(.crm-conversation-header) {
+    flex-shrink: 0;
+    max-height: 18dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

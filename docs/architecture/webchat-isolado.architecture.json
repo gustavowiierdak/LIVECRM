@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Atendimento web isolado por sessão",
-    "subtitle": "Link público por empresa, entrada autônoma na Inbox e histórico separado do WhatsApp",
+    "subtitle": "Link público por empresa, transporte web isolado e histórico canônico compartilhado com os agentes",
     "output": "webchat-isolado.html",
     "quality_profile": "standard"
   },
@@ -51,7 +51,7 @@
       "lane": "humano",
       "col": 3,
       "type": "ui",
-      "label": "Inbox: conversa própria e resposta pela sessão web"
+      "label": "Inbox: conversa própria, resposta e menu Responder citando com prévia cancelável"
     },
     {
       "id": "handoff",
@@ -93,7 +93,56 @@
       "lane": "db",
       "col": 7,
       "type": "database",
-      "label": "webchat_messages por sessão; sem timeline WhatsApp"
+      "label": "webchat_messages por sessão; autor humano/IA e citação resolvida na mesma sessão, gravada atomicamente em metadata.webchat_reply"
+    },
+    {
+      "id": "media",
+      "lane": "app",
+      "col": 6,
+      "type": "api",
+      "label": "Imagem e áudio: sessão + CSRF + Origin, upload privado e acesso por mensagem"
+    },
+    {
+      "id": "reply-notice",
+      "lane": "app",
+      "col": 6,
+      "type": "process",
+      "label": "Resposta nova por polling: aviso dentro do chat enquanto aberto"
+    },
+    {
+      "id": "push-subscription",
+      "lane": "db",
+      "col": 7,
+      "type": "database",
+      "label": "Inscrição Web Push isolada por organização e sessão do visitante"
+    },
+    {
+      "id": "push-worker",
+      "lane": "app",
+      "col": 8,
+      "type": "process",
+      "label": "Evento durável da resposta entrega aviso genérico ao celular, sem conteúdo privado"
+    },
+    {
+      "id": "canonical",
+      "lane": "db",
+      "col": 8,
+      "type": "database",
+      "label": "messages com mesmo ID para demanda, IA e recibo financeiro"
+    },
+    {
+      "id": "agent",
+      "lane": "app",
+      "col": 9,
+      "type": "process",
+      "label": "Agente publicado ou roteador da sessão web"
+    },
+    {
+      "id": "agent-send",
+      "lane": "app",
+      "col": 10,
+      "type": "api",
+      "label": "Envio da IA com idempotência e veto à posse humana"
     },
     {
       "id": "closure",
@@ -129,6 +178,13 @@
       "col": 9,
       "type": "api",
       "label": "Export LGPD inclui webchat sem digests de sessão"
+    },
+    {
+      "id": "reset",
+      "lane": "app",
+      "col": 9,
+      "type": "api",
+      "label": "Zona de perigo: apaga mensagens, sessões e handoffs web antes da conversa; audita falha parcial"
     }
   ],
   "edges": [
@@ -146,7 +202,7 @@
     { "id": "e7", "from": "session", "to": "handoff", "label": "Marca consumo e cria sessão" },
     { "id": "e8", "from": "session", "to": "messages", "label": "Leitura/escrita só da sessão" },
     { "id": "e9", "from": "messages", "to": "operator", "label": "Respostas na Inbox" },
-    { "id": "e10", "from": "operator", "to": "messages", "label": "Resposta do atendente" },
+    { "id": "e10", "from": "operator", "to": "messages", "label": "Resposta simples/citada: RLS, escopo, idempotência e gravação atômica" },
     { "id": "e11", "from": "config-api", "to": "audit", "label": "Mudança auditada" },
     { "id": "e12", "from": "operator", "to": "audit", "label": "Emissão e resposta auditadas" },
     {
@@ -161,7 +217,7 @@
       "to": "config-ui",
       "label": "Gerente ajusta a configuração após revisar"
     },
-    { "id": "e14", "from": "messages", "to": "portal", "label": "Resposta isolada ao visitante" },
+    { "id": "e14", "from": "messages", "to": "portal", "label": "Resposta com bloco de citação validado e isolado ao visitante" },
     {
       "id": "e16",
       "from": "messages",
@@ -196,6 +252,23 @@
       "from": "session",
       "to": "portal",
       "label": "Bloqueia envio e oferece novo atendimento"
-    }
+    },
+    { "id": "e26", "from": "messages", "to": "canonical", "label": "Espelho só da conversa web própria" },
+    { "id": "e27", "from": "canonical", "to": "agent", "label": "Despacha mensagem nova" },
+    { "id": "e28", "from": "agent", "to": "agent-send", "label": "Resposta e ferramentas" },
+    { "id": "e29", "from": "agent-send", "to": "messages", "label": "Entrega na sessão web" },
+    { "id": "e30", "from": "operator", "to": "reset", "label": "Administrador confirma reset" },
+    { "id": "e31", "from": "reset", "to": "messages", "label": "Exclui primeiro as mensagens web" },
+    { "id": "e32", "from": "reset", "to": "handoff", "label": "Exclui sessões e depois handoffs" },
+    { "id": "e33", "from": "reset", "to": "audit", "label": "Registra conclusão ou etapa de falha" },
+    { "id": "e34", "from": "portal", "to": "media", "label": "Anexa imagem ou grava áudio" },
+    { "id": "e35", "from": "media", "to": "messages", "label": "Mensagem com mídia privada, visível na Inbox" },
+    { "id": "e36", "from": "media", "to": "audit", "label": "Registra envio do anexo" },
+    { "id": "e37", "from": "messages", "to": "reply-notice", "label": "Detecta ID de resposta ainda não visto" },
+    { "id": "e38", "from": "reply-notice", "to": "portal", "label": "Avisa o visitante e oferece ver resposta" },
+    { "id": "e39", "from": "portal", "to": "push-subscription", "label": "Permissão e inscrição vinculada à sessão" },
+    { "id": "e40", "from": "messages", "to": "push-worker", "label": "Resposta emite evento na mesma transação" },
+    { "id": "e41", "from": "push-worker", "to": "push-subscription", "label": "Busca apenas inscrições da sessão ativa" },
+    { "id": "e42", "from": "push-worker", "to": "portal", "label": "Notificação abre o atendimento instalado" }
   ]
 }

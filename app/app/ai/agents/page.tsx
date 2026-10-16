@@ -60,7 +60,7 @@ export default async function AgentsListPage() {
             {traduzir("Agents de IA", idioma)}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {traduzir("Configure o comportamento dos agents que respondem no WhatsApp.", idioma)}
+            {traduzir("Configure o comportamento dos agents que respondem nos canais conectados.", idioma)}
           </p>
         </div>
       </header>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/i18n/useT";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 
-export function SearchTrigger() {
+export function SearchTrigger({ compact = false }: { compact?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
 
@@ -19,12 +19,14 @@ export function SearchTrigger() {
       <Button
         variant="outline"
         size="sm"
-        className="gap-2 text-muted-foreground"
+        className={compact ? "h-10 w-10 p-0 text-muted-foreground" : "gap-2 text-muted-foreground"}
+        aria-label={t("Buscar...")}
+        title={compact ? `${t("Buscar...")} (⌘K)` : undefined}
         onClick={() => setOpen(true)}
       >
         <MagnifyingGlass size={14} aria-hidden />
-        <span className="hidden md:inline">{t("Buscar...")}</span>
-        <kbd className="ml-2 hidden md:inline rounded-md border bg-muted px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+        {!compact && <span className="hidden md:inline">{t("Buscar...")}</span>}
+        {!compact && <kbd className="ml-2 hidden md:inline rounded-md border bg-muted px-1.5 py-0.5 text-[10px]">⌘K</kbd>}
       </Button>
       <CommandPalette open={open} onOpenChange={setOpen} />
     </>

@@ -475,9 +475,18 @@ export async function resolveConversationTurn(
     'select active_ai_agent_id,active_intent from conversations where organization_id=$1 and id=$2',
     [input.tenantId, input.conversationId],
   );
+  // O id da conversa é estável entre protocolos. Sem a fronteira de revisão/
+  // demanda, o "oi" depois de encerrar um caso de Cobrança lê o caso antigo e
+  // vira Cobrança outra vez antes mesmo de o cliente dizer o novo assunto.
   const signalRow = input.inbound
     ? (await db.query<{ id: string } & CorpoDaMensagemRow>(
-        "select id,body,type,media_url,media_storage_path,media_derived_text from messages where organization_id=$1 and conversation_id=$2 and direction='inbound' order by sent_at desc,created_at desc,id desc limit 1",
+        `select m.id,m.body,m.type,m.media_url,m.media_storage_path,m.media_derived_text
+           from messages m join conversations c
+             on c.id=m.conversation_id and c.organization_id=m.organization_id
+          where m.organization_id=$1 and m.conversation_id=$2 and m.direction='inbound'
+            and m.service_revision=c.service_revision
+            and m.demanda_id is not distinct from c.current_demanda_id
+          order by m.sent_at desc,m.created_at desc,m.id desc limit 1`,
         [input.tenantId, input.conversationId],
       )).rows[0] ?? null
     : null;
@@ -492,16 +501,22 @@ export async function resolveConversationTurn(
   // O que o cliente DIGITOU, cru — o Jev recebe só isso (R4), nunca a transcrição.
   const signalBody = signalRow?.body ?? null;
 
-  // Contexto curto pro CLASSIFICADOR (regra 2 abaixo desambigua resposta
-  // curta em meio a fluxo) — nunca o histórico completo. Só busca quando há
+  // Contexto curto do protocolo ATUAL pro CLASSIFICADOR (regra 2 abaixo
+  // desambigua resposta curta em meio a fluxo) — nunca o histórico completo. Só busca quando há
   // signal: sem inbound (regra 6) o classificador nem roda. Inclui mídia
   // transcrita: a linha entra composta pelo corpo canônico (corpoDaMensagem).
   let recentMessages: ClassifierContextMessage[] = [];
   if (signalRow !== null && signal !== null) {
     const { rows: contextRows } = await db.query<{ direction: 'inbound' | 'outbound' } & CorpoDaMensagemRow>(
-      `select direction,body,type,media_url,media_storage_path,media_derived_text from messages
-       where organization_id=$1 and conversation_id=$2 and (body is not null or media_derived_text is not null) and id<>$3
-       order by sent_at desc,created_at desc,id desc limit $4`,
+      `select m.direction,m.body,m.type,m.media_url,m.media_storage_path,m.media_derived_text
+         from messages m join conversations c
+           on c.id=m.conversation_id and c.organization_id=m.organization_id
+        where m.organization_id=$1 and m.conversation_id=$2
+          and (m.body is not null or m.media_derived_text is not null) and m.id<>$3
+          and ((m.direction='inbound' and m.service_revision=c.service_revision
+                and m.demanda_id is not distinct from c.current_demanda_id)
+            or (m.direction='outbound' and m.sent_at>=c.service_started_at))
+        order by m.sent_at desc,m.created_at desc,m.id desc limit $4`,
       [input.tenantId, input.conversationId, signalRow.id, MAX_CLASSIFIER_CONTEXT_MESSAGES],
     );
     recentMessages = contextRows

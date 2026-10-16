@@ -38,6 +38,7 @@ import {
   comHandoffSeOrcamentoAcabar,
   HANDOFF_REASON_ORCAMENTO,
   RESUMO_DO_HANDOFF_POR_ORCAMENTO,
+  SaldoDoProvedorEncaminhadoError,
   TITULO_DO_HANDOFF_POR_ORCAMENTO,
 } from "@/lib/agent-engine/agent/inbound-turn";
 import type { DesfechoDoAviso } from "@/lib/agent-engine/agent/aviso-de-escalacao";
@@ -121,6 +122,35 @@ function sqlsDoHandoff(chamadas: Array<{ sql: string }>): string[] {
 }
 
 describe("a escolta do orçamento", () => {
+  it("sem créditos no provedor: avisa e encaminha para humano sem esperar recarga", async () => {
+    const { pool, chamadas } = poolFalso();
+    const avisar = avisoEspiao();
+    const erro = new Error("Failed after 3 attempts", {
+      cause: new Error("You have no credits remaining. Add credits to continue using the API"),
+    });
+
+    await expect(
+      comHandoffSeOrcamentoAcabar({ ...contexto(pool, logFalso(), avisar), assunto: "problema" }, async () => {
+        throw erro;
+      }),
+    ).rejects.toBeInstanceOf(SaldoDoProvedorEncaminhadoError);
+
+    expect(avisar).toHaveBeenCalledWith("sem_saldo_provedor");
+    expect(chamadas.some((c) => c.sql.includes("set force_human = true"))).toBe(true);
+    const conversa = chamadas.find((c) => c.sql.includes("update conversations"));
+    expect(conversa?.params).toContain("provedor_ia_sem_creditos");
+    expect(chamadas.some((c) => c.sql.includes("insert into agent_inbox_items"))).toBe(true);
+  });
+
+  it("sem créditos e banco indisponível: não cancela o job sem fazer a passagem", async () => {
+    const { pool } = poolFalso({ falhaEm: "set force_human = true" });
+    await expect(
+      comHandoffSeOrcamentoAcabar(contexto(pool, logFalso()), async () => {
+        throw new Error("You have no credits remaining");
+      }),
+    ).rejects.toThrow("banco fora");
+  });
+
   it("caminho feliz: devolve o valor e não escreve nada no banco", async () => {
     const { pool, chamadas } = poolFalso();
     const log = logFalso();

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { listClassifierModels } from "@/lib/ai/classifier-models";
-import { listSelectableChannels } from "@/lib/channels/selectable";
+import { listSelectableAgentChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { RouterDetailState } from "@/hooks/ai/useRouters";
 import { RouterEditorClient } from "./_client";
@@ -11,7 +11,11 @@ import { RouterEditorClient } from "./_client";
 export const dynamic = "force-dynamic";
 
 const ROUTER_DETAIL_COLUMNS = "id, name, channel_session_id, is_active, config, fallback_agent_id";
-const MEMBER_COLUMNS = "id, agent_id, intent_name, intent_description, examples, position, flow_pointer_id";
+// #2415 — SEM pipeline_id/stage_id aqui, o initialState do SSR nascia sem
+// destino: o draft montado a partir dele mostrava "Sem destino" a cada recarga,
+// mesmo com os campos gravados no banco (a API de detalhe já trazia os dois).
+const MEMBER_COLUMNS =
+  "id, agent_id, intent_name, intent_description, examples, position, flow_pointer_id, pipeline_id, stage_id";
 
 export default async function RouterEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,7 +49,7 @@ export default async function RouterEditorPage({ params }: { params: Promise<{ i
         .eq("organization_id", activeOrg.orgId)
         .is("archived_at", null)
         .order("name", { ascending: true }),
-      listSelectableChannels(supabase, activeOrg.orgId),
+      listSelectableAgentChannels(supabase, activeOrg.orgId),
     ]);
 
   if (!routerRow) notFound();

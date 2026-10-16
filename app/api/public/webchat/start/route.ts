@@ -15,6 +15,7 @@ import {
   setorWebchatSchema,
 } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat, SessaoVisitanteWebchat } from "@/lib/webchat/types";
+import { processarEntradaWebchat } from "@/lib/webchat/entrada-agente";
 
 const corpoSchema = z.object({
   public_id: z.uuid(),
@@ -72,6 +73,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     resourceId: resultado.conversation_id,
     requestId,
     metadata: { sector: resultado.sector, channel: "webchat" },
+  });
+  await processarEntradaWebchat(createAdminClient(), {
+    organizationId: resultado.organization_id,
+    conversationId: resultado.conversation_id,
+    messageId: resultado.message.id,
+    requestId,
   });
   const response = ok({ sector: resultado.sector, expires_at: resultado.expires_at,
     message: resultado.message }, { requestId, status: 201 });

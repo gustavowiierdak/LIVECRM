@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MarcaDeSaida } from "@/lib/branding/saida";
+import { derivarMarca } from "@/lib/branding/contraste";
+import { REGUA_DO_PRODUTO } from "@/lib/branding/regua-do-produto";
+import type { MarcaResolvida } from "@/lib/branding/resolve";
 
 /**
  * O LOGO NA FACHADA — as telas que existem antes de qualquer sessão.
@@ -27,8 +29,8 @@ import type { MarcaDeSaida } from "@/lib/branding/saida";
  * arquivo.
  */
 
-const marcaDaSaida = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/branding/saida", () => ({ marcaDaSaida }));
+const marcaDaFachada = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/branding/fachada", () => ({ marcaDaFachada }));
 // A casca passou a resolver o idioma da interface (ver `IdiomaProvider` no
 // próprio layout) e por isso chama `createClient()`, que lê cookies — algo que
 // só existe dentro de uma requisição real. Fora do login quase nunca há
@@ -39,16 +41,21 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
-const MARCA: MarcaDeSaida = {
-  nome: "Vendas Turbo",
+const MARCA: MarcaResolvida = {
+  name: "Vendas Turbo",
+  initial: "V",
   logoUrl: null,
-  accent: "#2f6f4e",
-  accentFg: "#ffffff",
-  origens: { nome: "banco", cor: "banco" },
+  cor: {
+    semente: "#5b21b6",
+    papel: "accent",
+    derivada: derivarMarca("#5b21b6", REGUA_DO_PRODUTO),
+  },
+  origens: { nome: "organizacao", logoUrl: "padrao", cor: "organizacao" },
+  motivos: [],
 };
 
-async function fachada(marca: MarcaDeSaida): Promise<string> {
-  marcaDaSaida.mockResolvedValue(marca);
+async function fachada(marca: MarcaResolvida): Promise<string> {
+  marcaDaFachada.mockResolvedValue(marca);
   const { default: PublicLayout } = await import("@/app/(public)/layout");
   return renderToStaticMarkup(await PublicLayout({ children: <p>formulário</p> }));
 }
@@ -56,7 +63,7 @@ async function fachada(marca: MarcaDeSaida): Promise<string> {
 describe("a casca das telas de acesso", () => {
   beforeEach(() => {
     vi.resetModules();
-    marcaDaSaida.mockReset();
+    marcaDaFachada.mockReset();
   });
 
   it("com logo configurado, a fachada o desenha", async () => {
@@ -80,12 +87,13 @@ describe("a casca das telas de acesso", () => {
     expect(html).toContain("formulário");
   });
 
-  it("a fachada resolve a marca SEM organização — é o que `null` declara ali", async () => {
-    await fachada(MARCA);
+  it("a cor da organização única vira CSS escopado às telas públicas", async () => {
+    const html = await fachada(MARCA);
 
-    // `marcaDaSaida(orgId)` com um id monta a pilha da organização. Na tela de
-    // login não existe organização resolvida (ninguém entrou), e passar
-    // qualquer outra coisa aqui seria inventar um tenant para pintar a fachada.
-    expect(marcaDaSaida).toHaveBeenCalledWith(null);
+    expect(html).toContain('data-marca-fachada=""');
+    expect(html).toContain('id="marca-fachada"');
+    expect(html).toContain("body:has([data-marca-fachada])");
+    expect(html).toContain("--color-accent:");
+    expect(html).toContain("--color-accent-fg:");
   });
 });

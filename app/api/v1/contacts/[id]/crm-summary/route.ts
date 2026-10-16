@@ -33,6 +33,7 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { camposDoFunil, settingsDoEmbed } from "@/lib/leads/campos-do-funil";
+import { corrigirMotivoDeVetoLegado } from "@/lib/leads/legacy-veto-activity";
 import { createClient } from "@/lib/supabase/server";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 
@@ -91,12 +92,12 @@ export async function GET(
   }
 
   const { data: contactScope, error: scopeError } = await supabase.from("contacts")
-    .select("organization_id, is_anonymized").eq("id", contactId).maybeSingle();
+    .select("organization_id, is_anonymized, is_blocked, force_human, is_personal").eq("id", contactId).maybeSingle();
   if (scopeError) return fail("internal_error", scopeError.message, 500, { requestId });
   if (!contactScope) return fail("not_found", "Contato não encontrado.", 404, { requestId });
   // Candidates are worker-only. Authorize the contact through RLS first, then
   // scope this read to that exact contact and organization. Never expose raw data.
-  const enrichment = await (async () => {
+  const enrichmentPending = (async () => {
     if (contactScope.is_anonymized) return { enrichment: null, enrichment_error: false };
     try {
       const result = await createAdminClient().from("prospecting_candidates")
@@ -113,7 +114,7 @@ export async function GET(
       return { enrichment: null, enrichment_error: true };
     }
   })();
-  const [leads, orders, activities, demandas, fatos, historico] = await Promise.all([
+  const [leads, orders, activities, demandas, fatos, historico, enrichment] = await Promise.all([
     supabase
       .from("crm_leads")
       .select(LEAD_COLS)
@@ -152,6 +153,7 @@ export async function GET(
       .limit(5),
     supabase.from("lead_notes").select("id, headline, body").eq("contact_id", contactId).eq("organization_id", contactScope.organization_id).order("created_at", { ascending: false }).limit(20),
     supabase.from("demandas").select("id, desfecho, fechada_em").eq("contact_id", contactId).eq("organization_id", contactScope.organization_id).not("fechada_em", "is", null).order("fechada_em", { ascending: false }).limit(5),
+    enrichmentPending,
   ]);
 
   // A falha SOBE. Engolir aqui devolveria lista vazia ao cliente e recriaria,
@@ -176,7 +178,7 @@ export async function GET(
       leads: (leads.data ?? []).map((row) => comCamposDoFunil(row as Record<string, unknown>)),
       orders: orders.data ?? [],
       activities: linhas.map((a) => ({
-        ...a,
+        ...corrigirMotivoDeVetoLegado(a, contactScope),
         performed_by_name: a.performed_by_user_id
           ? (nomes.get(a.performed_by_user_id) ?? null)
           : null,

@@ -54,6 +54,8 @@ export function filtrosAuxiliaresDaContagem(
   const filtros: FiltroDeContagem[] = [];
   const canal = sp.get("channel_session_id");
   if (canal) filtros.push(["channel_session_id", canal]);
+  const setor = sp.get("atendimento_setor_id");
+  if (setor) filtros.push(["atendimento_setor_id", setor]);
   // O MARCADOR não entra nesta lista, e não é esquecimento: ele não é
   // IGUALDADE numa coluna, é um `or=` sobre DUAS caixas — `conversations.tags`
   // e o campo calculado do contato. `conversations` não tem coluna `tag` (`tag`
@@ -72,17 +74,14 @@ export function contagemSoNaoLidas(sp: URLSearchParams): boolean {
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) {
+  // loadAuthUser já chama getUser() no servidor; a segunda validação no mesmo
+  // request acrescentava uma ida à rede em toda atualização dos badges.
+  const authUser = await loadAuthUser();
+  if (!authUser) {
     return fail("unauthenticated", "Auth required.", 401, { requestId });
   }
 
-  const authUser = await loadAuthUser();
+  const supabase = await createClient();
   const ativa = await orgAtivaDaApi(authUser, requestId);
   if (!ativa.ok) return ativa.response;
   const activeOrg = ativa.org;
@@ -114,10 +113,13 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Pessoal não soma em nenhuma aba (spec 21, etapa 7 — critério 3): ao marcar,
   // a contagem cai exatamente nas não-lidas daquele contato. A MESMA exclusão
   // da lista, pela mesma primitiva — sem ela o badge diria o que a aba esconde.
-  const pessoais = await idsDeContatosPessoais(supabase, org);
-  // Canal desativado nunca entra na inbox: o mesmo corte da lista, para badge
-  // e aba nunca divergirem.
-  const idsDesativados = await idsDosCanaisDesativados(supabase, org);
+  // As exclusões e o estado do automático são independentes. Cada await em
+  // série atrasava as seis contagens, que só podem começar depois delas.
+  const [pessoais, idsDesativados, automaticoDaOrg] = await Promise.all([
+    idsDeContatosPessoais(supabase, org),
+    idsDosCanaisDesativados(supabase, org),
+    orgTemAutomatico(supabase, org),
+  ]);
   const countExact = () => {
     let q = supabase
       .from("conversations")
@@ -141,8 +143,6 @@ export async function GET(req: NextRequest): Promise<Response> {
   // O fato ORG-WIDE resolvido ANTES das contagens, porque ele escolhe QUAL
   // conjunto de comandos a Fila pede. `undefined` (não deu para saber) segue a
   // convenção da regra: assume que há automático.
-  const automaticoDaOrg = await orgTemAutomatico(supabase, org);
-
   const [fila, automatico, mine, all, closed, archived] = await Promise.all([
     // A FILA DEIXOU DE SER "sem dono + status de espera".
     //
@@ -159,24 +159,12 @@ export async function GET(req: NextRequest): Promise<Response> {
     // caminho só em produção — por isso vivia quase vazia.
     countExact().eq("comando_da_conversa", "automatico"),
     countExact()
-      .eq("assigned_to_user_id", user.id)
+      .eq("assigned_to_user_id", authUser.id)
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
     countExact(),
-    // A aba "Fechadas" existia SEM número nenhum. Num inbox antigo, é o número
-    // que diz o tamanho do arquivo — e a sua ausência fazia a aba parecer um
-    // lugar vazio. Mesma fábrica: herda organização e filtros.
-    //
-    // ⚠️ `eq("closed")`, e NÃO `in(TERMINAIS)` como antes. O par
-    // fechada/arquivada agora tem DUAS abas, e cada badge tem de contar
-    // exatamente a lista da sua aba: `in(TERMINAIS)` somava arquivadas (e, antes
-    // da 0222, resolvidas) no número de "Fechadas", que lista só
-    // `status='closed'` — o badge dizia 120 e a lista mostrava 40. Era a mesma
-    // classe de defeito que este arquivo já conserta desde a Fila, encontrada
-    // aqui no caminho (#923).
+    // Parcelas disjuntas do histórico unificado. A API v1 preserva os campos
+    // antigos; Encerrados recebe a soma dos dois sem nova consulta.
     countExact().eq("status", "closed"),
-    // A aba "Arquivadas" (#923): a pasta do histórico, separada de "Fechadas"
-    // para que arquivar seja reversível e auditável sem se confundir com o
-    // encerramento do atendimento.
     countExact().eq("status", "archived"),
   ]);
 
@@ -199,6 +187,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       all: all.count ?? 0,
       closed: closed.count ?? 0,
       archived: archived.count ?? 0,
+      // Soma dos estados disjuntos já contados, sem consulta adicional. Os
+      // campos anteriores continuam disponíveis para clientes da API v1.
+      encerrados: (closed.count ?? 0) + (archived.count ?? 0),
     },
     { requestId },
   );

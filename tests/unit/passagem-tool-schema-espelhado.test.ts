@@ -46,7 +46,7 @@ describe("os dois lados do schema da tool de passagem", () => {
 
   it("a sonda não é vazia: o conjunto tem os quatro campos que a pessoa vai ler", () => {
     // GUARDA DE VACUIDADE. Sem ela, dois schemas VAZIOS passariam no caso acima.
-    expect(chaves(LARGO)).toEqual(["cliente_quer", "o_que_tentei", "por_que", "reason"]);
+    expect(chaves(LARGO)).toEqual(["cliente_quer", "o_que_tentei", "por_que", "reason", "setor"]);
   });
 
   it("todo campo do lado que o modelo lê tem `.describe()`", () => {

@@ -8,12 +8,15 @@ export interface Conversation {
   organization_id: string;
   contact_id: string;
   channel_session_id: string;
+  atendimento_setor_id?: string | null;
   channel: string;
   status: string;
   status_changed_at: string;
   service_revision?: number;
   service_closed_at?: string | null;
   service_started_at?: string | null;
+  /** Protocolo do episodio atual; preservado ao assumir/transferir/encerrar. */
+  service_protocol?: string | null;
   current_demanda_id?: string | null;
   assigned_to_user_id: string | null;
   /**

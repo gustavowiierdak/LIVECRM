@@ -20,8 +20,10 @@ import { PRAZO_MAX_MINUTOS, PRAZO_MIN_MINUTOS } from "@/lib/escalacao/devolucao-
 import { PRAZO_PADRAO_DO_SILENCIO_MINUTOS } from "@/lib/escalacao/atendimento-manual";
 import { ROUTING_MODES, VISIBILITY_MODES, type RoutingMode } from "@/lib/schemas/routing";
 import { useT } from "@/hooks/i18n/useT";
+import type { AiInactivityConfig } from "@/lib/atendimento/inatividade-schema";
 
 export interface AtendimentoConfig {
+  ai_inactivity?: AiInactivityConfig | null;
   mode: RoutingMode;
   max_retries: number;
   backoff_seconds: number;
@@ -152,7 +154,11 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
   }
 
   return (
-    <form onSubmit={salvar} className="flex max-w-3xl flex-col gap-6" data-testid="form-atendimento">
+    <form
+      onSubmit={salvar}
+      className="flex max-w-3xl flex-col gap-6"
+      data-testid="form-atendimento"
+    >
       <Card className="space-y-4 p-4">
         <div>
           <h2 className="text-sm font-semibold">{t("Quem recebe o cliente novo")}</h2>
@@ -186,9 +192,7 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
                 max={20}
                 value={form.max_retries}
                 disabled={isPending}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, max_retries: Number(e.target.value) }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, max_retries: Number(e.target.value) }))}
               />
               <p className="text-xs text-muted-foreground">
                 {t(
@@ -197,9 +201,7 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
               </p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="backoff_seconds">
-                {t("Espera entre tentativas (segundos)")}
-              </Label>
+              <Label htmlFor="backoff_seconds">{t("Espera entre tentativas (segundos)")}</Label>
               <Input
                 id="backoff_seconds"
                 type="number"
@@ -252,6 +254,86 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
         ) : null}
       </Card>
 
+      <Card className="space-y-4 p-4" data-testid="inatividade-ia">
+        <h2 className="text-sm font-semibold">
+          {t("Encerrar atendimento da IA por falta de resposta")}
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "Só vale enquanto o cliente está com a IA. Ela pergunta se precisa de mais ajuda antes de encerrar. Uma resposta do cliente reinicia a contagem; fila humana e mensagens sem resposta da IA não são encerradas.",
+          )}
+        </p>
+        <label className="flex items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.ai_inactivity != null}
+            disabled={isPending}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                ai_inactivity: e.target.checked
+                  ? { warn_after_minutes: 15, close_after_warning_minutes: 15 }
+                  : null,
+              }))
+            }
+          />
+          {t("Ativar lembrete e encerramento por inatividade")}
+        </label>
+        {form.ai_inactivity ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="inactivity-warning">
+                {t("Perguntar após quantos minutos sem resposta?")}
+              </Label>
+              <Input
+                id="inactivity-warning"
+                type="number"
+                min={5}
+                max={1440}
+                required
+                value={form.ai_inactivity.warn_after_minutes}
+                disabled={isPending}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    ai_inactivity: f.ai_inactivity
+                      ? { ...f.ai_inactivity, warn_after_minutes: Number(e.target.value) }
+                      : null,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="inactivity-close">
+                {t("Aguardar mais quantos minutos depois do lembrete?")}
+              </Label>
+              <Input
+                id="inactivity-close"
+                type="number"
+                min={5}
+                max={1440}
+                required
+                value={form.ai_inactivity.close_after_warning_minutes}
+                disabled={isPending}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    ai_inactivity: f.ai_inactivity
+                      ? { ...f.ai_inactivity, close_after_warning_minutes: Number(e.target.value) }
+                      : null,
+                  }))
+                }
+              />
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              {t(
+                "O segundo prazo só começa quando o lembrete é enviado. Ao encerrar, o cliente recebe o motivo e o protocolo. Silêncio não é confirmação de problema resolvido.",
+              )}
+            </p>
+          </div>
+        ) : null}
+      </Card>
+
       <Card className="space-y-4 p-4" data-testid="devolucao-ao-agente">
         <div>
           <h2 className="text-sm font-semibold">{t("Quando a pessoa some, a IA volta?")}</h2>
@@ -285,7 +367,9 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
         </label>
         {devolveSozinho ? (
           <div className="max-w-xs space-y-1 border-t pt-4">
-            <Label htmlFor="handoff_return_after_minutes">{t("Minutos sem resposta da equipe")}</Label>
+            <Label htmlFor="handoff_return_after_minutes">
+              {t("Minutos sem resposta da equipe")}
+            </Label>
             <Input
               id="handoff_return_after_minutes"
               type="number"
@@ -298,7 +382,9 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
               }
             />
             <p className="text-xs text-muted-foreground">
-              {t("Entre 5 minutos e 24 horas. Sessenta minutos é a ordem de grandeza de um atendimento humano.")}
+              {t(
+                "Entre 5 minutos e 24 horas. Sessenta minutos é a ordem de grandeza de um atendimento humano.",
+              )}
             </p>
           </div>
         ) : null}
@@ -361,7 +447,9 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
             className="mt-1 h-4 w-4 shrink-0 accent-primary"
           />
           <span className="space-y-1">
-            <span className="block text-sm font-medium">{t("A conversa fica com quem atendeu")}</span>
+            <span className="block text-sm font-medium">
+              {t("A conversa fica com quem atendeu")}
+            </span>
             <span className="block text-xs text-muted-foreground">
               {t(
                 "Responder pelo Inbox numa conversa sem dono passa a assumi-la, e a IA fica calada até alguém devolver. Quando o cliente escreve numa conversa encerrada, ela volta direto para o último atendente, sem passar pela distribuição, se ele ainda faz parte da equipe.",
@@ -376,9 +464,7 @@ export function AtendimentoForm({ initial }: { initial: AtendimentoConfig }) {
           {isPending ? t("Salvando…") : t("Salvar")}
         </Button>
         {sujo ? (
-          <span className="text-xs text-muted-foreground">
-            {t("Há mudanças não salvas.")}
-          </span>
+          <span className="text-xs text-muted-foreground">{t("Há mudanças não salvas.")}</span>
         ) : null}
       </div>
     </form>

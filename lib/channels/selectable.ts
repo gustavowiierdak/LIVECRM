@@ -22,7 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomeDoCanal } from "@/lib/channels/estado";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "./archived";
-import { PROVIDERS_DE_MENSAGEM, capabilitiesOf, transportaMensagem } from "./capabilities";
+import { CHANNEL_PROVIDER_WEBCHAT, PROVIDERS_DE_MENSAGEM, capabilitiesOf, transportaMensagem } from "./capabilities";
 import type { ProviderDeMensagem } from "./types";
 
 /** Um canal oferecível como destino, já com o rótulo resolvido para a tela. */
@@ -91,6 +91,22 @@ export async function listSelectableChannels(
   db: SupabaseClient,
   organizationId: string,
 ): Promise<SelectableChannel[]> {
+  return listarCanais(db, organizationId, false);
+}
+
+/** Só agentes/roteadores podem apontar para a sessão web interna. */
+export async function listSelectableAgentChannels(
+  db: SupabaseClient,
+  organizationId: string,
+): Promise<SelectableChannel[]> {
+  return listarCanais(db, organizationId, true);
+}
+
+async function listarCanais(
+  db: SupabaseClient,
+  organizationId: string,
+  incluirWebchat: boolean,
+): Promise<SelectableChannel[]> {
   const base = () =>
     db
       .from("channel_sessions")
@@ -103,7 +119,9 @@ export async function listSelectableChannels(
       // Uma linha de chamada de voz (spec 18) aqui vira número escolhível,
       // agente preso a um canal mudo e "1 canal conectado" numa instalação com
       // zero canal de mensagem.
-      .in("provider", [...PROVIDERS_DE_MENSAGEM]);
+      .in("provider", incluirWebchat
+        ? [...PROVIDERS_DE_MENSAGEM, CHANNEL_PROVIDER_WEBCHAT]
+        : [...PROVIDERS_DE_MENSAGEM]);
 
   const { data, error } = await queryTolerantToMissingArchived(
     () => base().is(ARCHIVED_AT, null).order("created_at", { ascending: true }),

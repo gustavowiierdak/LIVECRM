@@ -45,7 +45,7 @@ import type { ChannelSendResult } from '../channel-adapter';
 import type { Logger } from '../obs/logger';
 import { emitVetoActivity } from '@/lib/leads/veto-activity';
 import type { Queryable } from '../queue/queue';
-import { decidePacing } from '../pacing/engine';
+import { decidePacing, warmupCapFor } from '../pacing/engine';
 import type { PacingState } from '../pacing/engine';
 import type { PacingKnobs } from '../pacing/defaults';
 import { loadChannelKnobs, loadPacingState, recordSend } from '../pacing/store';
@@ -77,18 +77,19 @@ import { isWindowOpen } from './messaging-window';
 import type { ChannelProvider } from '@/lib/channels/capabilities';
 import { aplicarAjustesDeEstilo, lerAjustesDeEstiloDaOrg } from './ajustes-de-estilo-da-org';
 import type { AjusteDeEstilo, LeituraDosAjustes } from './ajustes-de-estilo-da-org';
+import { renderVetoDeAfirmacao, type ConferenciaDeFato } from './factual-claim';
+
+type StopReason = 'opt_out' | 'human_handoff' | 'personal' | 'unknown';
 
 /** O que os gates enxergam — carregado UMA vez sob o lock, por tentativa de envio. */
 export interface GateContext {
   now: Date;
   /** corpo candidato (para o gate de spinning). */
   body: string;
-  /**
-   * STOP irrevogável: `contacts.is_blocked` OR `contacts.force_human`, lidos DIRETO da
-   * fonte (mesmo banco pós-fusão — não existe mais cache) SOB o lock desta tentativa,
-   * OR o sinal lido no `get_lead_context` deste turno.
-   */
+  /** STOP lido da fonte sob o lock, ou detectado neste turno. */
   optedOut: boolean;
+  /** Motivo específico do STOP; impede que passagem humana vire falso opt-out. */
+  stopReason?: StopReason;
   /**
    * Canal desta tentativa. Nenhum gate pergunta QUEM é o provider (invariante 1
    * de `docs/doctrine/restricao-de-canal.md`) — só o entrega a `capabilitiesOf`
@@ -182,13 +183,11 @@ export interface GateContext {
    */
   lgpd: (LgpdInput & { isFirstOutbound: boolean }) | null;
   /**
-   * Guardrail anti-alucinação de casos humanos (spec 15 §10.2, Wave 4) — a invariante
-   * sagrada é: o lead NUNCA recebe promessa-de-humano sem um caso aberto. `casesEnabled`
+   * Guardrail anti-promessa de ajuda humana sem ação correspondente. `casesEnabled`
    * false = feature off para a org → `casePromiseGate` no-op (default retrocompatível para
-   * TODOS os outros callers de `runBeforeSend`, que nem sabem desta camada). `hasOpenCase`
-   * (lido no turno via `hasOpenCaseForContact`) OU `openedCaseThisTurn` (a IA já chamou
-   * `open_human_case` neste turno) tornam o gate no-op também — só veta quando a candidata
-   * promete humano E não há caso nenhum.
+   * TODOS os outros callers de `runBeforeSend`, que nem sabem desta camada). Casos
+   * legados em aberto ainda satisfazem a promessa. O fluxo atual transfere antes
+   * de enviar e não usa `openedCaseThisTurn` no turno do agente.
    */
   casesEnabled: boolean;
   hasOpenCase: boolean;
@@ -225,6 +224,7 @@ export interface GateContext {
    * silêncio — é coberto por `tests/unit/gate-vazamento-interno.test.ts`, que cobra a
    * fiação nos dois sentidos: presente no `send_message`, ausente no follow-up.
    */
+  factualClaim?: ConferenciaDeFato | null;
   internalVocabularyEnforced?: boolean;
   /**
    * Arma o `clinicalClaimGate` (diagnóstico, prescrição, promessa de resultado,
@@ -323,7 +323,7 @@ export type GateVerdict =
       pass: true;
       waitMs?: number;
       amendBody?: string;
-      skipped?: 'not_applicable' | 'sandbox_send_embargo';
+      skipped?: 'not_applicable' | 'sandbox_send_embargo' | 'nao_conferido';
     }
   | {
       pass: false;
@@ -338,19 +338,40 @@ export interface Gate {
   evaluate(ctx: GateContext): GateVerdict;
 }
 
-/** Gate 1 — STOP/opt-out/força-humano: veto IRREVOGÁVEL (regra dura nº 2), 1ª linha. */
+/** Gate 1 — STOP/opt-out/força-humano: sempre veta, com o motivo correto. */
 const stopGate: Gate = {
   name: 'stop',
-  evaluate: (ctx) =>
-    ctx.optedOut
-      ? {
-          pass: false,
-          code: 'contato_bloqueado',
-          reason:
-            'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
-            'possível enviar nada a ele; encerre o turno sem tentar de novo.',
-        }
-      : { pass: true },
+  evaluate: (ctx) => {
+    if (!ctx.optedOut) return { pass: true };
+    if (ctx.stopReason === 'human_handoff') {
+      return {
+        pass: false,
+        code: 'automatico_pausado_para_humano',
+        reason: 'o atendimento foi transferido para uma pessoa; a IA não deve enviar novas respostas até ser reativada.',
+      };
+    }
+    if (ctx.stopReason === 'personal') {
+      return {
+        pass: false,
+        code: 'contato_pessoal',
+        reason: 'o contato está marcado como pessoal; não envie respostas automáticas.',
+      };
+    }
+    if (ctx.stopReason === 'unknown') {
+      return {
+        pass: false,
+        code: 'parada_automatica_sem_motivo',
+        reason: 'o envio automático está bloqueado, mas a origem não pôde ser confirmada; não tente novamente neste turno.',
+      };
+    }
+    return {
+      pass: false,
+      code: 'contato_bloqueado',
+      reason:
+        'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
+        'possível enviar nada a ele; encerre o turno sem tentar de novo.',
+    };
+  },
 };
 
 /**
@@ -436,12 +457,11 @@ export const semanticPromiseGate: Gate = {
 };
 
 /**
- * Gate anti-alucinação de casos humanos (spec 15 §10.2, Wave 4) — a garantia DURA da
- * invariante "o lead nunca recebe promessa-de-humano sem caso aberto". Off (`casesEnabled`
- * false) ou já há caso (`hasOpenCase`/`openedCaseThisTurn` — a IA abriu um NESTE turno) =
+ * Gate anti-promessa de ajuda humana sem ação correspondente. Off (`casesEnabled`
+ * false) ou já há caso legado (`hasOpenCase`/`openedCaseThisTurn`) =
  * no-op. Só veta quando ALGUMA das duas camadas — o detector léxico (`detectHumanPromise`) ou o sinal semântico (`ctx.semanticPromise?.prometeuRetornoHumano`) — acha uma promessa
- * clara na candidata E nenhum caso existe. O fail-safe de 2ª camada (auto-abre caso e
- * re-roda a cadeia) vive na orquestração do `send_message` (inbound-turn.ts), não aqui — o
+ * clara na candidata E não há ação humana registrada. O fail-safe da 2ª tentativa
+ * transfere a conversa na orquestração do `send_message` (inbound-turn.ts); o
  * gate em si é síncrono/puro como os demais. Posição 6.5 de `BEFORE_SEND_GATES` (logo após
  * `semanticPromiseGate`, antes do `disclosureGate`): roda depois das duas camadas de
  * promessa comercial (preço/desconto) porque é uma categoria distinta de promessa
@@ -476,9 +496,9 @@ export const casePromiseGate: Gate = {
         promessaDoAssistente && ctx.followup?.disponivel === true
           ? 'Você prometeu voltar a falar com o cliente, mas não deixou o retorno marcado. ' +
             'Chame a tool schedule_followup (agendando o retorno) OU open_human_case ' +
-            '(descrevendo o que precisa) OU reformule a mensagem sem prometer retorno.'
-          : 'Você prometeu envolver um humano mas não abriu um caso. Chame a tool ' +
-            'open_human_case (descrevendo o que precisa) OU reformule a mensagem sem prometer humano.',
+            '(transferindo o atendimento) OU reformule a mensagem sem prometer retorno.'
+          : 'Você prometeu envolver um humano mas não transferiu o atendimento. Chame a tool ' +
+            'open_human_case (transferindo à fila humana) OU reformule sem prometer humano.',
     };
   },
 };
@@ -906,7 +926,38 @@ const spinningGate: Gate = {
  * do agente de uma organização que ligou a camada `afirmacao_clinica`, então a v8 não
  * muda o destino de nenhum envio de quem não ligou.
  */
-export const BEFORE_SEND_CHAIN_VERSION = 8;
+export const BEFORE_SEND_CHAIN_VERSION = 9;
+
+/**
+ * Gate 6.3 — CONFERÊNCIA DE FATO (#2231): a afirmação de FATO da resposta
+ * ("abrimos às 8h", "check-in às 12h", "temos piscina") conferida contra a
+ * evidência consultada NESTE turno. Depois da F4-01/F4-02 — que proíbem o
+ * agente de PROMETER —, e antes do disclosure. Promessa e fato são camadas
+ * diferentes: a de promessa não muda nada aqui (o "abrimos às 8h" continua
+ * passando por ela, e só cai por ESTA camada quando não está no material).
+ *
+ * `nao_conferido` (sem evidência, sem frases, desligada, catraca ou falha do
+ * fornecedor) passa com o motivo no trace — fail-open com registro, a mesma
+ * postura do #2010. `observando` (como a tarefa nasce) também passa: a
+ * observação já foi gravada em `jev_observacoes`, e ninguém aqui decide.
+ */
+export const factualClaimGate: Gate = {
+  name: 'factual_claim',
+  evaluate: (ctx) => {
+    const conferencia = ctx.factualClaim;
+    if (conferencia === null || conferencia === undefined) return { pass: true };
+    if (conferencia.veredito === 'nao_conferido') return { pass: true, skipped: 'nao_conferido' };
+    if (conferencia.estado !== 'decidindo') return { pass: true };
+    if (conferencia.veredito === 'passa') return { pass: true };
+    return {
+      pass: false,
+      code: conferencia.veredito === 'contradiz' ? 'factual_claim_contradicted' : 'factual_claim_unsupported',
+      // SÓ para o erro de ensino devolvido ao MODELO. Log e trace levam rótulo.
+      reason: renderVetoDeAfirmacao(conferencia.veredito, conferencia.frase),
+      detail: { veredito: conferencia.veredito, frases: conferencia.quantidadeDeFrases },
+    };
+  },
+};
 
 /**
  * Ordem FINAL da cadeia (F4-08/F4-09; edge-contract §before_send / blueprint órgão 5) — DADO
@@ -918,6 +969,8 @@ export const BEFORE_SEND_CHAIN_VERSION = 8;
  *   (4) spinning — template idêntico em massa (F2-12);
  *   (5) promise — validação determinística de preço/desconto/parcelamento (F4-01);
  *   (6) semantic_promise — promessa em texto livre que a regex não pega (F4-02);
+ *   (6.3) factual_claim — afirmação de FATO da resposta contra a evidência
+ *         consultada no turno (#2231); logo após a F4-02, antes do disclosure;
  *   (6.5) case_promise — anti-alucinação de casos humanos (spec 15 §10.2, Wave 4);
  *   (6.7) internal_vocabulary — vazamento de vocabulário interno ao cliente (doutrina
  *         `separacao-fala-e-operacao.md`); antes do disclosure porque ele pode emendar o corpo;
@@ -936,6 +989,7 @@ export const BEFORE_SEND_GATES: readonly Gate[] = [
   spinningGate,
   promiseGate,
   semanticPromiseGate,
+  factualClaimGate,
   casePromiseGate,
   internalVocabularyGate,
   clinicalClaimGate,
@@ -1021,6 +1075,12 @@ export interface RunBeforeSendArgs {
    * semântica off (gate no-op). A montagem/ordem final da cadeia é da F4-08.
    */
   classifyPromiseSemantic?: (body: string) => Promise<PromiseClassification>;
+  /**
+   * Conferência de fato (#2231): a terceira camada, chamada FORA do lock (antes
+   * de tomar conexão, junto da F4-02) com o corpo do modelo. `null`/ausente = não
+   * conferido (o gate passa).
+   */
+  conferirAfirmacoes?: (body: string) => Promise<ConferenciaDeFato | null>;
   /**
    * Modo do gate de disclosure (F4-05) quando a 1ª mensagem sai sem disclosure: 'inject'
    * (default conservador — o disclosure é sempre adicionado, garantindo a apresentação) ou
@@ -1197,23 +1257,69 @@ const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTim
  * O que NÃO muda de ordem: a cadeia continua julgando (e o estado sob o lock sendo
  * lido) exatamente quando julgava, o `send` continua acontecendo sob o lock, uma vez
  * por re-run, e o `finalBody` pós-disclosure continua sendo o que vai ao canal. A
- * espera é a única coisa que sai da janela da transação.
+ * espera é uma das três coisas que saem da janela da transação; as outras duas são o
+ * classificador semântico de promessa (F4-02) e a conferência de fato (#2231), que
+ * rodam antes de tomar conexão — ver o porquê no ponto da chamada.
  */
 export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSendResult> {
   const gates = args.gates ?? BEFORE_SEND_GATES;
-  // Fora do lock (nem conexão tomada): aqui não existe transação aberta para segurar.
-  if (args.esperaForaDoLock) await args.esperaForaDoLock();
-  const client = await args.pool.connect();
-  try {
-    // ANTES do `begin`, de propósito: preferência de estilo não precisa do lock,
-    // e uma consulta que falha DENTRO da transação a deixa abortada — a próxima
-    // morreria com 25P02, longe daqui e com outro nome. Aqui, uma falha custa o
-    // default (desligado) e uma linha no trace, não o envio.
-    const estilo =
-      args.enforceInternalVocabulary !== undefined
-        ? await lerAjustesDeEstiloDaOrg(client, args.tenantId)
-        : null;
+  // ANTES de tomar conexão, de propósito: preferência de estilo não precisa do
+  // lock, e uma consulta que falha DENTRO da transação a deixa abortada — a
+  // próxima morreria com 25P02, longe daqui e com outro nome. Aqui, uma falha
+  // custa o default (desligado) e uma linha no trace, não o envio. Pelo pool,
+  // e não pela conexão do envio, para a classificação abaixo poder começar antes.
+  const estilo =
+    args.enforceInternalVocabulary !== undefined
+      ? await lerAjustesDeEstiloDaOrg(args.pool, args.tenantId)
+      : null;
 
+  // O campo `enforceInternalVocabulary` tem três estados no seam: AUSENTE nos
+  // envios determinísticos/humanos, `true` no texto normal do modelo e `false`
+  // somente no re-run do fail-safe do próprio modelo. A PRESENÇA, portanto, é
+  // o marcador estável de "este corpo foi escrito pela IA" sem fazer template,
+  // resposta aprovada ou aviso de código passarem por uma preferência de estilo.
+  const bodyDoModelo =
+    estilo !== null ? aplicarAjustesDeEstilo(args.body, estilo.ajustes) : args.body;
+
+  // ═══ A CONFERÊNCIA SEMÂNTICA DE PROMESSA RODA FORA DO LOCK ═══
+  //
+  // Camada semântica (F4-02): recebe o MESMO corpo final de estilo que os gates
+  // determinísticos receberão. Se classificasse `args.body`, a cadeia julgaria
+  // uma frase diferente da que efetivamente pode chegar ao cliente.
+  //
+  // É uma ida e volta ao modelo por envio. Ela rodava DENTRO da transação, com
+  // o `pg_advisory_xact_lock` do número na mão: todo outro envio do MESMO
+  // WhatsApp esperava a IA responder, e a conexão (de um pool de 10 para 8 jobs
+  // simultâneos) ficava presa o tempo inteiro.
+  //
+  // E não era só latência: era TRAVAMENTO. Lá dentro, a transação já segurava a
+  // trava de leitura de `contacts` (readStopFlags) enquanto o `runModelCall`
+  // gravava `llm_calls` — que tem FK para `contacts` — por OUTRA conexão do
+  // pool. Com um DDL na fila de `contacts`, o insert esperava o DDL, o DDL
+  // esperava esta transação e esta transação esperava o insert: um ciclo que o
+  // Postgres não detecta, porque uma das arestas mora no processo Node. Medido
+  // numa VPS por @AlecsanderAbreu (#2363), em 2026-10-02: 8m47s `idle in
+  // transaction`, o worker inteiro parado e ~10 min de 503 até alguém encerrar
+  // o DDL à mão.
+  //
+  // O veredito não depende de nada lido sob o lock — só do corpo —, então ele é
+  // calculado antes e entra no contexto dos gates no mesmo lugar de sempre.
+  // Começa junto com a pausa humana: o cliente espera o maior dos dois, não a soma.
+  const [, semanticPromise, factualClaim] = await Promise.all([
+    // Fora do lock (nem conexão tomada): aqui não existe transação aberta para segurar.
+    args.esperaForaDoLock ? args.esperaForaDoLock() : undefined,
+    args.classifyPromiseSemantic ? args.classifyPromiseSemantic(bodyDoModelo) : null,
+    // Conferência de fato (#2231): mesma razão da F4-02 — grava llm_calls por outra conexão.
+    args.conferirAfirmacoes ? args.conferirAfirmacoes(bodyDoModelo) : null,
+  ]);
+
+  const client = await args.pool.connect();
+  // #2506: consulta que estoura o query_timeout rejeita sem destruir o socket
+  // (pg 8.23). Liberar com release() sem erro devolve um cliente com a transação
+  // antiga aberta, e o pool o reempresta nela — o envio seguinte rodaria dentro
+  // da transação de quem falhou. O finally lê desta marcação.
+  let erroNaTransacao: Error | undefined;
+  try {
     await client.query('begin');
     // Serialização por número: dois workers no MESMO channel_session esperam a vez.
     await client.query('select pg_advisory_xact_lock(hashtext($1))', [args.channelSessionId]);
@@ -1250,22 +1356,14 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     )
       throw new Error('reply_scope_mismatch');
 
-    // O campo `enforceInternalVocabulary` tem três estados no seam: AUSENTE nos
-    // envios determinísticos/humanos, `true` no texto normal do modelo e `false`
-    // somente no re-run do fail-safe do próprio modelo. A PRESENÇA, portanto, é
-    // o marcador estável de "este corpo foi escrito pela IA" sem fazer template,
-    // resposta aprovada ou aviso de código passarem por uma preferência de estilo.
-    const bodyDoModelo =
-      estilo !== null ? aplicarAjustesDeEstilo(args.body, estilo.ajustes) : args.body;
-
-    const optedOut =
-      args.optedOutThisTurn ||
-      (await readStopFlags(
-        client,
-        args.tenantId,
-        args.leadId,
-        meetingPolicy?.humanCommand === true || replyPolicy !== null,
-      ));
+    const stopReason = args.optedOutThisTurn
+      ? 'opt_out'
+      : await readStopFlags(
+          client,
+          args.tenantId,
+          args.leadId,
+          meetingPolicy?.humanCommand === true || replyPolicy !== null,
+        );
     const pacingCfg = await loadChannelKnobs(
       client,
       args.tenantId,
@@ -1291,12 +1389,6 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     );
     // org de fonte confiável (RunBeforeSendArgs.tenantId = organization_id do row do job) — regra dura nº 1.
     const promise = await loadPromiseTable(client, args.tenantId);
-    // Camada semântica (F4-02): recebe o MESMO corpo final de estilo que os gates
-    // determinísticos receberão. Se classificasse `args.body`, a cadeia julgaria
-    // uma frase diferente da que efetivamente pode chegar ao cliente.
-    const semanticPromise = args.classifyPromiseSemantic
-      ? await args.classifyPromiseSemantic(bodyDoModelo)
-      : null;
     // Disclosure (F4-05): template por ponteiro da org + detecção de 1º outbound via
     // send_ledger (só conta se há template — sem template o gate é no-op de qualquer forma).
     const disclosure = await loadDisclosureTemplate(client, args.tenantId);
@@ -1317,7 +1409,8 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     const ctx: GateContext = {
       now: args.now,
       body: bodyDoModelo,
-      optedOut,
+      optedOut: stopReason !== null,
+      ...(stopReason !== null ? { stopReason } : {}),
       provider,
       messagingWindow: { lastInboundAt, ...(args.isTemplate === true ? { isTemplate: true } : {}) },
       pacing: {
@@ -1334,6 +1427,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
         ...(promise?.versionId !== undefined ? { versionId: promise.versionId } : {}),
       },
       semanticPromise,
+      factualClaim,
       disclosure: {
         template: disclosure?.body ?? null,
         ...(disclosure?.versionId !== undefined ? { versionId: disclosure.versionId } : {}),
@@ -1354,6 +1448,19 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     };
 
     const { body: evaluatedBody, trace: traceDaCadeia, veto, throttleWaitMs } = evaluateBeforeSend(ctx, gates);
+    if (veto?.gate === 'pacing' && (veto.code === 'warmup_cap' || veto.code === 'daily_cap')) {
+      const activatedAt = pacingState.numberActivatedAt;
+      const ageDays = activatedAt
+        ? Math.max(0, Math.floor((args.now.getTime() - activatedAt.getTime()) / 86_400_000))
+        : 0;
+      args.log.warn('cap de envio vetou resposta — configuração efetiva', {
+        channel_session_id: args.channelSessionId,
+        code: veto.code,
+        warmup_cap: warmupCapFor(ageDays, pacingCfg.knobs.warmupDailyCaps),
+        crm_daily_limit: args.crmDailyLimit,
+        sent_today: pacingState.sentToday,
+      });
+    }
     // Reescrever o texto do modelo sem deixar rastro é mudar o que o cliente lê
     // sem ninguém poder auditar depois. A linha entra ANTES da cadeia porque a
     // reescrita acontece antes dela, e leva só rótulos — nunca o corpo (sem PII).
@@ -1434,10 +1541,11 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     await client.query('commit');
     return { status: 'sent', outcome, trace };
   } catch (err) {
+    erroNaTransacao = err instanceof Error ? err : new Error(String(err));
     await rollback(client, err);
     throw err;
   } finally {
-    client.release();
+    client.release(erroNaTransacao);
   }
 }
 
@@ -1477,16 +1585,27 @@ async function readStopFlags(
   organizationId: string,
   contactId: string,
   humanMeetingCommand = false,
-): Promise<boolean> {
+): Promise<StopReason | null> {
   // Pessoal não recebe nem via encontro (spec 21, etapa 11): o `or is_personal`
   // vale nos DOIS ramos — o veto segue o bloqueio até aqui.
-  const { rows } = await db.query<{ stopped: boolean }>(
+  const { rows } = await db.query<{
+    stopped: boolean;
+    is_blocked: boolean;
+    force_human: boolean;
+    is_personal: boolean;
+  }>(
     humanMeetingCommand
-      ? 'select (is_blocked or is_personal) as stopped from contacts where organization_id = $1 and id = $2'
-      : 'select (is_blocked or force_human or is_personal) as stopped from contacts where organization_id = $1 and id = $2',
+      ? 'select (is_blocked or is_personal) as stopped, is_blocked, force_human, is_personal from contacts where organization_id = $1 and id = $2'
+      : 'select (is_blocked or force_human or is_personal) as stopped, is_blocked, force_human, is_personal from contacts where organization_id = $1 and id = $2',
     [organizationId, contactId],
   );
-  return rows[0]?.stopped === true;
+  const flags = rows[0];
+  if (flags?.stopped !== true) return null;
+  if (flags.is_blocked) return 'opt_out';
+  if (flags.is_personal) return 'personal';
+  if (!humanMeetingCommand && flags.force_human) return 'human_handoff';
+  // Sem flags individuais, manter o veto sem inventar um pedido de opt-out.
+  return 'unknown';
 }
 
 /**

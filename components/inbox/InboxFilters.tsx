@@ -1,13 +1,19 @@
 "use client";
 import { useT } from "@/hooks/i18n/useT";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CaretLeft, CaretRight, MagnifyingGlass } from "@/lib/ui/icons";
+import { useSetores } from "@/hooks/team/useSetores";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { InboxQueuePlacement, useInboxRail } from "@/components/shell/InboxRail";
+import {
+  CaretLeft, CaretRight, MagnifyingGlass, Clock, ChatCircle,
+  ChatsCircle, FolderSimple, Robot, Funnel,
+} from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -36,17 +42,19 @@ import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags"
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
+
+const QUEUE_ICONS = {
+  unassigned: Clock,
+  mine: ChatCircle,
+  all: ChatsCircle,
+  closed: FolderSimple,
+  ai: Robot,
+};
 
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
   { value: "mine", label: "Minhas" },
-  { value: "all", label: "Todas" },
-  { value: "closed", label: "Fechadas" },
-  // "Arquivadas" fica ao lado de "Fechadas" porque as duas são passado — e
-  // separada dela porque são passados diferentes (#923): fechada é atendimento
-  // encerrado, arquivada é o que saiu da fila de trabalho sem ser destruído.
-  { value: "archived", label: "Arquivadas" },
   // "Automático", não "IA": a palavra deste ator já é contrato em quatro arquivos
   // e no dicionário, e `handoff-por-orcamento.test.ts` usa literalmente "Voltar
   // para a IA" como a sabotagem que deve reprovar. A aba era a última fora do
@@ -54,6 +62,9 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   // passou a perguntar a régua do motor), então o rótulo velho descreveria outra
   // coisa.
   { value: "ai", label: "Automático" },
+  { value: "closed", label: "Encerrados" },
+  // Visão adicional do CRM: preservada depois das quatro filas do padrão Opa.
+  { value: "all", label: "Todas" },
 ];
 
 /**
@@ -71,6 +82,7 @@ export interface InboxFiltersValue {
   search: string;
   onlyUnread: boolean;
   channel_session_id?: string;
+  atendimento_setor_id?: string;
   /**
    * A etiqueta escolhida, ou VÁRIAS (#1274).
    *
@@ -89,11 +101,24 @@ export interface InboxFiltersValue {
 interface Props {
   value: InboxFiltersValue;
   onChange: (next: InboxFiltersValue) => void;
+  onReturnHome?: () => void;
+  /** Explicit clear also cancels text that has not reached the debounce yet. */
+  searchResetVersion?: number;
 }
 
-export function InboxFilters({ value, onChange }: Props) {
+export function InboxFilters({ value, onChange, onReturnHome, searchResetVersion = 0 }: Props) {
   const t = useT();
+  const rail = useInboxRail();
+  const inRail = Boolean(rail?.desktop && rail.queues);
+  const filtersId = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const setores = useSetores();
   const [searchInput, setSearchInput] = useState(value.search);
+  const [lastSearchReset, setLastSearchReset] = useState(searchResetVersion);
+  if (lastSearchReset !== searchResetVersion) {
+    setLastSearchReset(searchResetVersion);
+    setSearchInput(value.search);
+  }
   const tabsListRef = useRef<HTMLDivElement>(null);
   const [moreTabs, setMoreTabs] = useState({ left: false, right: false });
   const updateMoreTabs = useCallback(() => {
@@ -127,7 +152,7 @@ export function InboxFilters({ value, onChange }: Props) {
     observer.observe(list);
     list.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab) => observer.observe(tab));
     return () => observer.disconnect();
-  }, [value.tab, updateMoreTabs]);
+  }, [value.tab, updateMoreTabs, inRail]);
   /**
    * O campo escuta o valor de FORA — e só ele.
    *
@@ -185,6 +210,8 @@ export function InboxFilters({ value, onChange }: Props) {
     () => marcadoresEscolhidos(typeof value.tag === "string" ? [value.tag] : (value.tag ?? [])),
     [value.tag],
   );
+  const activeFilters = Number(value.onlyUnread) + Number(Boolean(value.onlyGroups)) +
+    Number(Boolean(value.channel_session_id)) + Number(Boolean(value.atendimento_setor_id)) + etiquetas.length;
   // Os MESMOS filtros que a lista aplicou. Badge que conta o que a aba não mostra
   // manda o atendente procurar trabalho que não existe — a regra já estava escrita
   // na rota; faltava alcançar os filtros ao lado da aba.
@@ -193,6 +220,7 @@ export function InboxFilters({ value, onChange }: Props) {
     tag: etiquetas,
     tagMode: value.tagMode,
     channel_session_id: value.channel_session_id,
+    atendimento_setor_id: value.atendimento_setor_id,
   });
 
   const tabs = activeOrg
@@ -214,8 +242,7 @@ export function InboxFilters({ value, onChange }: Props) {
     ai: counts?.automatico,
     mine: counts?.mine,
     all: counts?.all,
-    closed: counts?.closed,
-    archived: counts?.archived,
+    // Histórico encerrado não é pendência: sem badge de notificação na aba.
   };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
   // canal) deixa o inbox mostrando um subconjunto — às vezes vazio — sem nada na
@@ -340,9 +367,25 @@ export function InboxFilters({ value, onChange }: Props) {
   }, [searchInput]);
 
   return (
-    <div className="border-b border-border bg-background">
-      <div className="space-y-2 px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2">
+    <div className="crm-inbox-filters border-b border-border bg-background">
+      <div className="crm-queue-heading flex items-baseline justify-between gap-2 px-3 pt-2">
+        <h1 className="text-xs font-semibold">{t(INBOX_TABS.find((tab) => tab.value === value.tab)?.label ?? "Fila")}</h1>
+        {onReturnHome ? (
+          <button
+            type="button"
+            onClick={onReturnHome}
+            className="rounded-sm text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            aria-label={t("Voltar à visão geral")}
+            title={t("Voltar à visão geral")}
+          >
+            {t("Atendimentos")}
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">{t("Atendimentos")}</span>
+        )}
+      </div>
+      <div className="space-y-2 px-3 pt-2 pb-2">
+        <div className="flex items-center gap-1">
           <div className="relative min-w-0 flex-1">
             <MagnifyingGlass
               size={15}
@@ -364,6 +407,15 @@ export function InboxFilters({ value, onChange }: Props) {
               aria-label={t("Buscar conversas")}
             />
           </div>
+          <button type="button" aria-label={t("Filtros de atendimento")} title={t("Filtros de atendimento")}
+            aria-expanded={filtersOpen} aria-controls={filtersId} onClick={() => setFiltersOpen(!filtersOpen)}
+            className={cn("relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-ring", activeFilters ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-surface-elevated")}>
+            <Funnel size={19} aria-hidden />
+            {activeFilters > 0 && <span className="absolute right-0 top-0 rounded-full bg-accent px-1 text-[10px] text-accent-foreground">{activeFilters}</span>}
+          </button>
+        </div>
+        <div id={filtersId} hidden={!filtersOpen}>
+        <div className="grid grid-cols-2 gap-2 pb-2">
           {/* Botão pressionável em vez de Switch: o filtro vive na mesma linha
               da busca, e o Switch com rótulo pedia uma linha inteira só para
               si numa coluna de 280px. */}
@@ -400,8 +452,16 @@ export function InboxFilters({ value, onChange }: Props) {
           </button>
         </div>
 
-        {(showChannelSwitch || mostrarSeletorDeTag) && (
-          <div className="flex gap-2">
+        {(showChannelSwitch || mostrarSeletorDeTag || !!setores.data?.length) && (
+          <div className="flex flex-wrap gap-2">
+              {!!setores.data?.length && <Select value={value.atendimento_setor_id ?? "todos"}
+                onValueChange={(id) => onChange({ ...value, atendimento_setor_id: id === "todos" ? undefined : id })}>
+                <SelectTrigger aria-label={t("Filtrar por setor")} className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value="todos">{t("Todos os setores")}</SelectItem>
+                  {setores.data.map((s) => <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>)}
+                </SelectGroup></SelectContent>
+              </Select>}
             {showChannelSwitch && (
               <Select
                 value={value.channel_session_id ?? "all"}
@@ -533,14 +593,17 @@ export function InboxFilters({ value, onChange }: Props) {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* As setas aparecem só quando há abas fora da área visível; a faixa e o
           sublinhado continuam com a altura compacta do Inbox. */}
+      <InboxQueuePlacement>
       <Tabs
         value={value.tab}
+        orientation={inRail ? "vertical" : "horizontal"}
         onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
-        className="px-3"
+        className="crm-queue-tabs px-3"
       >
         <div className="flex items-center gap-1">
           {moreTabs.left ? (
@@ -563,15 +626,23 @@ export function InboxFilters({ value, onChange }: Props) {
             {tabs.map((tab) => {
               const meta = INBOX_TABS.find((t) => t.value === tab)!;
               const count = countFor[tab];
+              const Icon = QUEUE_ICONS[tab];
               return (
                 <TabsTrigger
                   key={tab}
                   value={tab}
+                  title={t(meta.label)}
                   className="shrink-0 gap-1 rounded-none border-b-2 border-transparent px-0 pb-2 pt-1 text-xs font-medium text-text-muted data-[state=active]:border-accent data-[state=active]:bg-transparent data-[state=active]:text-text data-[state=active]:shadow-none"
                 >
-                  {t(meta.label)}
-                  {typeof count === "number" && count > 0 && (
-                    <span className="text-[11px] tabular-nums text-text-subtle">{count}</span>
+                  <Icon
+                    size={15}
+                    weight={tab === "mine" ? "fill" : "regular"}
+                    aria-hidden
+                    className={cn("crm-queue-icon shrink-0", tab === "mine" && "crm-queue-icon--mine")}
+                  />
+                  <span className="crm-queue-label">{t(meta.label)}</span>
+                  {typeof count === "number" && (count > 0 || tab === "unassigned" || tab === "mine" || tab === "ai") && (
+                    <span className="crm-queue-count text-[11px] tabular-nums text-text-subtle">{count}</span>
                   )}
                 </TabsTrigger>
               );
@@ -591,6 +662,7 @@ export function InboxFilters({ value, onChange }: Props) {
           )}
         </div>
       </Tabs>
+      </InboxQueuePlacement>
     </div>
   );
 }

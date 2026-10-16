@@ -8,10 +8,15 @@ import { requireRole } from "@/lib/auth/require-role";
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { mensagemWebchatSchema } from "@/lib/webchat/seguranca";
 import type { MensagemWebchat } from "@/lib/webchat/types";
+import { enriquecerMensagensWebchat } from "@/lib/webchat/enriquecer-mensagens";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 const consultaSchema = z.string().uuid();
-const envioSchema = mensagemWebchatSchema.extend({ visitor_session_id: z.string().uuid() });
+const envioSchema = mensagemWebchatSchema.extend({
+  visitor_session_id: z.uuid(),
+  reply_to_message_id: z.uuid().optional(),
+});
 const conversationIdSchema = z.string().uuid();
 type ClienteRpc = {
   rpc: (
@@ -46,7 +51,9 @@ export async function GET(
     return fail("internal_error", "Não foi possível carregar o atendimento web.", 500, {
       requestId,
     });
-  return ok((Array.isArray(data) ? data : []) as MensagemWebchat[], { requestId });
+  const messages = await enriquecerMensagensWebchat(createAdminClient(), authz.org.orgId, visitorSessionId.data,
+    (Array.isArray(data) ? data : []) as MensagemWebchat[]);
+  return ok(messages, { requestId });
 }
 
 export async function POST(
@@ -69,18 +76,25 @@ export async function POST(
   if (!conversationId.success)
     return fail("validation_error", "Conversa inválida.", 422, { requestId });
   const validatedConversationId = conversationId.data;
+  const scoped = await createClient();
+  const visible = await scoped.from("conversations").select("id")
+    .eq("organization_id", authz.org.orgId).eq("id", validatedConversationId).maybeSingle();
+  if (visible.error) return fail("internal_error", "Não foi possível consultar a conversa.", 500, { requestId });
+  if (!visible.data) return fail("not_found", "Conversa não encontrada.", 404, { requestId });
   const admin = createAdminClient() as unknown as ClienteRpc;
-  const { data, error } = await admin.rpc("fn_enviar_mensagem_webchat_operador", {
+  const { data, error } = await admin.rpc(parsed.data.reply_to_message_id
+    ? "fn_responder_mensagem_webchat_operador" : "fn_enviar_mensagem_webchat_operador", {
     p_organization_id: authz.org.orgId,
     p_source_conversation_id: conversationId.data,
     p_visitor_session_id: parsed.data.visitor_session_id,
     p_body: parsed.data.body,
     p_idempotency_key: parsed.data.idempotency_key,
     p_sent_by_user_id: authz.user.id,
+    ...(parsed.data.reply_to_message_id ? { p_reply_to_message_id: parsed.data.reply_to_message_id } : {}),
   });
   const resultado = data as {
     ok?: boolean;
-    reason?: "conversation_closed";
+    reason?: "conversation_closed" | "invalid_reply";
     message?: MensagemWebchat;
   } | null;
   if (error)
@@ -89,6 +103,8 @@ export async function POST(
     });
   if (resultado?.reason === "conversation_closed")
     return fail("conflict", "Este atendimento foi encerrado.", 409, { requestId });
+  if (resultado?.reason === "invalid_reply")
+    return fail("validation_error", "A mensagem citada não pertence a este atendimento.", 422, { requestId });
   if (!resultado?.ok || !resultado.message)
     return fail("not_found", "Sessão de visitante não encontrada ou expirada.", 404, { requestId });
   void audit({
@@ -101,6 +117,7 @@ export async function POST(
     metadata: {
       visitor_session_id: parsed.data.visitor_session_id,
       message_id: resultado.message.id,
+      ...(parsed.data.reply_to_message_id ? { reply_to_message_id: parsed.data.reply_to_message_id } : {}),
     },
   });
   return ok(resultado.message, { requestId, status: 201 });

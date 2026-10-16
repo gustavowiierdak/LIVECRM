@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { ArrowRight, CaretDoubleLeft, CaretDoubleRight, CaretDown, Gear } from "@/lib/ui/icons";
+import { ArrowRight, CaretDoubleLeft, CaretDoubleRight, CaretDown, Gear, List } from "@/lib/ui/icons";
+import { useInboxRail } from "./InboxRail";
 import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
@@ -41,6 +42,9 @@ export function SidebarContent({
   // escolha de idioma virar algo visível no primeiro clique.
   const t = useT();
   const pathname = usePathname();
+  const rail = useInboxRail();
+  const inbox = pathname === "/app/inbox" && showCollapseControl && rail !== null;
+  const compactInbox = inbox && collapsed;
   const [isPending, startTransition] = useTransition();
   const { user, activeOrg } = useAuth();
   const todos = sidebarGroups(
@@ -100,7 +104,7 @@ export function SidebarContent({
    * `process.env`, e essas duas fontes passaram a divergir quando o layout raiz
    * começou a injetar a marca do BANCO. Divergência entre SSR e cliente aqui não
    * é detalhe: com logo no banco e `APP_LOGO_URL` vazio, o servidor desenhava o
-   * `<span>` de baixo e o cliente desenhava o `<img>` — React #418 em toda tela.
+   * span de baixo e o cliente desenhava a imagem — React #418 em toda tela.
    * Hoje a marca vem por PROP do servidor (`useMarcaDaInstalacao`), pela mesma
    * rota de `activeOrg`, e os dois lados leem o mesmo objeto por construção.
    */
@@ -130,29 +134,40 @@ export function SidebarContent({
       <div
         className={cn(
           "flex h-14 items-center border-b px-4",
-          collapsed ? "justify-center" : "justify-start",
+          collapsed ? "justify-center" : "justify-start gap-2",
         )}
       >
-        {(logo || logoEscuro) && !collapsed ? (
+        {inbox && (
+          <button type="button" disabled={isPending}
+            onClick={() => startTransition(() => toggleSidebar(collapsed))}
+            aria-label={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
+            title={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring">
+            <List size={23} aria-hidden />
+          </button>
+        )}
+        {compactInbox ? null : (logo || logoEscuro) && !collapsed ? (
           // Sem arte própria para o escuro, preserva a proteção de contraste.
           <div
             className={cn(
               "rounded-md",
+              inbox && "min-w-0 max-w-[8.5rem]",
               !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
             )}
           >
-            {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
+            {/* Imagem nativa em vez de next/image: a URL vem de quem hospeda
               (banco ou .env), e next/image exige allowlist de domínios fechada em
               build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
               Altura fixa e largura livre porque a arte enviada tem proporção
               desconhecida; forçar as duas distorceria o logo de quem configurou. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logo}
                 alt={nome}
                 className={cn(
-                  "h-7 w-auto max-w-[10rem] object-contain",
+                  "h-7 w-auto object-contain",
+                  inbox ? "max-w-full" : "max-w-[10rem]",
                   logoEscuro && "dark:hidden",
                 )}
               />
@@ -164,7 +179,7 @@ export function SidebarContent({
               <img
                 src={logoEscuro}
                 alt={nome}
-                className="hidden h-7 w-auto max-w-[10rem] object-contain dark:block"
+                className={cn("hidden h-7 w-auto object-contain dark:block", inbox ? "max-w-full" : "max-w-[10rem]")}
               />
             ) : null}
           </div>
@@ -174,12 +189,12 @@ export function SidebarContent({
           collapsed ? (
             <SimboloDoProduto nome={nome} className="h-8 w-8" />
           ) : (
-            <LogotipoDoProduto nome={nome} className="h-8 w-auto" />
+            <LogotipoDoProduto nome={nome} className={cn("h-8 w-auto", inbox && "max-w-[8.5rem]")} />
           )
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
         )}
-        {collapsed && !marcaDoProduto && (
+        {collapsed && !marcaDoProduto && !compactInbox && (
           <span aria-hidden className="text-lg font-bold text-primary">
             {/* Spread e não `[0]`: nome começando com emoji ou acento composto
                 quebraria no meio do code point. Mesma regra de `resolveBranding`
@@ -235,7 +250,14 @@ export function SidebarContent({
         trocar N destinos do menu por um único link de hub devolve (N-1)×32px.
       */}
       <nav className="flex-1 space-y-2 overflow-y-auto p-2" aria-label={t("Navegação principal")}>
+        {inbox && <div ref={rail?.setQueues} className="crm-rail-queues border-b pb-2" />}
         {grupos.map(({ group, items }) => {
+          // O menu expandido continua expondo TODO o catálogo autorizado.
+          // No atendimento, a faixa recolhida prioriza só os atalhos operacionais.
+          const visiveis = compactInbox
+            ? items.filter((item) => ["/app/agenda", "/app/contacts", "/app/calls", "/app/radar"].includes(item.href))
+            : items;
+          if (compactInbox && visiveis.length === 0) return null;
           const tituloId = `nav-grupo-${group.id}`;
           // Recolhido o sidebar inteiro (rail de 64px), o grupo sempre mostra
           // seus itens — não há onde desenhar cabeçalho nem seta para fechá-lo.
@@ -273,7 +295,7 @@ export function SidebarContent({
                   aria-label={collapsed ? t(group.label) : undefined}
                   className="space-y-1"
                 >
-                  {items.map((item) => {
+                  {visiveis.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                     const Icon = item.icon;
                     return (
@@ -281,6 +303,7 @@ export function SidebarContent({
                         <Link
                           href={item.href}
                           title={collapsed ? t(item.label) : undefined}
+                          aria-label={collapsed ? t(item.label) : undefined}
                           aria-current={isActive ? "page" : undefined}
                           onClick={onNavigate}
                           className={cn(
@@ -304,11 +327,12 @@ export function SidebarContent({
                       </li>
                     );
                   })}
-                  {group.hub && (
+                  {group.hub && !compactInbox && (
                     <li>
                       <Link
                         href={group.hub.href}
                         title={collapsed ? t(group.hub.label) : undefined}
+                        aria-label={collapsed ? t(group.hub.label) : undefined}
                         aria-current={pathname === group.hub.href ? "page" : undefined}
                         onClick={onNavigate}
                         className={cn(
@@ -331,10 +355,12 @@ export function SidebarContent({
         })}
       </nav>
       <div className="border-t p-2">
+        {inbox && <div ref={rail?.setTools} className="crm-rail-tools" />}
         {rodape && (
           <Link
             href={rodape.href}
             title={collapsed ? t(rodape.label) : undefined}
+            aria-label={collapsed ? t(rodape.label) : undefined}
             aria-current={pathname.startsWith(rodape.href) ? "page" : undefined}
             onClick={onNavigate}
             className={cn(
@@ -349,8 +375,8 @@ export function SidebarContent({
             {!collapsed && <span className="truncate">{t(rodape.label)}</span>}
           </Link>
         )}
-        <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />
-        {showCollapseControl && (
+        {!compactInbox && <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />}
+        {showCollapseControl && !inbox && (
           <button
             type="button"
             onClick={() => startTransition(() => toggleSidebar(collapsed))}
@@ -391,13 +417,24 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         // que é a assinatura de servidor e navegador terem pintado estados
         // diferentes — e `AppShell` e `Sidebar` são ambos `"use client"`.
         //
-        // `sticky top-0 h-screen` dá o mesmo efeito visual (a barra não rola com
+        // `sticky top-0 h-dvh` dá o mesmo efeito visual (a barra não rola com
         // a página) e ela VOLTA a ocupar lugar: sobra para o conteúdo exatamente
         // o que ela não usou, e não há segunda medida para discordar.
         //
+        // `h-dvh` e não `h-screen`: `100vh` é a janela com a barra de endereço
+        // RECOLHIDA, e o navegador nunca corrige esse valor. No tablet entre 768
+        // e 1023px — onde esta barra JÁ aparece, porque a casca a mostra a partir
+        // de `md` — a barra media mais que a janela e o fim dela ficava fora do
+        // alcance. `dvh` acompanha a barra do navegador aparecendo e sumindo.
+        // Princípio 2 de `docs/design-system/screen-flow/07-responsive-strategy.md`.
+        //
         // `shrink-0` porque item de flex encolhe por padrão, e uma barra de 60
         // espremida para caber é o mesmo defeito por outro caminho.
-        "sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200",
+        //
+        // `duration-base` em vez do `duration-200` literal: 200ms é o mesmo
+        // número, mas vindo de `--duration-base`. A Lei de movimento fecha a
+        // tabela de durações, e número solto é o que a faz apodrecer.
+        "crm-navigation sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r bg-card transition-[width] duration-base",
         collapsed ? "w-16" : "w-60",
       )}
     >

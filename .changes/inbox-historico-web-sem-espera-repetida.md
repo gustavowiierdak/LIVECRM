@@ -1,0 +1,8 @@
+---
+impacto: nada_mudou
+secao: alterado
+titulo: Histórico web reaparece imediatamente ao voltar à conversa
+---
+O atendimento web reaproveita o histórico em memória e o atualiza em segundo plano, sem mostrar mensagens de outro atendimento. Sessão e mensagens chegam numa única chamada, reduzindo também as consultas periódicas. A abertura de conversa deixa de validar a mesma sessão duas vezes e as consultas independentes da ficha do contato rodam juntas.
+
+A troca de abas da Inbox atualiza o filtro e a URL sem refazer toda a página no servidor, preservando o atendimento selecionado.

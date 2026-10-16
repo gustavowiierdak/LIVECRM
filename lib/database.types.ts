@@ -34,6 +34,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_notices: {
+        Row: { id: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id: string | null; created_at: string; source_message_id: string | null; service_revision: number | null; inactivity_close_after_minutes: number | null }
+        Insert: { id?: string; organization_id: string; conversation_id: string; protocol: string; kind: string; body: string; assigned_to_user_id?: string | null; created_at?: string; source_message_id?: string | null; service_revision?: number | null; inactivity_close_after_minutes?: number | null }
+        Update: { id?: string; organization_id?: string; conversation_id?: string; protocol?: string; kind?: string; body?: string; assigned_to_user_id?: string | null; created_at?: string; source_message_id?: string | null; service_revision?: number | null; inactivity_close_after_minutes?: number | null }
+        Relationships: [
+          { foreignKeyName: "attendance_notices_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "attendance_notices_conversation_id_fkey"; columns: ["conversation_id"]; isOneToOne: false; referencedRelation: "conversations"; referencedColumns: ["id"] },
+        ]
+      }
       erp_integrations: {
         Row: {
           id: string
@@ -1875,6 +1884,7 @@ export type Database = {
           followup: Json
           handoff_keywords: string[]
           handoff_tool_enabled: boolean
+          handoff_legal_enabled: boolean
           proposal_ai_draft_enabled: boolean
           history_message_window: number
           history_token_window: number
@@ -1914,6 +1924,7 @@ export type Database = {
           followup?: Json
           handoff_keywords?: string[]
           handoff_tool_enabled?: boolean
+          handoff_legal_enabled?: boolean
           proposal_ai_draft_enabled?: boolean
           history_message_window?: number
           history_token_window?: number
@@ -1953,6 +1964,7 @@ export type Database = {
           followup?: Json
           handoff_keywords?: string[]
           handoff_tool_enabled?: boolean
+          handoff_legal_enabled?: boolean
           proposal_ai_draft_enabled?: boolean
           history_message_window?: number
           history_token_window?: number
@@ -4396,6 +4408,163 @@ export type Database = {
           },
         ]
       }
+      cobranca_assinaturas: {
+        Row: {
+          assinaturas_vivas: number
+          cancela_no_fim: boolean
+          checkout_expira_em: string | null
+          checkout_url: string | null
+          link_de_pagamento: string | null
+          created_at: string
+          estado: string
+          modo: string | null
+          organization_id: string
+          plano_agendado_id: string | null
+          plano_id: string
+          prazo_extra_ate: string | null
+          provedor: string | null
+          provedor_assinatura_id: string | null
+          provedor_cliente_id: string | null
+          proximo_vencimento: string | null
+          relida_em: string | null
+          trial_ate: string | null
+          ultimo_aviso: string | null
+          ultimo_aviso_em: string | null
+          ultimo_erro: string | null
+          ultimo_erro_em: string | null
+          updated_at: string
+          vencida_desde: string | null
+        }
+        Insert: {
+          assinaturas_vivas?: number
+          cancela_no_fim?: boolean
+          checkout_expira_em?: string | null
+          checkout_url?: string | null
+          link_de_pagamento?: string | null
+          created_at?: string
+          estado?: string
+          modo?: string | null
+          organization_id: string
+          plano_agendado_id?: string | null
+          plano_id: string
+          prazo_extra_ate?: string | null
+          provedor?: string | null
+          provedor_assinatura_id?: string | null
+          provedor_cliente_id?: string | null
+          proximo_vencimento?: string | null
+          relida_em?: string | null
+          trial_ate?: string | null
+          ultimo_aviso?: string | null
+          ultimo_aviso_em?: string | null
+          ultimo_erro?: string | null
+          ultimo_erro_em?: string | null
+          updated_at?: string
+          vencida_desde?: string | null
+        }
+        Update: {
+          assinaturas_vivas?: number
+          cancela_no_fim?: boolean
+          checkout_expira_em?: string | null
+          checkout_url?: string | null
+          link_de_pagamento?: string | null
+          created_at?: string
+          estado?: string
+          modo?: string | null
+          organization_id?: string
+          plano_agendado_id?: string | null
+          plano_id?: string
+          prazo_extra_ate?: string | null
+          provedor?: string | null
+          provedor_assinatura_id?: string | null
+          provedor_cliente_id?: string | null
+          proximo_vencimento?: string | null
+          relida_em?: string | null
+          trial_ate?: string | null
+          ultimo_aviso?: string | null
+          ultimo_aviso_em?: string | null
+          ultimo_erro?: string | null
+          ultimo_erro_em?: string | null
+          updated_at?: string
+          vencida_desde?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cobranca_assinaturas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobranca_assinaturas_plano_agendado_id_fkey"
+            columns: ["plano_agendado_id"]
+            isOneToOne: false
+            referencedRelation: "cobranca_planos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cobranca_assinaturas_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "cobranca_planos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cobranca_planos: {
+        Row: {
+          arquivado_em: string | null
+          created_at: string
+          id: string
+          intervalo: string
+          max_assentos: number | null
+          max_canais: number | null
+          moeda: string
+          nome: string
+          oferecido_ao_cliente: boolean
+          padrao_no_cadastro: boolean
+          preco_cents: number
+          teto_ia_usd_cents: number | null
+          trial_dias: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          arquivado_em?: string | null
+          created_at?: string
+          id?: string
+          intervalo: string
+          max_assentos?: number | null
+          max_canais?: number | null
+          moeda?: string
+          nome: string
+          oferecido_ao_cliente?: boolean
+          padrao_no_cadastro?: boolean
+          preco_cents: number
+          teto_ia_usd_cents?: number | null
+          trial_dias?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          arquivado_em?: string | null
+          created_at?: string
+          id?: string
+          intervalo?: string
+          max_assentos?: number | null
+          max_canais?: number | null
+          moeda?: string
+          nome?: string
+          oferecido_ao_cliente?: boolean
+          padrao_no_cadastro?: boolean
+          preco_cents?: number
+          teto_ia_usd_cents?: number | null
+          trial_dias?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       contact_field_proposals: {
         Row: {
           campo: string
@@ -4785,6 +4954,7 @@ export type Database = {
           service_closed_at: string | null
           service_revision: number
           service_started_at: string | null
+          service_protocol: string | null
           snooze_until: string | null
           snoozed_at: string | null
           snoozed_by_user_id: string | null
@@ -4829,6 +4999,7 @@ export type Database = {
           service_closed_at?: string | null
           service_revision?: number
           service_started_at?: string | null
+          service_protocol?: string | null
           snooze_until?: string | null
           snoozed_at?: string | null
           snoozed_by_user_id?: string | null
@@ -4873,6 +5044,7 @@ export type Database = {
           service_closed_at?: string | null
           service_revision?: number
           service_started_at?: string | null
+          service_protocol?: string | null
           snooze_until?: string | null
           snoozed_at?: string | null
           snoozed_by_user_id?: string | null
@@ -8239,7 +8411,6 @@ export type Database = {
       }
       organizations: {
         Row: {
-          ai_budget_cents: number | null
           cnpj: string | null
           created_at: string
           created_by: string | null
@@ -8254,7 +8425,6 @@ export type Database = {
           onboarded_at: string | null
           onboarding_state: Json
           privacy_policy_url: string | null
-          rate_limit_rps: number
           redacted_at: string | null
           settings: Json
           slug: string
@@ -8267,7 +8437,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          ai_budget_cents?: number | null
           cnpj?: string | null
           created_at?: string
           created_by?: string | null
@@ -8282,7 +8451,6 @@ export type Database = {
           onboarded_at?: string | null
           onboarding_state?: Json
           privacy_policy_url?: string | null
-          rate_limit_rps?: number
           redacted_at?: string | null
           settings?: Json
           slug: string
@@ -8295,7 +8463,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          ai_budget_cents?: number | null
           cnpj?: string | null
           created_at?: string
           created_by?: string | null
@@ -8310,7 +8477,6 @@ export type Database = {
           onboarded_at?: string | null
           onboarding_state?: Json
           privacy_policy_url?: string | null
-          rate_limit_rps?: number
           redacted_at?: string | null
           settings?: Json
           slug?: string
@@ -8535,6 +8701,7 @@ export type Database = {
       }
       platform_branding: {
         Row: {
+          accent_dark_hex: string | null
           accent_hex: string | null
           app_name: string | null
           fallback_at: string | null
@@ -8548,6 +8715,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          accent_dark_hex?: string | null
           accent_hex?: string | null
           app_name?: string | null
           fallback_at?: string | null
@@ -8561,6 +8729,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          accent_dark_hex?: string | null
           accent_hex?: string | null
           app_name?: string | null
           fallback_at?: string | null
@@ -9807,11 +9976,13 @@ export type Database = {
       }
       webhook_sources: {
         Row: {
+          authorize_ai_on_capture: boolean
           created_at: string
           created_by_user_id: string | null
           default_pipeline_id: string
           default_stage_id: string
           field_map: Json
+          form_fields: Json
           id: string
           is_active: boolean
           kind: string
@@ -9826,11 +9997,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          authorize_ai_on_capture?: boolean
           created_at?: string
           created_by_user_id?: string | null
           default_pipeline_id: string
           default_stage_id: string
           field_map?: Json
+          form_fields?: Json
           id?: string
           is_active?: boolean
           kind?: string
@@ -9845,11 +10018,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          authorize_ai_on_capture?: boolean
           created_at?: string
           created_by_user_id?: string | null
           default_pipeline_id?: string
           default_stage_id?: string
           field_map?: Json
+          form_fields?: Json
           id?: string
           is_active?: boolean
           kind?: string
@@ -10180,6 +10355,12 @@ export type Database = {
       }
     }
     Functions: {
+      fn_authorize_ai_form_capture: {
+        Args: { p_organization_id: string; p_source_id: string; p_lead_id: string; p_contact_id: string; p_request_id: string; p_ttl_ms: number }
+        Returns: boolean
+      }
+
+
       fn_channel_routing_claim: {
         Args: {
           p_channel: string
@@ -10414,6 +10595,18 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      fn_atendimento_inatividade_tick: {
+        Args: { p_org: string; p_limite?: number }
+        Returns: Json
+      }
+      fn_atendimento_inatividade_elegivel: {
+        Args: { p_org: string; p_conversation: string; p_source: string; p_revision: number }
+        Returns: boolean
+      }
+      fn_atendimento_inatividade_aviso_valido: {
+        Args: { p_org: string; p_notice: string }
+        Returns: boolean
+      }
       fn_service_status: {
         Args: {
           p_conversation: string
@@ -10608,6 +10801,18 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      fn_cobranca_liberar_suspensoes: { Args: { p_ator: string | null }; Returns: number }
+      fn_cobranca_reconciliaveis: {
+        Args: never
+        Returns: { organization_id: string; relida_em: string | null; precisa_reler: boolean }[]
+      }
+      fn_cobranca_registrar_aviso: {
+        Args: { p_org: string; p_aviso: string; p_desde: string | null; p_titulo: string; p_corpo: string; p_severidade: string }
+        Returns: boolean
+      }
+      fn_cobranca_avisar_teto_de_ia: { Args: { p_org: string; p_titulo: string; p_corpo: string }; Returns: boolean }
+      fn_cobranca_suspender_se_devendo: { Args: { p_org: string; p_motivo: string }; Returns: Json }
+      fn_cobranca_ligada: { Args: never; Returns: boolean }
       fn_configurar_pre_go_live_canal: {
         Args: {
           p_canal: string
@@ -10726,6 +10931,7 @@ export type Database = {
         }
         Returns: Json
       }
+      fn_limite_do_plano: { Args: { p_org: string; p_recurso: string }; Returns: number | null }
       fn_log_event: {
         Args: {
           p_event_type: string
@@ -10817,6 +11023,16 @@ export type Database = {
           version_id: string
         }[]
       }
+      fn_push_inscricoes_que_veem_a_conversa: {
+        Args: { p_org: string; p_conversation: string }
+        Returns: {
+          id: string
+          user_id: string
+          endpoint: string
+          p256dh: string
+          auth: string
+        }[]
+      }
       fn_publish_followup_flow_version: {
         Args: {
           p_created_by: string
@@ -10837,6 +11053,32 @@ export type Database = {
       fn_semear_tipos_de_agendamento: {
         Args: { p_organization_id: string }
         Returns: number
+      }
+      fn_arquivos_da_organizacao: {
+        Args: {
+          p_apos_bucket?: string
+          p_apos_nome?: string
+          p_limite?: number
+          p_org: string
+        }
+        Returns: {
+          bucket_id: string
+          name: string
+        }[]
+      }
+      fn_logins_sem_vinculo: {
+        Args: { p_users: string[] }
+        Returns: string[]
+      }
+      fn_excluir_organizacao: {
+        Args: {
+          p_actor: string
+          p_confirmacao: string
+          p_motivo: string
+          p_org: string
+          p_request_id?: string
+        }
+        Returns: Json
       }
       fn_suspender_organizacao: {
         Args: {
@@ -10865,6 +11107,16 @@ export type Database = {
       fn_user_org_ids: { Args: never; Returns: string[] }
       fn_user_role_in: { Args: { p_org: string }; Returns: number }
       fn_user_role_in_org: { Args: { p_org: string }; Returns: string }
+      fn_uso_de_ia: {
+        Args: {
+          p_agent_id?: string
+          p_ate: string
+          p_desde: string
+          p_org: string
+          p_purpose?: string
+        }
+        Returns: Json
+      }
       midpoint: { Args: { p_next: number; p_prev: number }; Returns: number }
       retrieve_top_k_chunks: {
         Args: {

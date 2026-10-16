@@ -28,6 +28,22 @@
  */
 
 import { baseDoStorage, urlPublicaDoLogo } from "./logo";
+import { stop } from "./rampa";
+import { REGUA_DO_PRODUTO } from "./regua-do-produto";
+import type { MarcaResolvida } from "./resolve";
+
+/** A bolinha da área logada usa o hex escolhido, sem trocar pelo tom derivado dos botões. */
+export function corDoIconeDaOrganizacao(marca: MarcaResolvida): string {
+  return (
+    marca.cor?.semente ??
+    stop(REGUA_DO_PRODUTO.rampaDoProduto, REGUA_DO_PRODUTO.claro.indices.accent)
+  );
+}
+
+/** URL diferente a cada cor salva: o navegador não reaproveita o favicon anterior. */
+export function urlDoIconeDaOrganizacao(cor: string): string {
+  return `/app/icone-da-marca?v=${cor.slice(1)}`;
+}
 
 /**
  * A primeira letra ou dígito de `nome`, em caixa alta. `null` quando o nome não

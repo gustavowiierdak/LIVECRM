@@ -11,6 +11,10 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/impersonate/support", () => ({ requireSupportWrite: vi.fn(async () => null) }));
 vi.mock("@/lib/audit", () => ({ audit: vi.fn() }));
+vi.mock("@/lib/notifications/destinatarios-da-mensagem", () => ({
+  carregarDestinatariosDaMensagem: vi.fn().mockResolvedValue({ tipo: "restrito", userIds: ["actor"] }),
+  usuarioRecebeAviso: (destino: { userIds: string[] }, userId: string) => destino.userIds.includes(userId),
+}));
 const org = "11111111-1111-4111-8111-111111111111", id = "22222222-2222-4222-8222-222222222222";
 const item = { id, kind: "handoff", ref_kind: "conversation", ref_id: id, status: "open" };
 const calls: string[][] = [];

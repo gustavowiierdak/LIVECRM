@@ -38,6 +38,24 @@ function corpoDoPatch(): Record<string, unknown> {
   return JSON.parse((chamada![1] as { body: string }).body) as Record<string, unknown>;
 }
 
+it("ativa inatividade com os dois prazos de 15 minutos e permite desativar", async () => {
+  render(<AtendimentoForm initial={inicial} />);
+  fireEvent.click(screen.getByLabelText("Ativar lembrete e encerramento por inatividade"));
+  expect(screen.getByLabelText("Perguntar após quantos minutos sem resposta?")).toHaveValue(15);
+  expect(screen.getByLabelText("Aguardar mais quantos minutos depois do lembrete?")).toHaveValue(
+    15,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  expect(corpoDoPatch()).toMatchObject({
+    ai_inactivity: { warn_after_minutes: 15, close_after_warning_minutes: 15 },
+  });
+  fireEvent.click(screen.getByLabelText("Ativar lembrete e encerramento por inatividade"));
+  fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(fetcher.mock.calls[1]![1].body)).toMatchObject({ ai_inactivity: null });
+});
+
 describe("Distribuição de atendimento — devolver ao agente sozinho", () => {
   it("desligado por padrão: sem campo de minutos, e o corpo salvo leva null", async () => {
     render(<AtendimentoForm initial={{ ...inicial, mode: "round_robin" }} />);

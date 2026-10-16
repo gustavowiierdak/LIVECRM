@@ -159,7 +159,8 @@ describe("MessageBubble — ações sobre mensagem própria", () => {
     const { container } = render(<MessageBubble message={msg({ external_id: "ABC" })} onApagar={vi.fn(async () => undefined)} />);
     const bolha = screen.getByTestId("message-bubble");
     expect(bolha).toContainElement(screen.getByRole("button", { name: "Opções da mensagem" }));
-    expect(container.firstElementChild?.children).toHaveLength(1);
+    expect(bolha).not.toContainElement(screen.getByText("Atendente"));
+    expect(container.querySelector(".crm-message-avatar")).toHaveAttribute("aria-hidden", "true");
   });
 });
 
@@ -186,6 +187,18 @@ describe("MessageBubble — ocultação local de recebida", () => {
 });
 
 describe("MessageBubble — rótulo de origem", () => {
+  it("separa o remetente do conteúdo copiável e mantém hora e recibo reais", () => {
+    const { rerender } = render(<MessageBubble message={msg({ status: "read" })} />);
+    const bubble = screen.getByTestId("message-bubble");
+    expect(bubble).not.toContainElement(screen.getByText("Atendente"));
+    expect(bubble.querySelector("time")).toHaveAttribute("datetime", "2026-09-08T12:00:00.000Z");
+    expect(screen.getByLabelText("Lida")).toBeInTheDocument();
+    rerender(<MessageBubble message={msg({ direction: "inbound" })} contactName="Ana Silva" />);
+    expect(screen.getByText("Ana Silva")).toHaveClass("crm-message-sender");
+    expect(screen.queryByLabelText("Lida")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Enviada")).not.toBeInTheDocument();
+  });
+
   it("resposta pelo celular (external_device) mostra 'Celular'", () => {
     render(<MessageBubble message={msg({ sent_via: "external_device" })} />);
     expect(screen.getByText("Celular")).toBeInTheDocument();
@@ -314,7 +327,7 @@ describe("MessageBubble — contenção de layout e quebra de palavras (#1451)",
     // juntas, vence o break-word e a quebra forçada fica sem efeito.
     expect(p.className).not.toContain("break-words");
 
-    const bolha = p.closest(".max-w-\\[75\\%\\]");
+    const bolha = p.closest('[data-testid="message-bubble"]');
     expect(bolha).not.toBeNull();
     expect(bolha?.className).toContain("min-w-0");
 

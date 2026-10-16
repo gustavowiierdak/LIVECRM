@@ -74,14 +74,14 @@ export function InboxKeyboardShortcuts({
     <AlertDialog open={confirmFecharOpen} onOpenChange={setConfirmFecharOpen}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("Fechar conversa?")}</AlertDialogTitle>
+          <AlertDialogTitle>{t("Encerrar este atendimento?")}</AlertDialogTitle>
           <AlertDialogDescription>
             {t("O atendimento é encerrado. Se o cliente escrever de novo, você pode reabrir.")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
-          <AlertDialogAction onClick={onClose}>{t("Fechar")}</AlertDialogAction>
+          <AlertDialogAction onClick={onClose}>{t("Encerrar")}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

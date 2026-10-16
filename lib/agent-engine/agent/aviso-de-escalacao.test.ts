@@ -86,6 +86,13 @@ describe("aviso de escalação: qual janela a cadeia avalia", () => {
     expect(ultimoEnvio().resposta).toBe(true);
   });
 
+  it("transfere sem consultar escala ou disponibilidade de atendentes", async () => {
+    const query = vi.fn(async (_sql: string) => ({ rows: [{ locale: "pt-BR" }] }));
+    await avisarLeadDaEscalacao({ query } as never, ids, opts());
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toMatch(/select locale from organizations/i);
+  });
+
   it("origem `resposta` explícita → `resposta: true` (janela `resposta_*`)", async () => {
     await avisarLeadDaEscalacao(pool, ids, opts({ origem: "resposta" }));
     expect(ultimoEnvio().resposta).toBe(true);

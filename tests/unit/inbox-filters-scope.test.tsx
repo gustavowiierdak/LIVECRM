@@ -15,8 +15,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { InboxFilters, visibleInboxTabs, type InboxFiltersValue } from "@/components/inbox/InboxFilters";
+import { ChatCircle, Clock, FolderSimple, Robot } from "@/lib/ui/icons";
 import type * as CanaisModule from "@/hooks/channels/useChannelSessions";
 import type { ChannelSession } from "@/hooks/channels/useChannelSessions";
 import type { ActiveOrg } from "@/lib/auth/types";
@@ -25,6 +27,7 @@ const activeOrgRef: { current: ActiveOrg | null } = { current: null };
 /** `undefined` = listagem ainda carregando (ou que falhou) — não é "zero canais". */
 const canaisRef: { current: ChannelSession[] | undefined } = { current: [] };
 
+vi.mock("@/hooks/team/useSetores", () => ({ useSetores: () => ({ data: [] }) }));
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ activeOrg: activeOrgRef.current }),
 }));
@@ -44,8 +47,11 @@ vi.mock("@/hooks/inbox/useConversationTags", () => ({
 vi.mock("@/hooks/contacts/useContactTagVocabulary", () => ({
   useContactTagVocabulary: () => ({ data: tagsDoContatoRef.current }),
 }));
+const countsRef: { current: { unassigned: number; mine: number; all: number; closed: number; automatico?: number } } = {
+  current: { unassigned: 3, mine: 2, all: 5, closed: 7 },
+};
 vi.mock("@/hooks/inbox/useConversationCounts", () => ({
-  useConversationCounts: () => ({ data: { unassigned: 3, mine: 2, all: 5 } }),
+  useConversationCounts: () => ({ data: countsRef.current }),
 }));
 
 const VALUE: InboxFiltersValue = { tab: "unassigned", search: "", onlyUnread: false };
@@ -78,6 +84,7 @@ beforeEach(() => {
   canaisRef.current = [];
   tagsRef.current = [];
   tagsDoContatoRef.current = [];
+  countsRef.current = { unassigned: 3, mine: 2, all: 5, closed: 7 };
 });
 afterEach(cleanup);
 
@@ -107,6 +114,43 @@ describe("visibleInboxTabs (lógica pura de visões)", () => {
 });
 
 describe("InboxFilters render — 3 visões + escopo", () => {
+  it("usa os pictogramas do atendimento e mantém selo zero apenas nas filas em andamento", () => {
+    setOrg("manager", "all");
+    countsRef.current = { unassigned: 0, mine: 0, all: 0, closed: 7, automatico: 0 };
+    render(<InboxFilters value={VALUE} onChange={() => {}} />);
+
+    expect(screen.getAllByRole("tab").map((aba) => aba.textContent)).toEqual([
+      "Fila0", "Minhas0", "Automático0", "Encerrados", "Todas",
+    ]);
+
+    const icones = [
+      ["Fila", <Clock size={15} weight="regular" key="fila" />],
+      ["Minhas", <ChatCircle size={15} weight="fill" key="minhas" />],
+      ["Automático", <Robot size={15} weight="regular" key="automatico" />],
+      ["Encerrados", <FolderSimple size={15} weight="regular" key="encerrados" />],
+    ] as const;
+    for (const [nome, icone] of icones) {
+      const aba = screen.getByRole("tab", { name: new RegExp(nome) });
+      const esperado = document.createElement("div");
+      esperado.innerHTML = renderToStaticMarkup(icone);
+      expect(aba.querySelector("svg")?.innerHTML).toBe(esperado.querySelector("svg")?.innerHTML);
+      expect(aba.querySelector(".crm-queue-count")?.textContent).toBe(nome === "Encerrados" ? undefined : "0");
+    }
+  });
+
+  it("Encerrados reúne o histórico sem contador de notificação nem aba Arquivadas", () => {
+    setOrg("manager", "all");
+    const onChange = vi.fn();
+    render(<InboxFilters value={VALUE} onChange={onChange} />);
+    const fechadas = screen.getByRole("tab", { name: /Encerrados/ });
+    expect(fechadas).toHaveTextContent(/^Encerrados$/);
+    expect(screen.queryByRole("tab", { name: /Arquivadas|Fechadas/ })).toBeNull();
+    expect(fechadas.querySelector(".crm-queue-count")).toBeNull();
+    fireEvent.mouseDown(fechadas, { button: 0, ctrlKey: false });
+    expect(onChange).toHaveBeenCalledWith({ ...VALUE, tab: "closed" });
+    expect(screen.getByRole("tab", { name: /Fila/ })).toHaveTextContent("3");
+  });
+
   it("centraliza a aba selecionada e indica as abas fora da coluna", () => {
     setOrg("manager", "all");
     let onResize: ResizeObserverCallback = () => {};
@@ -125,32 +169,32 @@ describe("InboxFilters render — 3 visões + escopo", () => {
       Object.defineProperty(list, "clientWidth", { configurable: true, get: () => width });
       Object.defineProperty(list, "scrollWidth", { configurable: true, value: 520 });
       vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ left: 0 } as DOMRect);
-      const all = screen.getByRole("tab", { name: /Todas/ });
-      Object.defineProperty(all, "offsetWidth", { configurable: true, value: 40 });
-      vi.spyOn(all, "getBoundingClientRect").mockImplementation(
+      const penultimaAba = screen.getByRole("tab", { name: /Encerrados/ });
+      Object.defineProperty(penultimaAba, "offsetWidth", { configurable: true, value: 40 });
+      vi.spyOn(penultimaAba, "getBoundingClientRect").mockImplementation(
         () => ({ left: 210 - list.scrollLeft }) as DOMRect,
       );
-      rerender(<InboxFilters value={{ ...VALUE, tab: "all" }} onChange={onChange} />);
+      rerender(<InboxFilters value={{ ...VALUE, tab: "closed" }} onChange={onChange} />);
       expect(list.scrollLeft).toBe(140);
       expect(screen.getByRole("button", { name: "Aba anterior" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Próxima aba" })).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Próxima aba" }));
-      expect(onChange).toHaveBeenCalledWith({ ...VALUE, tab: "closed" });
+      expect(onChange).toHaveBeenCalledWith({ ...VALUE, tab: "all" });
 
       width = 260;
       act(() => onResize([], {} as ResizeObserver));
       expect(list.scrollLeft).toBe(100);
 
-      const archived = screen.getByRole("tab", { name: /Arquivadas/ });
-      Object.defineProperty(archived, "offsetWidth", { configurable: true, value: 60 });
-      vi.spyOn(archived, "getBoundingClientRect").mockImplementation(
+      const ultimaAba = screen.getByRole("tab", { name: /Todas/ });
+      Object.defineProperty(ultimaAba, "offsetWidth", { configurable: true, value: 60 });
+      vi.spyOn(ultimaAba, "getBoundingClientRect").mockImplementation(
         () => ({ left: 430 - list.scrollLeft }) as DOMRect,
       );
-      rerender(<InboxFilters value={{ ...VALUE, tab: "archived" }} onChange={onChange} />);
+      rerender(<InboxFilters value={{ ...VALUE, tab: "all" }} onChange={onChange} />);
       expect(list.scrollLeft).toBe(260);
       expect(screen.getByRole("button", { name: "Aba anterior" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Próxima aba" })).not.toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: /Arquivadas/ })).toHaveAttribute("data-state", "active");
+      expect(screen.getByRole("tab", { name: /Todas/ })).toHaveAttribute("data-state", "active");
     } finally {
       vi.unstubAllGlobals();
     }

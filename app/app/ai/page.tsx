@@ -4,6 +4,8 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { modulosLigados } from "@/lib/instalacao/modulos";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ROLE_RANK } from "@/lib/auth/types";
+import { MonthlyUsageCard } from "@/components/ai/MonthlyUsageCard";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Agente de IA" };
@@ -26,6 +28,8 @@ export default async function AiHubPage() {
 
   return (
     <NavHub
+      summary={activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager
+        ? <MonthlyUsageCard /> : undefined}
       group="ia"
       isPlatformAdmin={user.is_platform_admin && !user.support}
       role={activeOrg?.role ?? null}

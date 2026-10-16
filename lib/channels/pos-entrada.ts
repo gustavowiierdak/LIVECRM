@@ -54,7 +54,7 @@ import { casarClickRef } from "@/lib/plataformas-de-anuncio/meta/captura-de-cliq
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ehPedidoDeOptOut } from "@/lib/opt-out/deteccao";
 import { ehContatoDoNumeroInterno } from "@/lib/escalacao/numero-interno-de-aviso";
-import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
+import { acelerarFollowupDoInbound, drenarEventosDoInbound } from "@/lib/dev/kick-local-pipeline";
 import { origemDoNegocioPeloCanal } from "@/lib/channels/origem-do-negocio";
 import { autorizarContatoParaIA } from "@/lib/ai/elegibilidade/autorizacao";
 import { casarCampanha, lerCampanhas } from "@/lib/ai/elegibilidade/campanha";
@@ -124,6 +124,8 @@ export interface EntradaDeMensagem {
    * nascia com `source = 'whatsapp'`.
    */
   canal?: string;
+  /** Webchat sem agente/roteador explícito conserva a demanda humana. */
+  despacharAgente?: boolean;
 }
 
 /**
@@ -171,16 +173,20 @@ export async function aplicarEfeitosPosEntrada(
   await guardarOrigemDaPagina(admin, entrada);
   await abrirDemanda(admin, entrada);
   await avaliarCampanha(admin, entrada);
-  // A resposta do lead avança o follow-up AQUI. O despacho do agente (LLM)
-  // vem depois: no Hobby ele estoura o tempo da request e o próximo texto
-  // do fluxo ficava esperando o relógio.
-  await acelerarPipelineDeEventos(admin, {
+  const sinal = {
     organizationId: entrada.organizationId,
     contactId: entrada.contactId,
     messageId: entrada.messageId,
     texto: entrada.texto,
-  });
-  await pedirDespachoDoAgente(admin, entrada);
+  };
+  // UMA VOZ: a resposta do cliente avança o follow-up DESTE contato antes de o
+  // turno do agente ser pedido.
+  await acelerarFollowupDoInbound(admin, sinal);
+  if (entrada.despacharAgente !== false) await pedirDespachoDoAgente(admin, entrada);
+  // O dreno do event_log vem DEPOIS do despacho: nenhum handler dele decide se
+  // o agente fala (o "cliente voltou" é previsto por `deveCederTurnoAoRetorno`
+  // nas duas ordens), e cada evento drenado aqui atrasava o pedido do turno.
+  await drenarEventosDoInbound(admin, sinal);
 }
 
 /**
@@ -483,20 +489,23 @@ async function pedirDespachoDoAgente(admin: Admin, entrada: EntradaDeMensagem): 
     });
   }
 
-  const { error } = await admin.rpc("emit_event" as never, {
-    p_event_type: "ai_agent.dispatch_requested",
-    p_entity_kind: "message",
-    p_entity_id: entrada.messageId,
-    p_payload: {
-      organization_id: entrada.organizationId,
-      conversation_id: entrada.conversationId,
-      contact_id: entrada.contactId,
-      channel_session_id: entrada.channelSessionId,
-      inbound_message_id: entrada.messageId,
-    },
-    p_metadata: { source: entrada.origem, request_id: entrada.requestId },
-    p_organization_id: entrada.organizationId,
-  } as never);
+  const { error } = await admin.rpc(
+    "emit_event" as never,
+    {
+      p_event_type: "ai_agent.dispatch_requested",
+      p_entity_kind: "message",
+      p_entity_id: entrada.messageId,
+      p_payload: {
+        organization_id: entrada.organizationId,
+        conversation_id: entrada.conversationId,
+        contact_id: entrada.contactId,
+        channel_session_id: entrada.channelSessionId,
+        inbound_message_id: entrada.messageId,
+      },
+      p_metadata: { source: entrada.origem, request_id: entrada.requestId },
+      p_organization_id: entrada.organizationId,
+    } as never,
+  );
 
   if (error) {
     logger.warn("pos-entrada: emit ai_agent.dispatch_requested falhou", {
@@ -582,7 +591,12 @@ async function guardarOrigemDaPagina(admin: Admin, entrada: EntradaDeMensagem): 
 
     const origem = { utm, capturadaEm: new Date().toISOString() };
 
-    const gravou = await estamparOrigemDaPagina(admin, entrada.organizationId, entrada.contactId, origem);
+    const gravou = await estamparOrigemDaPagina(
+      admin,
+      entrada.organizationId,
+      entrada.contactId,
+      origem,
+    );
     if (!gravou) {
       logger.warn("pos-entrada: origem da página NÃO gravada (a mensagem entra assim mesmo)", {
         contactId: entrada.contactId,

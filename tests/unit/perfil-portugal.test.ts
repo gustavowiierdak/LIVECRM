@@ -122,9 +122,9 @@ describe("perfil de Portugal (issue #1946)", () => {
     }
   });
 
-  it("padroesDePii declara NIF e código postal 1234-567", () => {
+  it("padroesDePii declara telefone, IBAN, NIF e código postal", () => {
     const tipos = padroesDePii([perfilDoPais("PT")]).map((p) => p.tipo);
-    expect(tipos).toEqual(["nif", "codigoPostal", "email", "phone"]);
+    expect(tipos).toEqual(["telefonePT", "iban", "nif", "codigoPostal", "email", "phone"]);
   });
 
   it("o anonimizador redige o NIF português e o código postal", () => {
@@ -134,6 +134,29 @@ describe("perfil de Portugal (issue #1946)", () => {
     expect(textoTurvo.anonymized).toContain("[CODIGO_POSTAL]");
     expect(textoTurvo.anonymized).not.toContain("123456789");
     expect(detectResidualPii("123456789 e 1234-567", padroes)).not.toBeNull();
+  });
+
+  it("a máscara cobre as formas que a AT aceita, o IBAN e o +351 (#2345)", () => {
+    const padroes = padroesDePii([perfilDoPais("PT")]);
+    const texto =
+      "NIF PT123456789 e 123 456 789; IBAN PT50 0002 0123 1234 5678 9015 4; postal 1234 567; zap +351 912 345 678";
+    const r = anonymize(texto, padroes);
+    expect(r.anonymized).toContain("[NIF]");
+    expect(r.anonymized).toContain("[IBAN]");
+    expect(r.anonymized).toContain("[CODIGO_POSTAL]");
+    expect(r.anonymized).toContain("[TELEFONE]");
+    expect(r.anonymized).not.toContain("123456789");
+    expect(r.anonymized).not.toContain("123 456 789");
+    expect(r.anonymized).not.toContain("PT50");
+    expect(r.anonymized).not.toContain("+351");
+    // A guarda de residual usa a MESMA lista: nada do texto original sobra.
+    expect(detectResidualPii(r.anonymized, padroes)).toBeNull();
+  });
+
+  it("o +351 não é comido pelo NIF: o telefone vem antes na lista (#2345)", () => {
+    const padroes = padroesDePii([perfilDoPais("PT")]);
+    const r = anonymize("zap +351 912 345 678", padroes);
+    expect(r.anonymized).toBe("zap [TELEFONE]");
   });
 
   it("o CPF brasileiro NÃO é confundido com o NIF português", () => {

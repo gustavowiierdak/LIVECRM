@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
-import { listSelectableChannels } from "@/lib/channels/selectable";
+import { listSelectableAgentChannels } from "@/lib/channels/selectable";
 import { createClient } from "@/lib/supabase/server";
 import type { RouterListItem } from "@/hooks/ai/useRouters";
 import { traduzir } from "@/lib/i18n/dicionario";
@@ -29,7 +29,7 @@ export default async function RoutersPage() {
       .eq("organization_id", activeOrg.orgId)
       .order("created_at", { ascending: false }),
     supabase.from("ai_router_members").select("router_id").eq("organization_id", activeOrg.orgId),
-    listSelectableChannels(supabase, activeOrg.orgId),
+    listSelectableAgentChannels(supabase, activeOrg.orgId),
   ]);
 
   const counts = new Map<string, number>();
@@ -48,7 +48,7 @@ export default async function RoutersPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Roteadores", idioma)}</h1>
         <p className="text-sm text-muted-foreground">
           {traduzir(
-            "Um roteador entende o que o cliente quer e entrega a conversa para o agente certo — plugado em um número de WhatsApp.",
+            "Um roteador entende o que o cliente quer e entrega a conversa para o agente certo — vinculado a um canal de atendimento.",
             idioma,
           )}
         </p>

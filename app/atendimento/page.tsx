@@ -7,6 +7,7 @@ import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
 
 export const metadata: Metadata = {
   title: "Atendimento",
+  manifest: "/api/public/webchat/manifest",
   robots: { index: false, follow: false },
 };
 

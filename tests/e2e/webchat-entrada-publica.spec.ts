@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
+import AxeBuilder from "@axe-core/playwright";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -21,7 +22,7 @@ const senha = `Local-${randomUUID()}!`;
 const nomeCliente = `Cliente Web ${sufixo}`;
 const primeiraMensagem = `Preciso de ajuda com a internet ${sufixo}`;
 const respostaOperador = `Vamos ajudar voce ${sufixo}`;
-const evidencia = "evidence/webchat-entrada-publica";
+const evidencia = "/tmp/livecrm-ui-web";
 
 let orgId = "";
 let usuarioId = "";
@@ -45,6 +46,7 @@ test.describe("atendimento web público até a Inbox", () => {
         legal_name: `Webchat Público ${sufixo}`,
         display_name: `Webchat Público ${sufixo}`,
         onboarded_at: new Date().toISOString(),
+        settings: { branding: { accent_hex: "#710096", app_name: "CRM de teste" } },
       })
       .select("id")
       .single();
@@ -61,12 +63,29 @@ test.describe("atendimento web público até a Inbox", () => {
   });
 
   test.afterAll(async () => {
+    if (orgId) {
+      const { data: anexos } = await db.from("messages")
+        .select("media_storage_path")
+        .eq("organization_id", orgId)
+        .not("media_storage_path", "is", null);
+      const caminhos = (anexos ?? []).map((item) => item.media_storage_path).filter((path): path is string =>
+        typeof path === "string" && path.startsWith(`${orgId}/`) && path.includes("/webchat-"));
+      if (caminhos.length) await db.storage.from("whatsapp-media").remove(caminhos);
+    }
     if (orgId) await db.from("organizations").delete().eq("id", orgId);
     if (usuarioId) await db.auth.admin.deleteUser(usuarioId);
   });
 
   test("cliente inicia e recebe resposta no mesmo canal", async ({ page, browser }) => {
     fs.mkdirSync(evidencia, { recursive: true });
+    const errosDePagina: string[] = [];
+    page.on("pageerror", (error) => errosDePagina.push(error.message));
+    const falhasHttp: string[] = [];
+    page.on("response", (response) => {
+      if (response.status() >= 500)
+        falhasHttp.push(`${response.status()} ${new URL(response.url()).pathname}`);
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     await page.goto("/login");
     await page.getByLabel(/e-?mail/i).fill(email);
@@ -79,6 +98,8 @@ test.describe("atendimento web público até a Inbox", () => {
     await expect(page.getByText("Atendimento web separado")).toBeVisible();
     await page.getByLabel("Permitir atendimento web nesta empresa").check();
     await page.getByLabel("Suporte", { exact: true }).check();
+    await page.getByLabel("Financeiro", { exact: true }).check();
+    await page.getByLabel("Cancelamento", { exact: true }).check();
     const origem = new URL(page.url()).origin;
     await page.getByLabel("Endereços permitidos").fill(origem);
     await page.getByRole("button", { name: "Salvar atendimento web" }).click();
@@ -92,6 +113,7 @@ test.describe("atendimento web público até a Inbox", () => {
     try {
       await contextoCliente.addInitScript(() => localStorage.setItem("deskcomm-theme", "dark"));
       const cliente = await contextoCliente.newPage();
+      await cliente.setViewportSize({ width: 390, height: 844 });
       await cliente.goto(link);
       await expect(cliente.locator("html")).toHaveAttribute("data-theme", "dark");
       await expect(cliente.locator("main")).toHaveAttribute("data-theme", "light");
@@ -101,11 +123,39 @@ test.describe("atendimento web público até a Inbox", () => {
       ).toBeVisible();
       await cliente.getByLabel("Seu nome").fill(nomeCliente);
       await cliente.getByLabel("Como podemos ajudar?").fill(primeiraMensagem);
+      await expect(cliente.getByRole("button", { name: "Iniciar atendimento" })).toBeDisabled();
+      await cliente.getByRole("radio", { name: /Suporte técnico/ }).check();
+      await expect(cliente.getByRole("button", { name: "Iniciar atendimento" })).toBeInViewport();
       await cliente.screenshot({ path: `${evidencia}/02-pagina-cliente.jpg`, fullPage: true });
       await cliente.getByRole("button", { name: "Iniciar atendimento" }).click();
       await expect(cliente.getByText(primeiraMensagem)).toBeVisible({ timeout: 30_000 });
 
       await page.goto("/app/inbox?filter=all");
+      const inicio = page.getByRole("region", { name: "Início do operador" });
+      await expect(inicio.getByRole("heading", { name: "Visão geral" })).toBeVisible();
+      await expect(inicio.getByRole("button", { name: "Abrir Fila" })).toContainText("1");
+      await expect(
+        page.getByRole("separator", { name: "Ajustar largura da ficha do contato" }),
+      ).toHaveCount(0);
+      await inicio.getByRole("button", { name: "Atalhos de teclado" }).click();
+      await expect(page.getByRole("dialog", { name: "Atalhos de teclado" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect.soft(inicio.getByRole("button", { name: "Atalhos de teclado" })).toBeFocused();
+      await inicio.getByRole("button", { name: "Buscar conversas" }).click();
+      await expect(page.getByLabel("Buscar conversas", { exact: true })).toBeFocused();
+      await page.getByLabel("Buscar conversas", { exact: true }).fill("cliente inexistente");
+      await inicio.getByRole("button", { name: "Abrir Fechadas" }).click();
+      await expect(page).toHaveURL(/filter=closed/);
+      await expect(page.getByLabel("Buscar conversas", { exact: true })).toHaveValue("");
+      await inicio.getByRole("button", { name: "Abrir Fila" }).click();
+      await expect(page).toHaveURL(/filter=unassigned/);
+      await expect(
+        page.locator("button[data-conversation-id]").filter({ hasText: nomeCliente }),
+      ).toBeVisible();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.screenshot({ path: `${evidencia}/13-inicio-operador-claro.png`, fullPage: true });
       await page.getByLabel("Buscar conversas", { exact: true }).fill(nomeCliente);
       const conversa = page
         .locator("button[data-conversation-id]")
@@ -114,14 +164,343 @@ test.describe("atendimento web público até a Inbox", () => {
       await conversa.click();
       const painel = page.getByRole("region", { name: "Atendimento web" });
       await expect(painel.getByText(primeiraMensagem)).toBeVisible({ timeout: 30_000 });
+      const cabecalho = page.locator(".crm-conversation-header");
+      const acoes = page.getByRole("group", { name: "Ações do atendimento" });
+      await expect(
+        page.locator(".crm-service-dock").getByRole("button", { name: "Fechar", exact: true }),
+      ).toBeVisible();
+      await expect(cabecalho.getByRole("heading", { name: nomeCliente })).toBeVisible();
+      for (const name of ["Assumir", "Transferir", "Lembrar", "Fechar", "Arquivar"])
+        await expect(acoes.getByRole("button", { name, exact: true })).toBeVisible();
+      // Abrir e cancelar não pode encerrar nem arquivar a conversa.
+      await acoes.getByRole("button", { name: "Arquivar", exact: true }).click();
+      await expect(page.getByRole("alertdialog")).toContainText("Arquivar esta conversa?");
+      await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar" }).click();
+      await expect(
+        painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
+      ).toBeEnabled();
+      // O visitante envia os dois formatos no celular; ambos aparecem na Inbox.
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9r8WQAAAAASUVORK5CYII=", "base64");
+      await cliente.getByLabel("Selecionar imagem ou áudio").setInputFiles({
+        name: "foto.png", mimeType: "image/png", buffer: png,
+      });
+      await expect(cliente.getByText("foto.png")).toBeVisible();
+      await cliente.getByRole("button", { name: "Enviar anexo" }).click();
+      await expect(cliente.getByRole("img", { name: "Imagem enviada" })).toBeVisible({ timeout: 30_000 });
+      await expect.poll(() => cliente.getByRole("img", { name: "Imagem enviada" })
+        .evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+      await expect(painel.getByRole("button", { name: "Ampliar imagem" })).toBeEnabled({ timeout: 30_000 });
+      const mediaPath = await cliente.getByRole("img", { name: "Imagem enviada" }).getAttribute("src");
+      const estranho = await browser.newContext();
+      try {
+        const semSessao = await estranho.request.get(new URL(mediaPath!, cliente.url()).toString());
+        expect(semSessao.status()).toBe(401);
+      } finally { await estranho.close(); }
+
+      const wav = Buffer.alloc(44 + 8000);
+      wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+      wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+      wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28);
+      wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34);
+      wav.write("data", 36); wav.writeUInt32LE(8000, 40);
+      await cliente.getByLabel("Selecionar imagem ou áudio").setInputFiles({
+        name: "voz.wav", mimeType: "audio/wav", buffer: wav,
+      });
+      await cliente.getByRole("button", { name: "Enviar anexo" }).click();
+      await expect(cliente.getByLabel("Áudio enviado")).toBeVisible({ timeout: 30_000 });
+      await expect(painel.getByRole("button", { name: "Reproduzir áudio" })).toBeVisible({ timeout: 30_000 });
+      await cliente.screenshot({ path: `${evidencia}/webchat-midia-cliente.png`, fullPage: true });
+      await page.screenshot({ path: `${evidencia}/webchat-midia-operador.png`, fullPage: true });
       await page.screenshot({ path: `${evidencia}/03-inbox.jpg`, fullPage: true });
       await painel
         .getByRole("textbox", { name: "Responder pelo atendimento web" })
         .fill(respostaOperador);
       await painel.getByRole("button", { name: "Enviar", exact: true }).click();
       await expect(painel.getByText(respostaOperador)).toBeVisible();
+      // Sender outside the bubble, real timestamp inside; web transport has no read receipt.
+      await expect(
+        painel.locator(".crm-message-sender").filter({ hasText: nomeCliente }).first(),
+      ).toBeVisible();
+      const bolhaResposta = painel
+        .getByTestId("webchat-message-bubble")
+        .filter({ hasText: respostaOperador });
+      await expect(bolhaResposta.locator("time")).toHaveAttribute("datetime", /T/);
+      await expect(bolhaResposta.locator("time")).toHaveText(/^\d{2}:\d{2}$/);
+      await expect(bolhaResposta.locator(".crm-message-sender")).toHaveCount(0);
+      await expect(painel.locator('[aria-label="Lida"]')).toHaveCount(0);
       await expect(cliente.getByText(respostaOperador)).toBeVisible({ timeout: 20_000 });
+      await expect(cliente.getByRole("button", { name: "Ver resposta" })).toBeVisible();
+      await cliente.screenshot({ path: `${evidencia}/webchat-notificacao-resposta.png`, fullPage: true });
+      await cliente.getByRole("button", { name: "Ver resposta" }).click();
+      await expect(cliente.getByRole("button", { name: "Ver resposta" })).toHaveCount(0);
       await cliente.screenshot({ path: `${evidencia}/04-resposta-cliente.jpg`, fullPage: true });
+
+      // No celular, só o histórico rola. Uma resposta nova não arranca o cliente
+      // do trecho anterior; o botão de aviso o leva de volta ao fim.
+      const historicoCliente = cliente.getByRole("log", { name: "Mensagens do atendimento" });
+      const respostaLonga = `Orientação de teste para o histórico.\n`.repeat(55).trim();
+      await painel.getByRole("textbox", { name: "Responder pelo atendimento web" }).fill(respostaLonga);
+      await painel.getByRole("button", { name: "Enviar", exact: true }).click();
+      await expect(cliente.getByText(respostaLonga)).toBeVisible({ timeout: 20_000 });
+      await expect.poll(() => historicoCliente.evaluate((element) =>
+        element.scrollHeight - element.clientHeight)).toBeGreaterThan(100);
+      await expect.poll(() => cliente.evaluate(() =>
+        document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(1);
+      await historicoCliente.evaluate((element) => { element.scrollTop = 0; });
+      await expect.poll(() => historicoCliente.evaluate((element) => element.scrollTop)).toBe(0);
+
+      const respostaSeguinte = `Resposta posterior ${sufixo}`;
+      await painel.getByRole("textbox", { name: "Responder pelo atendimento web" }).fill(respostaSeguinte);
+      await painel.getByRole("button", { name: "Enviar", exact: true }).click();
+      await expect(cliente.getByText(respostaSeguinte)).toBeVisible({ timeout: 20_000 });
+      expect(await historicoCliente.evaluate((element) => element.scrollTop)).toBe(0);
+      expect(await cliente.evaluate(() => window.scrollY)).toBe(0);
+      await cliente.getByRole("button", { name: "Ver resposta" }).click();
+      await expect.poll(() => historicoCliente.evaluate((element) =>
+        element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(2);
+      await cliente.screenshot({ path: `${evidencia}/webchat-rolagem-celular.png`, fullPage: false });
+
+      // The operator skin must not change routing, public chat or available actions.
+      await expect(
+        page.locator(".crm-queue-heading").getByText("Atendimentos", { exact: true }),
+      ).toBeVisible();
+      const filas = page.locator(".crm-queue-tabs");
+      for (const nome of ["Fila", "Minhas", "Todas", "Fechadas", "Arquivadas", "Automático"])
+        await expect(filas.getByRole("tab", { name: new RegExp(`^${nome}`) })).toBeInViewport();
+      await filas.getByRole("tab", { name: /^Todas/ }).focus();
+      await page.keyboard.press("ArrowDown");
+      await expect(filas.getByRole("tab", { name: /^Fechadas/ })).toHaveAttribute(
+        "data-state",
+        "active",
+      );
+      await page.keyboard.press("ArrowUp");
+      await expect(filas.getByRole("tab", { name: /^Todas/ })).toHaveAttribute(
+        "data-state",
+        "active",
+      );
+      await expect(page.getByRole("button", { name: "Expandir sidebar" })).toBeVisible();
+      await expect(page.locator(".crm-contact-panel")).toBeVisible();
+      const ficha = page.getByRole("complementary", { name: "Ficha do contato" });
+      await expect(ficha.getByRole("group", { name: "Ações do contato" })).toBeVisible();
+      await expect(ficha.getByRole("link", { name: "Ver contato" })).toHaveAttribute(
+        "href",
+        /\/app\/contacts\//,
+      );
+      const dadosAtendimento = ficha.getByRole("region", { name: "Dados do atendimento" });
+      await expect(dadosAtendimento).toContainText("Atendimento web");
+      const alinhamento = await dadosAtendimento.locator("dl > div").evaluateAll((rows) =>
+        rows.map((row) => ({
+          label: row.querySelector("dt")?.getBoundingClientRect().left ?? 0,
+          value: row.querySelector("dd")?.getBoundingClientRect().right ?? 0,
+        })),
+      );
+      expect(alinhamento.length).toBeGreaterThanOrEqual(3);
+      const inicioRotulos = alinhamento.map((row) => row.label);
+      const fimValores = alinhamento.map((row) => row.value);
+      expect(Math.max(...inicioRotulos) - Math.min(...inicioRotulos)).toBeLessThan(2);
+      expect(Math.max(...fimValores) - Math.min(...fimValores)).toBeLessThan(2);
+      await expect(ficha.getByRole("heading", { name: "Observações internas" })).toBeVisible();
+      await ficha.getByRole("button", { name: "Tags do contato" }).click();
+      await expect(ficha.getByRole("textbox", { name: "Adicionar tag ao contato" })).toBeVisible();
+      await ficha.getByRole("button", { name: "Tags do contato" }).click();
+      await expect(ficha.getByRole("textbox", { name: "Adicionar tag ao contato" })).toHaveCount(0);
+      await ficha.getByRole("button", { name: "Vincular cadastro do IXC" }).click();
+      const vinculo = page.getByRole("dialog", { name: "Vincular cadastro do IXC" });
+      await expect(vinculo.getByLabel("CPF/CNPJ do titular")).toBeVisible();
+      await expect(vinculo.getByRole("button", { name: "Consultar e vincular" })).toBeDisabled();
+      await vinculo.getByRole("button", { name: "Cancelar", exact: true }).click();
+      const memoria = ficha.getByTestId("inbox-memoria").locator("summary");
+      await memoria.focus();
+      await page.keyboard.press("Enter");
+      await expect(ficha.getByText("Nenhum fato durável registrado.")).toBeVisible();
+      await memoria.press("Enter");
+      await expect(ficha.getByText("Nenhum fato durável registrado.")).not.toBeVisible();
+      await expect(ficha.getByTestId("inbox-demandas")).toBeVisible();
+      await expect(page.locator(".crm-inbox")).toHaveCSS("background-color", "rgb(245, 246, 249)");
+      await page.screenshot({ path: `${evidencia}/06-operador-claro.png`, fullPage: true });
+      const acessibilidade = await new AxeBuilder({ page })
+        .include(".crm-inbox")
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze();
+      expect.soft(acessibilidade.violations).toEqual([]);
+
+      // Observações internas ficam na ficha lateral, fora do fio do cliente.
+      const notaPrivada = `Contexto interno ${sufixo}`;
+      const observacoes = ficha.getByTestId("inbox-observacoes");
+      await expect(painel.getByRole("button", { name: "Nota interna", exact: true })).toHaveCount(0);
+      await observacoes.getByRole("button", { name: "Nova observação" }).click();
+      const editor = observacoes.getByRole("textbox", { name: "Mensagem" });
+      await editor.fill(notaPrivada);
+      await editor.press("Shift+Enter");
+      await editor.pressSequentially("Somente para a equipe.");
+      await expect(editor).toHaveValue(`${notaPrivada}\nSomente para a equipe.`);
+      await expect(observacoes).toContainText("Só a equipe vê estas observações.");
+      await page.screenshot({ path: `${evidencia}/16-editor-nota.png`, fullPage: true });
+      await editor.press("Enter");
+      await expect(editor).toHaveValue("");
+      await expect(observacoes.getByText(notaPrivada, { exact: false })).toBeVisible();
+      await expect(painel.getByText(notaPrivada, { exact: false })).toHaveCount(0);
+      await expect(cliente.getByText(notaPrivada, { exact: false })).toHaveCount(0);
+
+      await acoes.getByRole("button", { name: "Transferir", exact: true }).click();
+      const transferencia = page.getByRole("dialog", { name: "Transferir conversa" });
+      await expect(
+        transferencia.getByText("Nenhum outro atendente disponível nesta organização."),
+      ).toBeVisible();
+      await expect(
+        transferencia.getByRole("button", { name: "Transferir", exact: true }),
+      ).toBeDisabled();
+      await transferencia
+        .getByLabel("Motivo (opcional)")
+        .fill("Conferência visual local, sem transferência.");
+      await page.screenshot({ path: `${evidencia}/17-transferencia.png`, fullPage: true });
+      await page.keyboard.press("Escape");
+      await expect(acoes.getByRole("button", { name: "Transferir", exact: true })).toBeFocused();
+
+      await page.getByRole("button", { name: "Expandir sidebar" }).click();
+      await expect(page.getByRole("button", { name: "Recolher sidebar" })).toBeVisible();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(
+        painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
+      ).toBeInViewport();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.getByRole("button", { name: "Recolher sidebar" }).click();
+      await page.getByRole("button", { name: "Conta e preferências" }).click();
+      for (
+        let i = 0;
+        i < 3 && (await page.locator("html").getAttribute("data-theme")) !== "dark";
+        i++
+      )
+        await page.getByRole("button", { name: /^Tema:/ }).click();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".crm-inbox")).toHaveCSS("background-color", "rgb(27, 29, 35)");
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(painel.getByRole("log")).toHaveCSS("background-color", "rgb(43, 47, 62)");
+      await expect(painel.locator(".crm-chat-outgoing").first()).toHaveCSS(
+        "background-color",
+        "rgb(69, 75, 96)",
+      );
+      await expect(page.locator(".crm-contact-profile")).toBeVisible();
+      await page.screenshot({ path: `${evidencia}/07-operador-escuro.png`, fullPage: true });
+      expect
+        .soft(
+          (
+            await new AxeBuilder({ page })
+              .include(".crm-inbox")
+              .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+              .analyze()
+          ).violations,
+        )
+        .toEqual([]);
+
+      await page.getByRole("button", { name: "Voltar à visão geral" }).click();
+      await expect(inicio).toBeVisible();
+      await expect(page.getByRole("complementary", { name: "Ficha do contato" })).toHaveCount(0);
+      await page.screenshot({ path: `${evidencia}/14-inicio-operador-escuro.png`, fullPage: true });
+      await page.setViewportSize({ width: 768, height: 1024 });
+      await expect(inicio.getByRole("button", { name: "Abrir Minhas" })).toBeVisible();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(inicio).not.toBeVisible();
+      await expect(conversa).toBeVisible();
+      await page.screenshot({ path: `${evidencia}/15-inicio-celular.png`, fullPage: true });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await conversa.click();
+      await expect(
+        page.getByRole("separator", { name: "Ajustar largura da ficha do contato" }),
+      ).toBeVisible();
+
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await expect
+        .poll(() =>
+          page.locator(".crm-queue").evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+        )
+        .toBe(351);
+      await expect
+        .poll(() =>
+          page
+            .locator(".crm-contact-panel")
+            .evaluate((el) => Math.round(el.getBoundingClientRect().width)),
+        )
+        .toBe(347);
+      await page.screenshot({ path: `${evidencia}/11-operador-monitor.png`, fullPage: true });
+
+      await page.setViewportSize({ width: 768, height: 1024 });
+      await expect(page.getByRole("button", { name: "Ficha", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Ficha", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Ficha do contato" }).getByTestId("inbox-observacoes"))
+        .toContainText(notaPrivada);
+      await page.keyboard.press("Escape");
+      await expect(
+        painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
+      ).toBeInViewport();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.screenshot({ path: `${evidencia}/10-operador-tablet.png`, fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(acoes.getByRole("button", { name: "Transferir", exact: true })).toBeInViewport();
+      await expect(acoes.getByRole("button", { name: "Fechar", exact: true })).toBeInViewport();
+      await acoes.getByRole("button", { name: "Fechar", exact: true }).click();
+      await expect(page.getByRole("alertdialog")).toBeInViewport();
+      await expect(
+        page.getByRole("alertdialog").getByRole("button", { name: "Cancelar" }),
+      ).toBeInViewport();
+      await page.screenshot({ path: `${evidencia}/18-confirmacao-celular.png`, fullPage: true });
+      await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar" }).click();
+      await expect(
+        painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
+      ).toBeInViewport();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.screenshot({ path: `${evidencia}/08-operador-celular.png`, fullPage: true });
+      // Small phones and enlarged desktop text must leave room to read and write.
+      await page.setViewportSize({ width: 320, height: 568 });
+      await page.screenshot({ path: `${evidencia}/19-celular-compacto.png`, fullPage: false });
+      await expect(
+        painel.getByRole("textbox", { name: "Responder pelo atendimento web" }),
+      ).toBeInViewport();
+      await expect
+        .poll(() => painel.getByRole("log").evaluate((el) => el.getBoundingClientRect().height))
+        .toBeGreaterThanOrEqual(100);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.screenshot({ path: `${evidencia}/19-celular-compacto.png`, fullPage: false });
+      // Header actions remain usable, even when its compact region scrolls.
+      await acoes.getByRole("button", { name: "Transferir", exact: true }).focus();
+      await expect(acoes.getByRole("button", { name: "Transferir", exact: true })).toBeInViewport();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("dialog", { name: "Transferir conversa" })).toBeInViewport();
+      await page.keyboard.press("Escape");
+      await expect(acoes.getByRole("button", { name: "Transferir", exact: true })).toBeFocused();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole("button", { name: "Ficha", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Ficha do contato" })).toBeVisible();
+      await expect(
+        page
+          .getByRole("dialog", { name: "Ficha do contato" })
+          .getByRole("link", { name: "Ver contato" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("dialog", { name: "Ficha do contato" }).getByTestId("inbox-demandas"),
+      ).toContainText("Responder à nova mensagem do cliente");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await page.screenshot({ path: `${evidencia}/12-ficha-celular.png`, fullPage: true });
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Conversas", exact: true }).click();
+      await expect(conversa).toBeVisible();
+      await page.screenshot({ path: `${evidencia}/09-filas-celular.png`, fullPage: true });
+      await conversa.click();
+      await expect(painel.getByText(respostaOperador)).toBeVisible();
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       await page.getByRole("button", { name: "Fechar", exact: true }).click();
       await page
@@ -135,9 +514,9 @@ test.describe("atendimento web público até a Inbox", () => {
         cliente.getByText("Atendimento encerrado", { exact: true }).first(),
       ).toBeVisible();
       await expect(cliente.getByRole("textbox", { name: "Mensagem" })).toHaveCount(0);
-      await expect(cliente.getByRole("button", { name: "Novo atendimento" })).toBeEnabled();
       await expect(cliente.getByText(primeiraMensagem)).toBeVisible();
       await expect(cliente.getByText(respostaOperador)).toBeVisible();
+      await expect(cliente.getByText(notaPrivada, { exact: false })).toHaveCount(0);
       await cliente.screenshot({
         path: `${evidencia}/05-atendimento-encerrado.jpg`,
         fullPage: true,
@@ -145,9 +524,28 @@ test.describe("atendimento web público até a Inbox", () => {
 
       await cliente.setViewportSize({ width: 390, height: 844 });
       await cliente.getByRole("button", { name: "Escolher assunto" }).click();
+      await expect(cliente.getByRole("dialog").getByRole("button", { name: "Novo atendimento" })).toBeEnabled();
       await expect(cliente.getByRole("dialog")).toHaveAttribute("data-theme", "light");
       await expect(cliente.getByRole("dialog")).toHaveCSS("background-color", "rgb(250, 249, 246)");
       await expect(cliente.getByRole("dialog")).toHaveCSS("color", "rgb(28, 26, 22)");
+      await cliente.getByRole("dialog").getByRole("button", { name: "Novo atendimento" }).click();
+      await expect(cliente.getByRole("dialog")).toHaveCount(0);
+      await expect(
+        cliente.getByRole("heading", { name: "Vamos iniciar seu atendimento" }),
+      ).toBeVisible();
+      await expect(cliente.getByRole("button", { name: "Escolher assunto" })).toHaveCount(0);
+      await cliente.getByRole("radio", { name: /Financeiro/ }).check();
+      await cliente.getByLabel("Como podemos ajudar?").fill("Preciso da segunda via");
+      await expect(cliente.getByRole("button", { name: "Iniciar atendimento" })).toBeInViewport();
+      await expect
+        .poll(() => cliente.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBe(0);
+      await cliente.screenshot({ path: `${evidencia}/20-formulario-celular.png`, fullPage: true });
+      await cliente.getByRole("button", { name: "Iniciar atendimento" }).click();
+      await expect(cliente.getByText("Preciso da segunda via")).toBeVisible({ timeout: 30_000 });
+      await expect(cliente.getByRole("heading", { name: "Financeiro" })).toBeVisible();
+      expect(errosDePagina).toEqual([]);
+      expect(falhasHttp).toEqual([]);
     } finally {
       await contextoCliente.close();
     }

@@ -26,6 +26,17 @@ describe("deveRetomarSessao", () => {
 });
 
 describe("redrive pré-go-live", () => {
+  it("deixa lembretes de inatividade para o consumidor que revalida a conversa", async () => {
+    const send = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    await redriveQueued({ query } as unknown as pg.Pool, {
+      wahaBaseUrl: "http://127.0.0.1:9999", wahaApiKey: "test-key",
+      intervalMs: 1, redriveMinAgeMs: 0, redriveBatchSize: 10, redriveSpacingMs: 0,
+    }, createLogger());
+    expect(query.mock.calls).toHaveLength(2);
+    for (const [sql] of query.mock.calls) expect(sql).toContain("coalesce(m.metadata->>'attendance_notice', '') <> 'inatividade'");
+    expect(send).not.toHaveBeenCalled();
+  });
   it("não envia se a releitura da configuração falha", async () => {
     const send = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
     const query = vi.fn()

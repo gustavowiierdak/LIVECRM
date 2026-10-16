@@ -77,7 +77,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
 
   // Knobs do número (coluna NULL = default conservador do engine) — a UI usa o
   // contexto pra dizer QUAL janela segurou o envio, não a genérica.
-  const [{ data: knobs }, { data: orgRow }, { data: ultimaSaida }] = await Promise.all([
+  const [{ data: knobs }, { data: orgRow }, { data: ultimaSaida }, { data: contactFlags, error: contactErr }] = await Promise.all([
     supabase
       .from("channel_knobs")
       .select(
@@ -97,7 +97,16 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("contacts")
+      .select("is_blocked, force_human, is_personal")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("id", conv.contact_id)
+      .maybeSingle(),
   ]);
+  if (contactErr) {
+    return fail("internal_error", t("Failed to load contact status."), 500, { requestId });
+  }
 
   // O MESMO fuso que o motor usa para decidir (`fusoDaJanela`): override do
   // canal → fuso da organização → padrão. Antes esta rota caía direto em São
@@ -148,6 +157,19 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const vigentes = (traces ?? []).filter((tr) => {
     if (saiuDepoisEm !== null && Date.parse(tr.created_at) <= Date.parse(saiuDepoisEm)) return false;
     return !(tr.vetoed_code === "outside_window" && janelaAbertaAgora(tipoDoTrace(tr)));
+  }).map((tr) => {
+    // Antes desta correção, o gate gravava `contato_bloqueado` também para
+    // force_human e contato pessoal. Reclassificar apenas a resposta da API
+    // preserva o trace original e corrige imediatamente os avisos das últimas 24h.
+    if (tr.vetoed_code !== "contato_bloqueado") return tr;
+    if (contactFlags?.is_blocked === true) return tr;
+    if (contactFlags?.is_personal === true) {
+      return { ...tr, vetoed_code: "contato_pessoal" };
+    }
+    if (contactFlags?.force_human === true) {
+      return { ...tr, vetoed_code: "automatico_pausado_para_humano" };
+    }
+    return { ...tr, vetoed_code: "parada_automatica_sem_motivo" };
   });
 
   // O contexto que a tela usa para compor a copy nomeia a janela do envio que

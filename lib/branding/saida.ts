@@ -1,15 +1,13 @@
 /**
  * A marca nas saídas SEM DOM — e-mail, autenticador, remetente, suporte.
  *
- * ── E na fachada de acesso, que tem DOM e mesmo assim vem aqui ────────────────
+ * ── A fachada de acesso também reutiliza a RESOLUÇÃO daqui ───────────────────
  *
- * `app/(public)/layout.tsx` (login, cadastro, recuperação, MFA) também chama
- * `marcaDaSaida(null)`, e isso não contradiz o nome deste módulo: o que aquela
- * casca precisa é exatamente o que ele entrega — UM nome e UM logo, da pilha
- * instalação → `.env`, de um resolvedor que nunca lança. Cor ela não usa: quem
- * pinta aquelas telas é o `<style id="marca-instalacao">` do layout raiz. O que
- * NÃO pode acontecer é a fachada montar a própria pilha e anunciar uma
- * precedência que o resto do produto não usa.
+ * `lib/branding/fachada.ts` também chama este módulo para login, cadastro,
+ * recuperação e MFA. Ela usa `marcaResolvidaDaSaida`, a forma completa, porque
+ * essas telas têm DOM e precisam da rampa dos dois temas. E-mail e PDF continuam
+ * chamando `marcaDaSaida`, a forma achatada descrita abaixo. Assim existe UMA
+ * montagem da pilha sem obrigar toda saída sem DOM a interpretar CSS.
  *
  * ── Por que este seam existe ─────────────────────────────────────────────────
  *
@@ -43,7 +41,6 @@
  * `/admin/marca` mostra ao operador.
  */
 
-import { DEFAULT_APP_NAME } from "@/lib/branding";
 import { env } from "@/lib/env";
 import { valorDaInstalacao } from "@/lib/instalacao/config";
 import { logger } from "@/lib/logger";
@@ -54,7 +51,12 @@ import { marcaDaInstalacao } from "./instalacao";
 import { resolverMarcaDaOrganizacao } from "./organizacao";
 import { stop } from "./rampa";
 import { REGUA_DO_PRODUTO } from "./regua-do-produto";
-import { camadaDaInstalacao, camadaDoAmbiente, resolverMarca } from "./resolve";
+import {
+  camadaDaInstalacao,
+  camadaDoAmbiente,
+  resolverMarca,
+  type MarcaResolvida,
+} from "./resolve";
 
 export type MarcaDeSaida = {
   readonly nome: string;
@@ -114,17 +116,6 @@ export const NEUTROS_DE_SAIDA = {
   linha: stop(REGUA_DO_PRODUTO.claro.neutros, 2),
 } as const;
 
-/** O que sobra quando nada pôde ser lido. Uma instalação funcionando. */
-function padraoDoProduto(): MarcaDeSaida {
-  return {
-    nome: DEFAULT_APP_NAME,
-    logoUrl: null,
-    accent: ACCENT_DO_PRODUTO,
-    accentFg: melhorFrenteSobre(ACCENT_DO_PRODUTO),
-    origens: { nome: "padrao", cor: "padrao" },
-  };
-}
-
 /**
  * Avisos já registrados neste processo — mesmo desenho de `instalacao.ts:223`.
  * Sem isto, um banco fora do ar encheria o log com uma linha por e-mail.
@@ -161,7 +152,7 @@ async function settingsDaOrganizacao(organizationId: string): Promise<unknown> {
 }
 
 /**
- * A marca que vai numa saída sem DOM.
+ * A pilha completa compartilhada pelos consumidores com e sem DOM.
  *
  * `organizationId !== null` → pilha completa (organização → instalação → `.env`
  * → padrão). É a CLASSE A: o convite de time e o e-mail de LGPD dizem quem
@@ -181,46 +172,52 @@ async function settingsDaOrganizacao(organizationId: string): Promise<unknown> {
  * `app/api/v1/cron/event-log-drain/route.ts:21`; `Dockerfile.worker` roda
  * `workers/agent-worker/main.ts`, que não importa e-mail nenhum).
  */
-export async function marcaDaSaida(organizationId: string | null): Promise<MarcaDeSaida> {
+export async function marcaResolvidaDaSaida(
+  organizationId: string | null,
+): Promise<MarcaResolvida> {
   try {
     const linha = await marcaDaInstalacao();
-    const marca =
-      organizationId === null
-        ? resolverMarca([camadaDaInstalacao(linha), camadaDoAmbiente(env)], REGUA_DO_PRODUTO)
-        : resolverMarcaDaOrganizacao(await settingsDaOrganizacao(organizationId), linha, env);
-
-    // `claro`, sempre — ver o cabeçalho. `derivada` é `null` quando a semente
-    // não pinta (cor acromática, papel só de identidade, hex recusado): aí o
-    // accent do produto é a resposta certa, e não a semente crua, que nesses
-    // casos é justamente a cor que o derivador se recusou a usar.
-    const derivada = marca.cor?.derivada ?? null;
-    const accent = derivada?.claro.accent ?? ACCENT_DO_PRODUTO;
-
-    return {
-      nome: marca.name,
-      logoUrl: marca.logoUrl,
-      ...(marca.logoDarkUrl ? { logoDarkUrl: marca.logoDarkUrl } : {}),
-      accent,
-      // Nunca `#ffffff` fixo: `melhorFrenteSobre` (`contraste.ts:79`) já
-      // decide preto ou branco pelo contraste real. Uma marca amarela colada
-      // pelo revendedor produziria texto branco ilegível no botão — e é
-      // exatamente a marca que se cola sem avisar ninguém.
-      accentFg: derivada?.claro.accentFg ?? melhorFrenteSobre(accent),
-      origens: {
-        nome: marca.origens.nome,
-        // Sem derivação a cor EXIBIDA é a do produto, mesmo que alguma camada
-        // tenha declarado uma semente. Reportar a camada aqui faria o
-        // diagnóstico dizer "a cor veio do banco" enquanto o botão está verde
-        // do produto.
-        cor: derivada ? marca.origens.cor : "padrao",
-      },
-    };
+    return organizationId === null
+      ? resolverMarca([camadaDaInstalacao(linha), camadaDoAmbiente(env)], REGUA_DO_PRODUTO)
+      : resolverMarcaDaOrganizacao(await settingsDaOrganizacao(organizationId), linha, env);
   } catch (erro) {
     avisarUmaVez("resolucao|excecao", "marca de saída: resolução falhou; vale o padrão do produto", {
       detalhe: erro instanceof Error ? erro.message : String(erro),
     });
-    return padraoDoProduto();
+    return resolverMarca([], REGUA_DO_PRODUTO);
   }
+}
+
+/** A pilha achatada para saídas sem DOM: um único tema, hex e frente legível. */
+export async function marcaDaSaida(organizationId: string | null): Promise<MarcaDeSaida> {
+  const marca = await marcaResolvidaDaSaida(organizationId);
+
+  // `claro`, sempre — ver o cabeçalho. `derivada` é `null` quando a semente
+  // não pinta (cor acromática, papel só de identidade, hex recusado): aí o
+  // accent do produto é a resposta certa, e não a semente crua, que nesses
+  // casos é justamente a cor que o derivador se recusou a usar.
+  const derivada = marca.cor?.derivada ?? null;
+  const accent = derivada?.claro.accent ?? ACCENT_DO_PRODUTO;
+
+  return {
+    nome: marca.name,
+    logoUrl: marca.logoUrl,
+    ...(marca.logoDarkUrl ? { logoDarkUrl: marca.logoDarkUrl } : {}),
+    accent,
+    // Nunca `#ffffff` fixo: `melhorFrenteSobre` (`contraste.ts:79`) já
+    // decide preto ou branco pelo contraste real. Uma marca amarela colada
+    // pelo revendedor produziria texto branco ilegível no botão — e é
+    // exatamente a marca que se cola sem avisar ninguém.
+    accentFg: derivada?.claro.accentFg ?? melhorFrenteSobre(accent),
+    origens: {
+      nome: marca.origens.nome,
+      // Sem derivação a cor EXIBIDA é a do produto, mesmo que alguma camada
+      // tenha declarado uma semente. Reportar a camada aqui faria o
+      // diagnóstico dizer "a cor veio do banco" enquanto o botão está verde
+      // do produto.
+      cor: derivada ? marca.origens.cor : "padrao",
+    },
+  };
 }
 
 /**

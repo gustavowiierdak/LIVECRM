@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Bemobi/7AZ no atendimento financeiro",
-    "subtitle": "Identidade confirmada pelo contato ou telefone do IXC, envio reservado sem expor o código à IA",
+    "subtitle": "Identidade confirmada pelo contato ou CPF exato no IXC, envio reservado sem expor o código à IA",
     "output": "integracao-bemobi.html",
     "quality_profile": "standard"
   },
@@ -19,8 +19,8 @@
     { "id": "settings", "lane": "humano", "label": "Dados e acesso › Bemobi: credenciais, recursos e teste" },
     { "id": "team", "lane": "humano", "label": "Cinco agentes e roteador nascem em rascunho" },
     { "id": "vault", "lane": "db", "label": "erp_integrations por organização; chave+segredo cifrados" },
-    { "id": "contact", "lane": "db", "label": "Contato do turno: hash do CPF ou telefone vinculado à conversa WhatsApp inbound" },
-    { "id": "identity", "lane": "app", "label": "Se não há hash, confirma o telefone do IXC para o CPF informado; divergência para humano" },
+    { "id": "contact", "lane": "db", "label": "Contato do turno: hash do CPF e vínculo operacional com o cadastro IXC" },
+    { "id": "identity", "lane": "app", "label": "Se não há hash, confirma correspondência exata do CPF no IXC em turno real; ausência para humano" },
     { "id": "invoice_tool", "lane": "agente", "label": "Consultar faturas: CPF redigido no audit e preso ao contato confirmado" },
     { "id": "payment_tool", "lane": "app", "label": "Valida fatura, reserva chave do job antes do envio e registra recibo" },
     { "id": "review", "lane": "db", "label": "Reserva sem recibo: aviso humano sem reenvio automático" },
@@ -31,7 +31,7 @@
   "edges": [
     { "id": "e1", "from": "settings", "to": "vault", "label": "Cifra e salva por tenant" },
     { "id": "e2", "from": "settings", "to": "team", "label": "Provisiona rascunhos idempotentes" },
-    { "id": "e3", "from": "contact", "to": "identity", "label": "Confere hash ou número da conversa" },
+    { "id": "e3", "from": "contact", "to": "identity", "label": "Confere hash ou CPF exato no IXC" },
     { "id": "e11", "from": "identity", "to": "invoice_tool", "label": "Só libera documento confirmado" },
     { "id": "e4", "from": "vault", "to": "invoice_tool", "label": "Decifra só no servidor" },
     { "id": "e5", "from": "invoice_tool", "to": "bemobi", "label": "GET faturas por txId" },

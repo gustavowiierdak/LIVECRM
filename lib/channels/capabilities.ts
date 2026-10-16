@@ -139,6 +139,11 @@ export const CHANNEL_PROVIDER_WACALLS: ChannelProvider = "wacalls";
 /** Portal próprio: mensagem passa pelo webchat, não pelo dispatcher de canais. */
 export const CHANNEL_PROVIDER_WEBCHAT: ChannelProvider = "webchat";
 
+/** Sessão HTTP interna: saída pela RPC da sessão, nunca por telefone. */
+export function ehSessaoDeAtendimentoWeb(provider: string | null | undefined): boolean {
+  return provider === CHANNEL_PROVIDER_WEBCHAT;
+}
+
 /**
  * Os providers por onde MENSAGEM entra e sai — a única lista que responde
  * "este canal serve para conversar?".

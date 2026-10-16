@@ -17,7 +17,7 @@ import type { RoutingCandidate } from "./decide";
 import { availabilityScheduleSchema } from "@/lib/schemas/routing";
 
 export type RoutingScope =
-  | { kind: "conversation_channel"; channelSessionId: string }
+  | { kind: "conversation_channel"; channelSessionId: string; setorId?: string | null }
   | { kind: "organization_summary" };
 export class InvalidRoutingChannel extends Error {
   constructor() { super("routing_channel_invalid"); }
@@ -47,6 +47,15 @@ export async function loadEligibleAttendants(
       // Policy existente vazia é restrição explícita, não ausência de configuração.
       if (allowed.size === 0) return [];
     }
+  }
+  if (scope.kind === "conversation_channel" && scope.setorId) {
+    const { data, error } = await supabase.from("atendimento_setor_membros")
+      .select("user_id").eq("organization_id", organizationId).eq("setor_id", scope.setorId);
+    if (error) throw new Error(error.message);
+    const membrosDoSetor = new Set<string>((data ?? []).map((m: { user_id: string }) => m.user_id));
+    allowed = allowed === null ? membrosDoSetor : new Set([...allowed].filter((id) => membrosDoSetor.has(id)));
+    // Um setor vazio continua uma fila, nunca transborda para outro departamento.
+    if (allowed.size === 0) return [];
   }
   const { data: members, error: memberError } = await supabase.from("user_organizations")
     .select("user_id").eq("organization_id", organizationId).is("revoked_at", null)
