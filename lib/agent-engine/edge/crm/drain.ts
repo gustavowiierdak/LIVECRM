@@ -512,7 +512,7 @@ async function processEvent(
   // do #830) moram em ./debounce.ts, com teste próprio.
   const rajada = await decidirRajada(
     pool,
-    { organizationId: event.organization_id, contactId: p.contact_id },
+    { organizationId: event.organization_id, contactId: p.contact_id, conversationId: p.conversation_id },
     await debounceDoEvento(pool, event, p, knobs.debounceMs, log),
   );
   if (rajada.tipo === 'coalescido') {

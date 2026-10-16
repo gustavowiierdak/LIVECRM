@@ -22,13 +22,14 @@ import type pg from 'pg';
 
 import { decidirRajada } from './debounce';
 
-const alvo = { organizationId: 'org1', contactId: 'contato1' };
+const alvo = { organizationId: 'org1', contactId: 'contato1', conversationId: 'conversa1' };
 const T0 = 1_700_000_000_000;
 
 interface JobNaFila {
   id: string;
   status: 'pending' | 'running' | 'done';
   runAfter: number;
+  createdAt: number;
   held: boolean;
   claimedEm: number;
   terminaEm: number;
@@ -60,10 +61,12 @@ async function simular(c: Cenario): Promise<Resumo> {
 
   const pool = {
     query: vi.fn().mockImplementation((sql: string, params: unknown[]) => {
-      if (!sql.includes('select id from job_queue')) throw new Error(`consulta inesperada: ${sql}`);
+      if (!sql.includes('select j.id from job_queue')) throw new Error(`consulta inesperada: ${sql}`);
       if (String(params[1]) !== alvo.contactId) throw new Error('consulta de carona no contato errado');
+      if (String(params[2]) !== alvo.conversationId) throw new Error('consulta de carona na conversa errada');
       const job = fila.find(
-        (j) => j.status === 'pending' && j.runAfter > agora && !j.held,
+        (j) => j.status === 'pending' && j.runAfter > agora && !j.held &&
+          j.createdAt >= agora - c.debounceMs && j.runAfter <= agora + c.debounceMs,
       );
       return { rows: job === undefined ? [] : [{ id: job.id }] };
     }),
@@ -107,6 +110,7 @@ async function simular(c: Cenario): Promise<Resumo> {
         id: `job-${proximoId++}`,
         status: 'pending',
         runAfter: decisao.runAfter?.getTime() ?? agora,
+        createdAt: agora,
         held: false,
         claimedEm: 0,
         terminaEm: 0,

@@ -45,7 +45,7 @@ import type { ChannelSendResult } from '../channel-adapter';
 import type { Logger } from '../obs/logger';
 import { emitVetoActivity } from '@/lib/leads/veto-activity';
 import type { Queryable } from '../queue/queue';
-import { decidePacing } from '../pacing/engine';
+import { decidePacing, warmupCapFor } from '../pacing/engine';
 import type { PacingState } from '../pacing/engine';
 import type { PacingKnobs } from '../pacing/defaults';
 import { loadChannelKnobs, loadPacingState, recordSend } from '../pacing/store';
@@ -1448,6 +1448,19 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     };
 
     const { body: evaluatedBody, trace: traceDaCadeia, veto, throttleWaitMs } = evaluateBeforeSend(ctx, gates);
+    if (veto?.gate === 'pacing' && (veto.code === 'warmup_cap' || veto.code === 'daily_cap')) {
+      const activatedAt = pacingState.numberActivatedAt;
+      const ageDays = activatedAt
+        ? Math.max(0, Math.floor((args.now.getTime() - activatedAt.getTime()) / 86_400_000))
+        : 0;
+      args.log.warn('cap de envio vetou resposta — configuração efetiva', {
+        channel_session_id: args.channelSessionId,
+        code: veto.code,
+        warmup_cap: warmupCapFor(ageDays, pacingCfg.knobs.warmupDailyCaps),
+        crm_daily_limit: args.crmDailyLimit,
+        sent_today: pacingState.sentToday,
+      });
+    }
     // Reescrever o texto do modelo sem deixar rastro é mudar o que o cliente lê
     // sem ninguém poder auditar depois. A linha entra ANTES da cadeia porque a
     // reescrita acontece antes dela, e leva só rótulos — nunca o corpo (sem PII).

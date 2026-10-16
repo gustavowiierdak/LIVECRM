@@ -3,15 +3,15 @@ import type pg from 'pg';
 
 import { decidirRajada, janelaDeRajada, debounceEfetivo, TETO_DEBOUNCE_MS } from './debounce';
 
-const alvo = { organizationId: 'org1', contactId: 'contato1' };
+const alvo = { organizationId: 'org1', contactId: 'contato1', conversationId: 'conversa1' };
 /** Instante fixo: a janela é aritmética e o teste não depende do relógio. */
 const AGORA = 1_700_000_000_000;
 
 /** Pool falso no padrão do `drain.test.ts`: responde por leitura do SQL. */
-function poolFalso(resposta: (sql: string) => { id: string }[], chamadas: string[] = []): pg.Pool {
-  const query = vi.fn().mockImplementation((sql: string) => {
+function poolFalso(resposta: (sql: string, params: unknown[]) => { id: string }[], chamadas: string[] = []): pg.Pool {
+  const query = vi.fn().mockImplementation((sql: string, params: unknown[]) => {
     chamadas.push(sql);
-    return { rows: resposta(sql) };
+    return { rows: resposta(sql, params) };
   });
   return { query } as unknown as pg.Pool;
 }
@@ -64,6 +64,20 @@ it('job em hold não recebe carona — a consulta precisa excluir held_run_after
 
   expect(chamadas[0]).toContain('held_run_after');
   expect(decisao).toEqual({ tipo: 'enfileirar', runAfter: new Date(AGORA + 500) });
+});
+
+it('job adiado por cap não absorve atendimento novo nem mensagem de amanhã', async () => {
+  const pool = poolFalso((sql, params) => {
+    expect(sql).toContain('j.run_after <=');
+    expect(sql).toContain('j.created_at >=');
+    expect(sql).toContain("j.payload->>'conversation_id' = $3::text");
+    expect(sql).toContain('c.service_revision::text');
+    expect(params).toEqual(['org1', 'contato1', 'conversa1', new Date(AGORA), 500]);
+    return [];
+  });
+  expect(await decidirRajada(pool, alvo, 500, AGORA)).toEqual({
+    tipo: 'enfileirar', runAfter: new Date(AGORA + 500),
+  });
 });
 
 it('janelaDeRajada: sem debounce não há janela; com debounce a janela é agora + janela', () => {
